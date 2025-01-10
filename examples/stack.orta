@@ -1,0 +1,21 @@
+PUSH 10
+PUSH 100
+# Expected Output: 100
+PRINT
+SWAP
+# Expected Output: 10
+PRINT
+DROP
+# Expected Output: 100
+PRINT
+
+# Dont should jump when jumped error occurred
+JMP_IF 0 100
+
+
+DUP
+# Expected Output: 100
+PRINT
+DROP
+# Expected Output: 100
+PRINT

@@ -1,0 +1,8 @@
+INPUT
+# Expected Output: input value
+PRINT
+DROP
+
+# CAST_AND_PRINT example in file.orta (due unusability in this example)
+
+PRINT_STR "Test String"

@@ -1,0 +1,23 @@
+# Plus
+PUSH 1
+PUSH 1
+ADD
+# Output: 2
+PRINT
+# Minus
+PUSH 2
+SUB
+# Output: 0
+PRINT
+DROP
+# 10*3
+PUSH 10
+PUSH 3
+MUL
+# Output: 30
+PRINT
+# Division
+PUSH 10
+DIV
+# Output: 3
+PRINT

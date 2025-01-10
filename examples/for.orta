@@ -1,0 +1,11 @@
+# for loop
+PUSH 0
+NOP
+PUSH 1
+ADD
+PRINT
+# While latest element != 10 Jump to token 1 (NOP)
+JMP_IF 1 10
+# Drop 10 if not needed
+DROP
+

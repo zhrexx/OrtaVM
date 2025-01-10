@@ -1,0 +1,3 @@
+default:
+    add_flag("-Wswitch-enum");
+    compile("vm.c", "vm");
