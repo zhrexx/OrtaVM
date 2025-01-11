@@ -4,7 +4,14 @@
 default:
     enable_verbose();
     add_flag("-Wswitch-enum");
-    compile("vm.c", "vm");
+    compile("orta.c", "vm");
+    compile("deovm.c", "deovm");
 examples:
     enable_verbose();
-    s_command("");
+    s_command("./build/vm examples/file.orta examples/file.ovm --build-only");
+    s_command("./build/vm examples/for.orta examples/for.ovm --build-only");
+    s_command("./build/vm examples/math.orta examples/math.ovm --build-only");
+    s_command("./build/vm examples/password_game.orta examples/password_game.ovm --build-only");
+    s_command("./build/vm examples/stack.orta examples/stack.ovm --build-only");
+    s_command("./build/vm examples/terminal.orta examples/terminal.ovm --build-only");
+    printfn("All examples compiled: file.ovm for.ovm math.ovm password_game.ovm stack.ovm terminal.ovm");
