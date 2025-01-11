@@ -26,6 +26,7 @@ typedef enum {
     I_DUP,
     I_SWAP,
     I_EQ,
+    I_CLEAR_STACK,
 
     // Math
     I_ADD, // +
@@ -362,6 +363,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 req.tv_nsec = (token.int_value % 1000) * 1000000;
                 nanosleep(&req, NULL);
                 break;
+
+            case I_CLEAR_STACK:
+                vm->stack_size = 0;
+                break;
             default:
                 return RTS_UNDEFINED_INSTRUCTION;
         }
@@ -546,6 +551,8 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 fclose(file);
                 return RTS_ERROR;
             }
+        } else if (strcmp(instruction, "CLEAR_STACK") == 0) {
+            token.inst = I_CLEAR_STACK;
         }
 
         if (token.inst == -1) {
