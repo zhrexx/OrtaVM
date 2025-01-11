@@ -1,4 +1,10 @@
-// dada
+// Samba Compiler
+// How to install?
+// run: https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/install_samba.sh
 default:
+    enable_verbose();
     add_flag("-Wswitch-enum");
     compile("vm.c", "vm");
+examples:
+    enable_verbose();
+    s_command("");
