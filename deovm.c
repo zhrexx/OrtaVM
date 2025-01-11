@@ -92,6 +92,10 @@ int main(int argc, char **argv) {
            case I_RANDOM_INT:
                 fprintf(f, "RANDOM_INT %d %d\n", token.random_int.min, token.random_int.max);
                 break;
+           case I_LT:
+                fprintf(f, "LT\n");
+           case I_GT:
+                fprintf(f, "GT\n");
         }
 
     }

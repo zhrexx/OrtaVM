@@ -28,6 +28,9 @@ typedef enum {
     I_DUP,
     I_SWAP,
     I_EQ,
+    I_LT,
+    I_GT,
+
     I_CLEAR_STACK,
 
     // Math
@@ -365,10 +368,32 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 req.tv_nsec = (token.int_value % 1000) * 1000000;
                 nanosleep(&req, NULL);
                 break;
-
             case I_CLEAR_STACK:
                 vm->stack_size = 0;
                 break;
+            case I_LT:
+                if (vm->stack_size < 2) {
+                    return RTS_STACK_UNDERFLOW;
+                }
+                int64_t a2 = vm->stack[vm->stack_size - 1];
+                int64_t b2 = vm->stack[vm->stack_size - 2];
+                int64_t result2 = (b2 < a2) ? 1 : 0;
+                if (push(vm, result2) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
+            case I_GT:
+                if (vm->stack_size < 2) {
+                    return RTS_STACK_UNDERFLOW;
+                }
+                int64_t a3 = vm->stack[vm->stack_size - 1];
+                int64_t b3 = vm->stack[vm->stack_size - 2];
+                int64_t result3 = (b3 > a3) ? 1 : 0;
+                if (push(vm, result2) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
+
             default:
                 return RTS_UNDEFINED_INSTRUCTION;
         }
@@ -555,6 +580,10 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             }
         } else if (strcmp(instruction, "CLEAR_STACK") == 0) {
             token.inst = I_CLEAR_STACK;
+        } else if (strcmp(instruction, "GT") == 0) {
+            token.inst = I_GT; // Greater than
+        } else if (strcmp(instruction, "LT") == 0) {
+            token.inst = I_LT; // Less then
         }
 
         if (token.inst == -1) {

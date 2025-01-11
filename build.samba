@@ -14,4 +14,5 @@ examples:
     s_command("./build/vm examples/password_game.orta examples/password_game.ovm --build-only");
     s_command("./build/vm examples/stack.orta examples/stack.ovm --build-only");
     s_command("./build/vm examples/terminal.orta examples/terminal.ovm --build-only");
+    s_command("./build/vm examples/lt_gt.orta examples/lt_gt.ovm --build-only");
     printfn("All examples compiled: file.ovm for.ovm math.ovm password_game.ovm stack.ovm terminal.ovm");
