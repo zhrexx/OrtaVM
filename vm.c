@@ -618,12 +618,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!argc < 3 && strcmp(argv[3], "-dr") == 0) {
-        RTStatus status = OrtaVM_execute(&vm);
-        if (status != RTS_OK) {
-            fprintf(stderr, "Execution Error: %d\n", status);
-            return 1;
-        }
+
+    RTStatus status = OrtaVM_execute(&vm);
+    if (status != RTS_OK) {
+        fprintf(stderr, "Execution Error: %d\n", status);
+        return 1;
     }
 
     if (argc > 3 && strcmp(argv[3], "--dump") == 0) {
