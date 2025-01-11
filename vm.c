@@ -590,7 +590,7 @@ int main(int argc, char **argv) {
     OrtaVM vm = {0};
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm] [-dr]\n", argv[0]);
         fprintf(stderr, "ERROR: No input file provided.\n");
         return 1;
     }
@@ -618,10 +618,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    RTStatus status = OrtaVM_execute(&vm);
-    if (status != RTS_OK) {
-        fprintf(stderr, "Execution Error: %d\n", status);
-        return 1;
+    if (!argc < 3 && strcmp(argv[3], "-dr") == 0) {
+        RTStatus status = OrtaVM_execute(&vm);
+        if (status != RTS_OK) {
+            fprintf(stderr, "Execution Error: %d\n", status);
+            return 1;
+        }
     }
 
     if (argc > 3 && strcmp(argv[3], "--dump") == 0) {
