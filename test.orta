@@ -1,8 +1,0 @@
-NOP
-INPUT
-RANDOM_INT 0 100
-PRINT
-
-EQ
-JMP_IF 0 1
-PRINT_STR "Hello, you guessed the password"

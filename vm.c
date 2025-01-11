@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <time.h>
 
-#define STACK_CAPACITY 20000
+#define STACK_CAPACITY 200000
 
 typedef enum {
     RTS_OK,
@@ -35,11 +36,14 @@ typedef enum {
     // Syscall
     I_EXIT,
 
-    // Stdout
+    // Terminal
     I_INPUT,          // Read input from stdin
     I_PRINT,          // For Ints
     I_CAST_AND_PRINT, // Casting Ptr to char * and print
     I_PRINT_STR,      // Print string
+    I_COLOR,          // Change Output Color
+    I_CLEAR,          // Clear Terminal
+    I_SLEEP,          // Sleep for x ms
 
     // File
     I_FILE_OPEN, // Return fd
@@ -313,6 +317,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_RANDOM_INT:
                 {
+                    srand(time(NULL));
                     int64_t min = token.random_int.min;
                     int64_t max = token.random_int.max;
                     int64_t random = min + rand() % (max - min + 1);
@@ -321,6 +326,42 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     }
                     break;
                 }
+            case I_COLOR:
+                {
+                    // TODO: Add more colors
+                    char color[1024] = {0};
+                    if (strcmp(token.str_value, "red") == 0) {
+                        strcpy(color, "\033[31m");
+                    } else if (strcmp(token.str_value, "green") == 0) {
+                        strcpy(color, "\033[32m");
+                    } else if (strcmp(token.str_value, "yellow") == 0) {
+                        strcpy(color, "\033[33m");
+                    } else if (strcmp(token.str_value, "blue") == 0) {
+                        strcpy(color, "\033[34m");
+                    } else if (strcmp(token.str_value, "magenta") == 0) {
+                        strcpy(color, "\033[35m");
+                    } else if (strcmp(token.str_value, "cyan") == 0) {
+                        strcpy(color, "\033[36m");
+                    } else if (strcmp(token.str_value, "white") == 0) {
+                        strcpy(color, "\033[37m");
+                    } else if (strcmp(token.str_value, "reset") == 0) {
+                        strcpy(color, "\033[0m");
+                    } else {
+                        return RTS_ERROR;
+                    }
+                    printf("%s", color);
+                    break;
+                }
+            case I_CLEAR:
+                // TODO: Make it os independent
+                system("clear");
+                break;
+            case I_SLEEP:
+                struct timespec req;
+                req.tv_sec = token.int_value / 1000;
+                req.tv_nsec = (token.int_value % 1000) * 1000000;
+                nanosleep(&req, NULL);
+                break;
             default:
                 return RTS_UNDEFINED_INSTRUCTION;
         }
@@ -487,6 +528,21 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_RANDOM_INT;
             if (matched < 3 || sscanf(args[0], "%ld", &token.random_int.min) != 1 || sscanf(args[1], "%ld", &token.random_int.max) != 1) {
                 fprintf(stderr, "ERROR: RANDOM_INT expects two integers: %s", line);
+                fclose(file);
+                return RTS_ERROR;
+            }
+        } else if (strcmp(instruction, "COLOR") == 0) {
+            token.inst = I_COLOR;
+            strcpy(token.str_value, extract_content(line));
+            token.str_value[strlen(token.str_value) + 1] = '\0';
+        } else if (strcmp(instruction, "CLEAR") == 0) {
+            token.inst = I_CLEAR;
+        }
+        else if (strcmp(instruction, "SLEEP") == 0) {
+            token.inst = I_SLEEP;
+
+            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
+                fprintf(stderr, "ERROR: Sleep expects ms: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
