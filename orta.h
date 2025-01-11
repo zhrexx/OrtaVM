@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <ctype.h>
 
 #define STACK_CAPACITY 200000
 
@@ -15,13 +16,36 @@ typedef enum {
     RTS_STACK_UNDERFLOW,
     RTS_ERROR,
     RTS_UNDEFINED_INSTRUCTION,
+    RTS_INVALID_TYPE,
 } RTStatus;
+
+char *error_to_string(RTStatus status) {
+    switch (status) {
+    case RTS_OK:
+        return "OK";
+    case RTS_STACK_OVERFLOW:
+        return "Stack Overflow";
+    case RTS_STACK_UNDERFLOW:
+        return "Stack Underflow";
+    case RTS_ERROR:
+        return "Error";
+    case RTS_UNDEFINED_INSTRUCTION:
+        return "Undefined Instruction";
+    case RTS_INVALID_TYPE:
+        return "Invalid Type";
+    default:
+        return "Unknown Error";
+    }
+}
 
 typedef enum {
     I_NOP, // Used to jmp
+    I_IGNORE, // makes next operation invisible (skips)
+    I_IGNORE_IF,
 
     // Stack
     I_PUSH,
+    I_PUSH_STR,
     I_DROP,
     I_JMP,
     I_JMP_IF,
@@ -41,15 +65,22 @@ typedef enum {
 
     // Syscall
     I_EXIT,
+    I_EXIT_IF,
+
+    // Functions
+    I_STR_LEN,
+
 
     // Terminal
-    I_INPUT,          // Read input from stdin
+    I_INPUT,          // Read input from stdin (ld)
+    I_INPUT_STR,      // Read input from stdin (char *)
     I_PRINT,          // For Ints
     I_CAST_AND_PRINT, // Casting Ptr to char * and print
     I_PRINT_STR,      // Print string
     I_COLOR,          // Change Output Color
     I_CLEAR,          // Clear Terminal
     I_SLEEP,          // Sleep for x ms
+    I_EXECUTE_CMD,    // Allows to execute an command
 
     // File
     I_FILE_OPEN, // Return fd
@@ -59,6 +90,16 @@ typedef enum {
     // Random
     I_RANDOM_INT,
 } Instruction;
+
+// Flags
+size_t level = 0;
+size_t limit = 1000;
+
+void insecure_function(int line_count, char *func) {
+    if (level == 1) {
+        printf("\033[33mWarning: Usage of insecure function at token %d: %s\033[0m\n", line_count, func);
+    }
+}
 
 typedef struct {
     int64_t dest;
@@ -71,12 +112,18 @@ typedef struct {
 } RandomInt;
 
 typedef struct {
+    int64_t exit_code;
+    int64_t cond;
+} ExitIf;
+
+typedef struct {
     Instruction inst;
     union {
         int64_t int_value;
         char str_value[1024];
         JumpIfArgs jump_if_args;
         RandomInt random_int;
+        ExitIf exit_if;
     };
 } Token;
 
@@ -100,11 +147,23 @@ RTStatus push(OrtaVM *vm, int64_t value) {
     return RTS_OK;
 }
 
+RTStatus push_str(OrtaVM *vm, const char *str) {
+    if (vm->stack_size >= STACK_CAPACITY) {
+        return RTS_STACK_OVERFLOW;
+    }
+    char *dynamic_str = strdup(str);
+    if (!dynamic_str) {
+        return RTS_ERROR;
+    }
+    vm->stack[vm->stack_size++] = (int64_t)dynamic_str;
+    return RTS_OK;
+}
+
 char *extract_content(const char *line) {
     const char *start = strchr(line, '"');
     const char *end = strrchr(line, '"');
     if (!start || !end || start == end) {
-        return NULL;
+        return "No text provided";
     }
     size_t length = end - start - 1;
     static char content[1024];
@@ -116,14 +175,6 @@ char *extract_content(const char *line) {
     return content;
 }
 
-
-int parse_register_str(const char *register_str) {
-    if (strcmp(register_str, "rax") == 0) return 0;
-    if (strcmp(register_str, "rbx") == 0) return 1;
-    if (strcmp(register_str, "rcx") == 0) return 2;
-    if (strcmp(register_str, "rdx") == 0) return 3;
-    return -1;
-}
 
 RTStatus add(OrtaVM *vm) {
     if (vm->stack_size < 2) {
@@ -153,7 +204,7 @@ RTStatus print(OrtaVM *vm) {
 
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     Program program = vm->program;
-    for (size_t i = 0; i < program.size; i++) {
+    for (size_t i = 0; i < program.size || i < limit; i++) {
         Token token = program.tokens[i];
         switch (token.inst) {
             case I_PUSH:
@@ -368,6 +419,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 req.tv_nsec = (token.int_value % 1000) * 1000000;
                 nanosleep(&req, NULL);
                 break;
+
             case I_CLEAR_STACK:
                 vm->stack_size = 0;
                 break;
@@ -389,11 +441,61 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 int64_t a3 = vm->stack[vm->stack_size - 1];
                 int64_t b3 = vm->stack[vm->stack_size - 2];
                 int64_t result3 = (b3 > a3) ? 1 : 0;
-                if (push(vm, result2) != RTS_OK) {
+                if (push(vm, result3) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
+            case I_PUSH_STR:
+                if (push_str(vm, token.str_value) != RTS_OK) {
                     return RTS_STACK_OVERFLOW;
                 }
                 break;
 
+            case I_EXIT_IF:
+                if (vm->stack_size == 0) {
+                    return RTS_STACK_UNDERFLOW;
+                }
+                int64_t cond = token.exit_if.cond;
+                int64_t exit_code = token.exit_if.exit_code;
+                if (vm->stack[vm->stack_size - 1] == cond) {
+                    exit(exit_code);
+                }
+                break;
+
+            case I_STR_LEN:
+                if (vm->stack_size == 0) {
+                    return RTS_STACK_UNDERFLOW;
+                }
+                char *str = (char *)vm->stack[vm->stack_size - 1];
+                int64_t len = strlen(str);
+
+                if (push(vm, len) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
+            case I_INPUT_STR:
+                char buffer[1024] = {0};
+                scanf("%1023s", buffer);
+                if (push_str(vm, buffer) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
+
+            case I_EXECUTE_CMD:
+                system(token.str_value);
+                break;
+            case I_IGNORE:
+                i += 2;
+                break;
+            case I_IGNORE_IF:
+                if (vm->stack_size == 0) {
+                    return RTS_STACK_UNDERFLOW;
+                }
+                int64_t cond1 = token.int_value;
+                if (vm->stack[vm->stack_size - 1] == cond1) {
+                    i += 2;
+                }
+                break;
             default:
                 return RTS_UNDEFINED_INSTRUCTION;
         }
@@ -463,7 +565,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     char line[256];
     size_t program_size = 0;
     Token tokens[1024];
-
+    int line_count = 0;
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == '\n' || line[0] == '#') continue;
 
@@ -478,6 +580,8 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             fclose(file);
             return RTS_ERROR;
         }
+
+        line_count++;
 
         Token token = {0};
         token.inst = -1;
@@ -552,6 +656,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_FILE_READ;
         } else if (strcmp(instruction, "CAST_AND_PRINT") == 0) {
             token.inst = I_CAST_AND_PRINT;
+            insecure_function(line_count, "CAST_AND_PRINT");
         } else if (strcmp(instruction, "SWAP") == 0) {
             token.inst = I_SWAP;
         } else if (strcmp(instruction, "EQ") == 0) {
@@ -584,7 +689,37 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_GT; // Greater than
         } else if (strcmp(instruction, "LT") == 0) {
             token.inst = I_LT; // Less then
+        } else if (strcmp(instruction, "PUSH_STR") == 0) {
+            token.inst = I_PUSH_STR;
+            strcpy(token.str_value, extract_content(line));
+            token.str_value[strlen(token.str_value) + 1] = '\0';
+        } else if (strcmp(instruction, "EXIT_IF") == 0) {
+            token.inst = I_EXIT_IF;
+            if (matched < 3 || sscanf(args[0], "%ld", &token.exit_if.exit_code) != 1 || sscanf(args[1], "%ld", &token.exit_if.cond) != 1) {
+                fprintf(stderr, "ERROR: EXIT_IF expects an exit code and condition: %s", line);
+                fclose(file);
+                return RTS_ERROR;
+            }
+        } else if (strcmp(instruction, "STRLEN") == 0) {
+            insecure_function(line_count, "STRLEN");
+            token.inst = I_STR_LEN;
+        } else if (strcmp(instruction, "INPUT_STR") == 0) {
+            token.inst = I_INPUT_STR;
+        } else if (strcmp(instruction, "EXECUTE_CMD") == 0) {
+            token.inst = I_EXECUTE_CMD;
+            strcpy(token.str_value, extract_content(line));
+            token.str_value[strlen(token.str_value) + 1] = '\0';
+        } else if (strcmp(instruction, "IGNORE") == 0) {
+            token.inst = I_IGNORE;
+        } else if (strcmp(instruction, "IGNORE_IF") == 0) {
+            token.inst = I_IGNORE_IF;
+            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
+                fprintf(stderr, "ERROR: IGNORE_IF expects cond: %s", line);
+                fclose(file);
+                return RTS_ERROR;
+            }
         }
+
 
         if (token.inst == -1) {
             fprintf(stderr, "ERROR: Unknown instruction: %s\n", instruction);

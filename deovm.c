@@ -96,6 +96,20 @@ int main(int argc, char **argv) {
                 fprintf(f, "LT\n");
            case I_GT:
                 fprintf(f, "GT\n");
+           case I_PUSH_STR:
+                fprintf(f, "PUSH_STR \"%s\"\n", token.str_value);
+           case I_EXIT_IF:
+                fprintf(f, "EXIT_IF %d %d\n", token.exit_if.exit_code, token.exit_if.cond);
+           case I_STR_LEN:
+                fprintf(f, "STRLEN\n");
+           case I_INPUT_STR:
+                fprintf(f, "INPUT_STR\n");
+           case I_EXECUTE_CMD:
+                fprintf(f, "EXECUTE_CMD \"%s\"\n", token.str_value);
+           case I_IGNORE:
+                fprintf(f, "IGNORE\n");
+           case I_IGNORE_IF:
+                fprintf(f, "IGNORE_IF %d\n", token.int_value);
         }
 
     }

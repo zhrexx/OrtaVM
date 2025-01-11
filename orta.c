@@ -11,6 +11,8 @@ int main(int argc, char **argv) {
     }
     if (argc > 3 && strcmp(argv[3], "--build-only") == 0) {
         build_only = 1;
+    } else if (argc > 3 && strcmp(argv[3], "--show_warnings") == 0) {
+        level = 1;
     }
 
     if (ends_with(argv[1], ".ovm")) {
@@ -42,7 +44,7 @@ int main(int argc, char **argv) {
 
     RTStatus status = OrtaVM_execute(&vm);
     if (status != RTS_OK) {
-        fprintf(stderr, "Execution Error: %d\n", status);
+        fprintf(stderr, "Execution Error: %s\n", error_to_string(status));
         return 1;
     }
 
