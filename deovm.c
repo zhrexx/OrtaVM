@@ -110,6 +110,8 @@ int main(int argc, char **argv) {
                 fprintf(f, "IGNORE\n");
            case I_IGNORE_IF:
                 fprintf(f, "IGNORE_IF %d\n", token.int_value);
+           case I_GET:
+                fprintf(f, "GET %d\n", token.int_value);
         }
 
     }

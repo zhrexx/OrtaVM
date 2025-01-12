@@ -39,36 +39,37 @@ char *error_to_string(RTStatus status) {
 }
 
 typedef enum {
-    I_NOP, // Used to jmp
-    I_IGNORE, // makes next operation invisible (skips)
-    I_IGNORE_IF,
+    I_NOP,            // Used to jmp
+    I_IGNORE,         // Skips next instruction
+    I_IGNORE_IF,      // Skips next instruction if cond ==
 
     // Stack
-    I_PUSH,
-    I_PUSH_STR,
-    I_DROP,
-    I_JMP,
-    I_JMP_IF,
-    I_DUP,
-    I_SWAP,
-    I_EQ,
-    I_LT,
-    I_GT,
+    I_PUSH,           // Push an number to stack
+    I_PUSH_STR,       // Push a string to stack
+    I_DROP,           // Drops last item
+    I_JMP,            // JMPs to given index
+    I_JMP_IF,         // JMP to given index while != cond
+    I_DUP,            // Duplicates last item
+    I_SWAP,           // Swaps last 2 elements
+    I_EQ,             // returns 1 if the latest and second item equals
+    I_LT,             // Less than (returns 1 if less else 0)
+    I_GT,             // Greater that (returns 1 if greater else 0)
+    I_GET,            // Gets an item at given index
 
-    I_CLEAR_STACK,
+    I_CLEAR_STACK,    // Clears stack
 
     // Math
-    I_ADD, // +
-    I_SUB, // -
-    I_MUL, // *
-    I_DIV, // /
+    I_ADD,            // +
+    I_SUB,            // -
+    I_MUL,            // *
+    I_DIV,            // /
 
     // Syscall
-    I_EXIT,
-    I_EXIT_IF,
+    I_EXIT,           // Exit with given code
+    I_EXIT_IF,        // Exit with given code if == cond
 
     // Functions
-    I_STR_LEN,
+    I_STR_LEN,        // Pushes the len of string out of stack to the stack
 
 
     // Terminal
@@ -83,12 +84,12 @@ typedef enum {
     I_EXECUTE_CMD,    // Allows to execute an command
 
     // File
-    I_FILE_OPEN, // Return fd
-    I_FILE_WRITE,
-    I_FILE_READ,
+    I_FILE_OPEN,      // Pushes FILE * to the stack
+    I_FILE_WRITE,     // Writes a given text to file (appends)
+    I_FILE_READ,      // Reads a file and pushes it to the stack
 
     // Random
-    I_RANDOM_INT,
+    I_RANDOM_INT,     // Pushes an random int to stack
 } Instruction;
 
 // Flags
@@ -204,7 +205,9 @@ RTStatus print(OrtaVM *vm) {
 
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     Program program = vm->program;
-    for (size_t i = 0; i < program.size || i < limit; i++) {
+    size_t iterations = 0;
+    for (size_t i = 0; i < program.size && iterations < limit*4; i++) {
+        iterations++;
         Token token = program.tokens[i];
         switch (token.inst) {
             case I_PUSH:
@@ -496,6 +499,17 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     i += 2;
                 }
                 break;
+            case I_GET:
+                if (vm->stack_size == 0) {
+                    return RTS_STACK_UNDERFLOW;
+                } else if (token.int_value > vm->stack_size) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                int64_t index = token.int_value;
+                if (push(vm, vm->stack[index]) != RTS_OK) {
+                    return RTS_STACK_OVERFLOW;
+                }
+                break;
             default:
                 return RTS_UNDEFINED_INSTRUCTION;
         }
@@ -718,7 +732,15 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 fclose(file);
                 return RTS_ERROR;
             }
+        } else if (strcmp(instruction, "GET") == 0) {
+            token.inst = I_GET;
+            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
+                fprintf(stderr, "ERROR: GET expects a stack index: %s", line);
+                fclose(file);
+                return RTS_ERROR;
+            }
         }
+
 
 
         if (token.inst == -1) {

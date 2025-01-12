@@ -6,13 +6,28 @@ int main(int argc, char **argv) {
     int build_only = 0;
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm]\n", argv[0]);
+        fprintf(stderr, "  --build-only      Build only without execution.\n");
+        fprintf(stderr, "  --show-warnings   Show warnings (sets warning level to 1).\n");
+        fprintf(stderr, "  -l <limit>        Set limit value. (Default: 1000)\n");
         fprintf(stderr, "ERROR: No input file provided.\n");
         return 1;
     }
-    if (argc > 3 && strcmp(argv[3], "--build-only") == 0) {
-        build_only = 1;
-    } else if (argc > 3 && strcmp(argv[3], "--show_warnings") == 0) {
-        level = 1;
+    for (int i = 3; i < argc; i++) {
+         if (strcmp(argv[i], "--build-only") == 0) {
+             build_only = 1;
+         } else if (strcmp(argv[i], "--show-warnings") == 0) {
+             level = 1;
+         } else if (strcmp(argv[i], "-l") == 0) {
+             if (i + 1 < argc) {
+                 limit = atoi(argv[++i]);
+             } else {
+                 fprintf(stderr, "ERROR: Missing value for -l option.\n");
+                 return 1;
+             }
+         } else {
+             fprintf(stderr, "ERROR: Unknown option '%s'.\n", argv[i]);
+             return 1;
+         }
     }
 
     if (ends_with(argv[1], ".ovm")) {
@@ -48,9 +63,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (argc > 3 && strcmp(argv[3], "--dump") == 0) {
-        OrtaVM_dump(&vm);
-    }
+    //OrtaVM_dump(&vm);
 
     return 0;
 }
