@@ -4,10 +4,11 @@
 default:
     enable_verbose();
     add_flag("-Wswitch-enum");
+    // add_flag("-O3");
     compile("orta.c", "vm");
     compile("deovm.c", "deovm");
     s_command("cp std.orta ~/.orta/");
 
     // windows
-    // x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static
-    // x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static
+    // x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3
+    // x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3
