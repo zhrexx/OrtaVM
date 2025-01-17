@@ -1,0 +1,17 @@
+# Need #ifdef _WIN32?
+
+VAR "os"
+STRCMP "linux"
+JMP_IF 6 1
+STRCMP "windows"
+JMP_IF 9 1
+PRINT_STR "Unknown operating system"
+EXIT_IF 0 1
+
+PRINT_STR "Yes your operating system is linux"
+# Do code for linux here
+EXIT_IF 0 1
+
+PRINT_STR "Yes your operating system is windows"
+# Do code for windows here
+EXIT_IF 0 1

@@ -3,11 +3,11 @@ PUSH 20
 
 # 10 < 20 (in c)
 LT
-JMP_IF 5 1
+JMP_IFN 5 1
 PRINT_STR "LT worked"
 
 # 30 > 20 (in c)
 PUSH 30
 GT
-JMP_IF 5 1
+JMP_IFN 5 1
 PRINT_STR "GT worked"

@@ -6,6 +6,10 @@
 # PRINT
 # INPUT_STR
 # CAST_AND_PRINT
+# BFUNC 0
+#include <std.orta>
 
+PRINT_STR "Hillo, World!"
 
+exit_success()
 

@@ -10,7 +10,7 @@ DROP
 PRINT
 
 # Dont should jump when jumped error occurred
-JMP_IF 0 100
+JMP_IFN 0 100
 
 
 DUP

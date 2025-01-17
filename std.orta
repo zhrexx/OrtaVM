@@ -1,1 +1,14 @@
-#define TEST 10
+# Definitions
+#define EXIT_SUCCESS 0
+#define EXIT_FAILURE 1
+
+# Macros
+#macro exit_success() {
+    EXIT EXIT_SUCCESS
+}
+
+# NOTE: () does nothing, its here because its stylish
+#macro exit_failure() {
+    EXIT EXIT_FAILURE
+}
+

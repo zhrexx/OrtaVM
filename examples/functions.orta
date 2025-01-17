@@ -1,0 +1,10 @@
+JMP 1
+# If it prints this error happened
+PRINT_STR "Not from function"
+
+# print function
+NOP
+PRINT_STR "Print"
+PUSH 1
+ADD
+JMP_FS
