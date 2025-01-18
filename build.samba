@@ -1,14 +1,15 @@
-// Samba Compiler
-// How to install?
-// run: https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/install_samba.sh
+# Samba Compiler
+# How to install?
+# run: https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/install_samba.sh
 default:
     enable_verbose();
     add_flag("-Wswitch-enum");
-    // add_flag("-O3");
+    # add_flag("-O3");
     compile("orta.c", "vm");
     compile("deovm.c", "deovm");
-    s_command("cp std.orta ~/.orta/");
+    s_command("cp std/* ~/.orta/");
 
-    // windows
-    // x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3
-    // x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3
+windows:
+    s_command("x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("wine build.cmd");

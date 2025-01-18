@@ -3,6 +3,9 @@
 int main(int argc, char **argv) {
     OrtaVM vm = {0};
     int build_only = 0;
+    char orta_args[20][256] = {0};
+    int orta_argc = 0;
+    int is_orta_args = 0;
     int dump = 0;
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm]\n", argv[0]);
@@ -16,7 +19,14 @@ int main(int argc, char **argv) {
     }
 
     for (int i = 3; i < argc; i++) {
-         if (strcmp(argv[i], "--build-only") == 0) {
+         if (argv[i][0] == '-' && argv[i][1] == '-') {
+             is_orta_args = 1;
+             continue;
+         }
+         if (is_orta_args) {
+            strcpy(orta_args[orta_argc++], argv[i]);
+            continue;
+         } else if (strcmp(argv[i], "--build-only") == 0) {
              build_only = 1;
          } else if (strcmp(argv[i], "--show-warnings") == 0) {
              level = 1;
@@ -55,7 +65,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: Missing output file for .orta input.\n");
             return 1;
         }
-        if (OrtaVM_preprocess_file(argv[1]) != RTS_OK) {
+        if (OrtaVM_preprocess_file(argv[1], orta_argc, orta_args) != RTS_OK) {
             fprintf(stderr, "ERROR: Failed to preprocess file: %s", argv[1]);
             return 1;
         }
@@ -80,6 +90,9 @@ int main(int argc, char **argv) {
         if (build_only) {
             return 0;
         }
+    } else if (ends_with(argv[1], ".horta")) {
+        fprintf(stderr, "ERROR: .horta files cannot be executen!\nNOTE: .horta files can be included: #include <%s>\n", argv[1]);
+        return 1;
     } else {
         fprintf(stderr, "ERROR: Invalid file extension. Expected .orta or .ovm.\n");
         return 1;

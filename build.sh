@@ -9,7 +9,7 @@ if [ ! -d ~/.orta ]; then
 fi
 
 if [ "$1" == "install_libs" ]; then
-  cp std.orta ~/.orta/
+  cp std/* ~/.orta/
   exit 0
 fi
 
@@ -20,4 +20,4 @@ FLAGS="-O3 -static"
 $CC $FLAGS -o build/orta orta.c
 $CC $FLAGS -o build/deovm deovm.c
 
-cp std.orta ~/.orta/
+cp std/* ~/.orta/

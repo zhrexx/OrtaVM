@@ -1,0 +1,41 @@
+#ifdef OS_WINDOWS
+COLOR "red"
+PRINT_STR "ERROR: inet.horta is currently not supported for Windows!"
+COLOR "reset"
+EXIT 1
+#endif
+
+#macro socket() {
+    BFUNC 0
+}
+
+#macro sock_bind() {
+    BFUNC 1
+}
+
+#macro sock_listen() {
+    BFUNC 2
+}
+
+#macro sock_accept() {
+    BFUNC 3
+}
+
+#macro sock_connect() {
+    BFUNC 4
+}
+
+#macro sock_send() {
+    BFUNC 5
+}
+#macro sock_recv() {
+    BFUNC 6
+}
+
+#macro sock_close() {
+    BFUNC 7
+}
+
+#macro sock_set_opt() {
+    BFUNC 8
+}

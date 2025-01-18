@@ -1,3 +1,7 @@
+// GLOBAL TODOS:
+// TODO: Add a syscall inst there for i need a abstraction layer: int syscall(int syscall, int arg1, int arg2);
+
+
 #ifndef ORTA_H
 #define ORTA_H
 #include <stdio.h>
@@ -8,8 +12,18 @@
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#endif
 
-#define STACK_CAPACITY 200000
+#define O_STACK_CAPACITY 200000
+#define PREPROC_SYMBOL '#'
+#define O_DEFAULT_BUFFER_CAPACITY 1024
+#define O_DEFAULT_SIZE 256
 
 typedef enum {
     RTS_OK,
@@ -96,6 +110,7 @@ typedef enum {
     I_JMP_FS,          // JMP to given index from the stack
     I_BFUNC,           // Builtin Functions (C functions)
     I_CAST,
+    I_SEND,            // Send a message to a socket
 } Instruction;
 
 // Flags
@@ -133,7 +148,7 @@ typedef struct {
     Instruction inst;
     union {
         int64_t int_value;
-        char str_value[1024];
+        char str_value[O_DEFAULT_BUFFER_CAPACITY];
         JumpIfArgs jump_if_args;
         RandomInt random_int;
         ExitIf exit_if;
@@ -141,7 +156,7 @@ typedef struct {
 } Token;
 
 typedef struct {
-    Token tokens[1024];
+    Token tokens[O_DEFAULT_BUFFER_CAPACITY];
     size_t size;
 } Program;
 
@@ -149,35 +164,36 @@ typedef struct OrtaVM OrtaVM;
 typedef void (*BFunc)(OrtaVM*);
 
 struct OrtaVM {
-    int64_t stack[STACK_CAPACITY];
+    int64_t stack[O_STACK_CAPACITY];
     size_t stack_size;
 
+    // TODO: Use it somewhere
     int64_t orta_stack[8]; // stack of runtime values (only accessible by OrtaVM) (like registers)
     size_t orta_stack_size;
 
-    BFunc bfunctions[256];
+    BFunc bfunctions[O_DEFAULT_SIZE];
     size_t bfunctions_size;
 
     Program program;
 };
 
 void push_bfunc(OrtaVM *vm, BFunc func) {
-    if (vm->bfunctions_size >= 256) {
+    if (vm->bfunctions_size >= O_DEFAULT_SIZE) {
         return;
     }
     vm->bfunctions[vm->bfunctions_size++] = func;
 }
 
-// void bfunctions(OrtaVM *vm) {}
-
-void init_bfuncs(OrtaVM *vm) {
-    // BFunc b_assert = bfunctions;
-
-    // push_bfunc(vm, b_assert);
+void OrtaVM_dump(OrtaVM *vm) {
+    printf("Stack (top to bottom):\n");
+    for (size_t i = vm->stack_size; i > 0; i--) {
+        if (vm->stack[i - 1] == 0) continue;
+        printf("%ld\n", vm->stack[i - 1]);
+    }
 }
 
 RTStatus push(OrtaVM *vm, int64_t value) {
-    if (vm->stack_size >= STACK_CAPACITY) {
+    if (vm->stack_size >= O_STACK_CAPACITY) {
         return RTS_STACK_OVERFLOW;
     }
     vm->stack[vm->stack_size++] = value;
@@ -185,7 +201,7 @@ RTStatus push(OrtaVM *vm, int64_t value) {
 }
 
 RTStatus push_str(OrtaVM *vm, const char *str) {
-    if (vm->stack_size >= STACK_CAPACITY) {
+    if (vm->stack_size >= O_STACK_CAPACITY) {
         return RTS_STACK_OVERFLOW;
     }
     char *dynamic_str = strdup(str);
@@ -196,6 +212,213 @@ RTStatus push_str(OrtaVM *vm, const char *str) {
     return RTS_OK;
 }
 
+void no_win_support() {
+    #ifdef _WIN32
+    printf("Sorry, but this Function is not supported on Windows.\n");
+    exit(1);
+    #endif
+}
+
+#ifndef _WIN32
+// TODO: Make it os independent
+void asocket(OrtaVM *vm) {
+    no_win_support();
+    int64_t result = socket(AF_INET, SOCK_STREAM, 0);
+    if (push(vm, result) != RTS_OK) {
+        error_occurred("asocket", "Stack Overflow");
+    }
+}
+
+void abind(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 2) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    if (sockfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in server_addr;
+    int64_t port = vm->stack[vm->stack_size - 2];
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
+
+    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+void alisten(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 2) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+    int64_t sockfd = vm->stack[--vm->stack_size];
+    int64_t backlog = vm->stack[--vm->stack_size];
+
+    int64_t result = listen(sockfd, backlog);
+}
+
+void aaccept(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 1) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+
+    int64_t result = accept(sockfd, NULL, NULL);
+    if (push(vm, result) != RTS_OK) {
+        error_occurred("aaccept", "Stack Overflow");
+    }
+}
+
+void aconnect(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 2) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    int64_t port = vm->stack[vm->stack_size - 2];
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connect failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+void asend(OrtaVM *vm) {
+    no_win_support();
+
+    if (vm->stack_size < 2) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+
+    char *data = (char *)vm->stack[vm->stack_size - 2];
+
+    if (data == NULL) {
+        fprintf(stderr, "Invalid string data\n");
+        exit(1);
+    }
+
+    if (sockfd < 0) {
+        fprintf(stderr, "Invalid socket descriptor\n");
+        exit(1);
+    }
+
+    ssize_t result = send(sockfd, data, strlen(data), 0);
+    if (result < 0) {
+        perror("Send failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    vm->stack_size -= 2;
+}
+
+
+void arecv(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 1) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    char buffer[O_DEFAULT_BUFFER_CAPACITY];
+    ssize_t result = recv(sockfd, buffer, sizeof(buffer), 0);
+    if (result < 0) {
+        perror("Receive failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    buffer[result] = '\0';
+    push_str(vm, buffer);
+}
+
+void aclose(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 1) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    if (close(sockfd) < 0) {
+        perror("Close failed");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void aset_opt(OrtaVM *vm) {
+    no_win_support();
+    if (vm->stack_size < 3) {
+        fprintf(stderr, "Stack underflow\n");
+        exit(1);
+    }
+
+    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    int64_t option_name = vm->stack[vm->stack_size - 2];
+    int64_t option_value = vm->stack[vm->stack_size - 3];
+
+    if (setsockopt(sockfd, SOL_SOCKET, option_name, &option_value, sizeof(option_value)) < 0) {
+        perror("Set socket option failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void init_socket_bfuncs(OrtaVM *vm) {
+    BFunc sockett = asocket;
+    BFunc bindd = abind;
+    BFunc listenn = alisten;
+    BFunc acceptt = aaccept;
+    BFunc connectt = aconnect;
+    BFunc sendt = asend;
+    BFunc recvt = arecv;
+    BFunc closet = aclose;
+    BFunc setoptt = aset_opt;
+
+    push_bfunc(vm, sockett);
+    push_bfunc(vm, bindd);
+    push_bfunc(vm, listenn);
+    push_bfunc(vm, acceptt);
+    push_bfunc(vm, connectt);
+    push_bfunc(vm, sendt);
+    push_bfunc(vm, recvt);
+    push_bfunc(vm, closet);
+    push_bfunc(vm, setoptt);
+}
+
+#endif
+void init_bfuncs(OrtaVM *vm) {
+    #ifndef _WIN32
+    init_socket_bfuncs(vm);
+    #endif
+}
+
 char *extract_content(const char *line) {
     const char *start = strchr(line, '"');
     const char *end = strrchr(line, '"');
@@ -203,7 +426,7 @@ char *extract_content(const char *line) {
         return "No text provided";
     }
     size_t length = end - start - 1;
-    static char content[1024];
+    static char content[O_DEFAULT_BUFFER_CAPACITY];
     if (length >= sizeof(content)) {
         return "Sorry Content is to long!";
     }
@@ -337,7 +560,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size == 0) {
                     error_occurred("DUP", "Stack Underflow");
                 }
-                if (vm->stack_size >= STACK_CAPACITY) {
+                if (vm->stack_size >= O_STACK_CAPACITY) {
                     error_occurred("DUP", "Stack Overflow");
                 }
                 vm->stack[vm->stack_size] = vm->stack[vm->stack_size - 1];
@@ -386,7 +609,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                         error_occurred("FILE_READ", "File allocation failed");
                     }
 
-                    char buffer[1024] = {0};
+                    char buffer[O_DEFAULT_BUFFER_CAPACITY] = {0};
                     fread(buffer, sizeof(char), 1023, file2);
                     buffer[strlen(buffer)] = '\0';
 
@@ -399,7 +622,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 {
                     char *buffer = (char *)vm->stack[vm->stack_size - 1];
                     if (buffer == NULL) {
-                        error_occurred("ADD", "Cast failed");
+                        error_occurred("CAST_AND_PRINT", "Cast failed");
                     }
 
                     printf("%s\n", buffer);
@@ -439,7 +662,15 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
             case I_COLOR:
                 {
                     // DONE: Add more colors
-                    char color[1024] = {0};
+                    #ifdef _WIN32
+                    DWORD dwMode = 0;
+                    HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+                    GetConsoleMode(hStdout, &dwMode);
+                    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                    SetConsoleMode(hStdout, dwMode);
+                    #endif
+
+                    char color[O_DEFAULT_BUFFER_CAPACITY] = {0};
                     if (strcmp(token.str_value, "red") == 0) {
                         strcpy(color, "\033[31m");
                     } else if (strcmp(token.str_value, "green") == 0) {
@@ -550,7 +781,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
                 break;
             case I_INPUT_STR:
-                char buffer[1024] = {0};
+                char buffer[O_DEFAULT_BUFFER_CAPACITY] = {0};
                 scanf("%1023s", buffer);
                 if (push_str(vm, buffer) != RTS_OK) {
                     error_occurred("INPUT_STR", "Stack Overflow");
@@ -635,6 +866,37 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                } else {
                    error_occurred("CAST", "Invalid Type");
                }
+            case I_SEND:
+                no_win_support();
+
+                if (vm->stack_size < 1) {
+                    fprintf(stderr, "Stack underflow\n");
+                    exit(1);
+                }
+
+                int64_t sockfd = vm->stack[vm->stack_size - 1];
+
+                char *data = token.str_value;
+
+                if (data == NULL) {
+                    fprintf(stderr, "Invalid string data\n");
+                    exit(1);
+                }
+
+                if (sockfd < 0) {
+                    fprintf(stderr, "Invalid socket descriptor\n");
+                    exit(1);
+                }
+
+                ssize_t result6 = send(sockfd, data, strlen(data), 0);
+                if (result < 0) {
+                    perror("Send failed");
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                }
+
+                vm->stack_size -= 1;
+                break;
             default:
                 error_occurred("Unknown Instruction", "");
         }
@@ -685,29 +947,20 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, char *filename) {
     return RTS_OK;
 }
 
-
-void OrtaVM_dump(OrtaVM *vm) {
-    printf("Stack (top to bottom):\n");
-    for (size_t i = vm->stack_size; i > 0; i--) {
-        if (vm->stack[i - 1] == 0) continue;
-        printf("%ld\n", vm->stack[i - 1]);
-    }
-}
-
-char variables[1024][2][1024] = {0};
+char variables[O_DEFAULT_BUFFER_CAPACITY][2][O_DEFAULT_BUFFER_CAPACITY] = {0};
 size_t variable_count = 0;
 
 void push_variable(const char *name, const char *value) {
-    if (variable_count >= 1024) {
+    if (variable_count >= O_DEFAULT_BUFFER_CAPACITY) {
         printf("Error: Variable storage full.\n");
         return;
     }
 
-    strncpy(variables[variable_count][0], name, 1024 - 1);
-    variables[variable_count][0][1024 - 1] = '\0';
+    strncpy(variables[variable_count][0], name, O_DEFAULT_BUFFER_CAPACITY - 1);
+    variables[variable_count][0][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
 
-    strncpy(variables[variable_count][1], value, 1024 - 1);
-    variables[variable_count][1][1024 - 1] = '\0';
+    strncpy(variables[variable_count][1], value, O_DEFAULT_BUFFER_CAPACITY - 1);
+    variables[variable_count][1][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
 
     variable_count++;
 }
@@ -737,9 +990,9 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         return RTS_ERROR;
     }
 
-    char line[256];
+    char line[O_DEFAULT_SIZE];
     size_t program_size = 0;
-    Token tokens[1024];
+    Token tokens[O_DEFAULT_BUFFER_CAPACITY];
     int line_count = 0;
     init_variables();
     while (fgets(line, sizeof(line), file)) {
@@ -919,7 +1172,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_JMP_FS;
         } else if (strcmp(instruction, "VAR") == 0) {
             token.inst = I_PUSH_STR;
-            char variable[1024];
+            char variable[O_DEFAULT_BUFFER_CAPACITY];
             strcpy(variable, extract_content(line));
             variable[strlen(variable) + 1] = '\0';
             strcpy(token.str_value, get_variable(variable));
@@ -935,6 +1188,10 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_CAST;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
+        } else if (strcmp(instruction, "SEND") == 0) {
+            token.inst = I_SEND;
+            strcpy(token.str_value, extract_content(line));
+            token.str_value[strlen(token.str_value) + 1] = '\0';
         }
 
         if (token.inst == -1) {
@@ -943,7 +1200,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             return RTS_ERROR;
         }
 
-        if (program_size >= 1024) {
+        if (program_size >= O_DEFAULT_BUFFER_CAPACITY) {
             fprintf(stderr, "ERROR: Program too large.\n");
             fclose(file);
             return RTS_ERROR;
@@ -987,16 +1244,41 @@ void expand_tilde(const char *path, char *expanded_path, size_t max_length) {
 }
 
 // DONE: Make it os independent
-static char include_paths[10][256] = {".", "~/.orta"};
+static char include_paths[10][O_DEFAULT_SIZE] = {".", "~/.orta"};
 static size_t include_paths_count = 2;
+static char macros[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
+static size_t macros_count = 0;
 
-RTStatus OrtaVM_preprocess_file(char *filename) {
-    char preprocessed_filename[256];
-    static char preprocessors[256][2][256];
+static int is_preprocessor_defined(char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE], size_t preprocessors_count,const char *name) {
+    for (size_t i = 0; i < preprocessors_count; i++) {
+        if (strcmp(preprocessors[i][0], name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256]) {
+    char preprocessed_filename[O_DEFAULT_SIZE];
+    static char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
     static size_t preprocessors_count = 0;
 
-    static char macros[256][2][256];
-    static size_t macros_count = 0;
+    for (int i = 0; i < argc; i++) {
+        char arg_preproc[O_DEFAULT_SIZE];
+        snprintf(arg_preproc, sizeof(arg_preproc), "$%d", i);
+        strncpy(preprocessors[preprocessors_count][0], arg_preproc, O_DEFAULT_SIZE);
+        strncpy(preprocessors[preprocessors_count][1], argv[i], O_DEFAULT_SIZE);
+        preprocessors_count++;
+    }
+    #ifdef _WIN32
+        strncpy(preprocessors[preprocessors_count][0], "OS_WINDOWS", O_DEFAULT_SIZE);
+        strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
+        preprocessors_count++;
+    #else
+        strncpy(preprocessors[preprocessors_count][0], "OS_POSIX", O_DEFAULT_SIZE);
+        strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
+        preprocessors_count++;
+    #endif
 
     snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%s.ppd", filename);
 
@@ -1013,30 +1295,70 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
         return RTS_ERROR;
     }
 
-    char line[1024];
+    char line[O_DEFAULT_BUFFER_CAPACITY];
+    int skip_section = 0;
+    int in_else = 0;
     while (fgets(line, sizeof(line), input_file)) {
-        if (line[0] == '\n' || line[0] == '#') {
-            if (strncmp(line, "#define", 7) == 0) {
-                char name[256], value[256];
+        if (line[0] == '\n' || line[0] == PREPROC_SYMBOL) {
+            if (strncmp(line + 1, "define", 6) == 0) {
+                char name[O_DEFAULT_SIZE], value[O_DEFAULT_SIZE];
                 if (sscanf(line + 7, "%s %s", name, value) == 2) {
-                    strncpy(preprocessors[preprocessors_count][0], name, 256);
-                    strncpy(preprocessors[preprocessors_count][1], value, 256);
+                    strncpy(preprocessors[preprocessors_count][0], name, O_DEFAULT_SIZE);
+                    strncpy(preprocessors[preprocessors_count][1], value, O_DEFAULT_SIZE);
+                    preprocessors_count++;
+                } else if (sscanf(line + 7, "%s", name) == 1) {
+                    strncpy(preprocessors[preprocessors_count][0], name, O_DEFAULT_SIZE);
+                    preprocessors[preprocessors_count][1][0] = '1';
+                    preprocessors[preprocessors_count][1][1] = '\0';
                     preprocessors_count++;
                 } else {
                     fprintf(stderr, "WARNING: Malformed #define in line: %s\n", line);
                 }
             }
-            if (strncmp(line, "#var", 4) == 0) {
-                char name[256], value[256];
+
+            if (strncmp(line + 1, "ifdef", 5) == 0) {
+                char name[O_DEFAULT_SIZE];
+                if (sscanf(line + 6, "%s", name) == 1) {
+                    skip_section = !is_preprocessor_defined(preprocessors, preprocessors_count, name);
+                    in_else = 0;
+                } else {
+                    fprintf(stderr, "WARNING: Malformed #ifdef in line: %s\n", line);
+                }
+            }
+
+            if (strncmp(line + 1, "ifndef", 6) == 0) {
+                char name[O_DEFAULT_SIZE];
+                if (sscanf(line + 7, "%s", name) == 1) {
+                    skip_section = is_preprocessor_defined(preprocessors, preprocessors_count, name);
+                    in_else = 0;
+                } else {
+                    fprintf(stderr, "WARNING: Malformed #ifndef in line: %s\n", line);
+                }
+            }
+            if (strncmp(line + 1, "else", 4) == 0) {
+                if (skip_section == 0) {
+                    skip_section = 1;
+                } else if (in_else == 0){
+                    in_else = 1;
+                    skip_section = 0;
+                }
+            }
+            if (strncmp(line + 1, "endif", 5) == 0) {
+                skip_section = 0;
+                continue;
+            }
+
+            if (strncmp(line + 1, "var", 3) == 0) {
+                char name[O_DEFAULT_SIZE], value[O_DEFAULT_SIZE];
                 if (sscanf(line + 4, "%s %s", name, value) == 2) {
                     push_variable(name, value);
                 } else {
                     fprintf(stderr, "WARNING: Malformed #var in line: %s\n", line);
                 }
             }
-            if (strncmp(line, "#macro", 6) == 0) {
-                char name[256];
-                char value[1024] = "";
+            if (strncmp(line + 1, "macro", 5) == 0) {
+                char name[O_DEFAULT_SIZE];
+                char value[O_DEFAULT_BUFFER_CAPACITY] = "";
                 if (sscanf(line + 6, "%s {", name) == 1) {
                     while (fgets(line, sizeof(line), input_file)) {
                         char *end_brace = strchr(line, '}');
@@ -1051,7 +1373,7 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
                     for (size_t i = 0; i < preprocessors_count; i++) {
                         char *pos;
                         while ((pos = strstr(value, preprocessors[i][0])) != NULL) {
-                            char temp[1024];
+                            char temp[O_DEFAULT_BUFFER_CAPACITY];
                             size_t before = pos - value;
                             snprintf(temp, before + 1, "%s", value);
                             snprintf(temp + before, sizeof(temp) - before, "%s%s",
@@ -1060,31 +1382,35 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
                         }
                     }
 
-                    strncpy(macros[macros_count][0], name, 256);
-                    strncpy(macros[macros_count][1], value, 256);
+                    strncpy(macros[macros_count][0], name, O_DEFAULT_SIZE);
+                    strncpy(macros[macros_count][1], value, O_DEFAULT_SIZE);
                     macros_count++;
                 } else {
                     fprintf(stderr, "WARNING: Malformed #macro in line: %s\n", line);
                 }
                 continue;
             }
-            if (strncmp(line, "#include", 8) == 0) {
-                char include_file[256];
+            if (strncmp(line + 1, "include", 7) == 0) {
+                char include_file[O_DEFAULT_SIZE];
                 if (sscanf(line + 8, "%s", include_file) == 1) {
                     size_t len = strlen(include_file);
                     if (len > 1 && include_file[0] == '<' && include_file[len - 1] == '>') {
                         include_file[len - 1] = '\0';
                         memmove(include_file, include_file + 1, len - 1);
                     }
+                    if (!ends_with(include_file, ".horta") && strcmp(filename, "build.orta") != 0) {
+                        fprintf(stderr, "ERROR: .orta files are not supported for including (Only .horta)\n");
+                        exit(1);
+                    }
                     if (strcmp(include_file, filename) == 0) {
                         fprintf(stderr, "WARNING: Circular include detected: %s\n", include_file);
                         return RTS_ERROR;
                     }
-                    char include_path[256];
+                    char include_path[O_DEFAULT_SIZE];
                     int found = 0;
                     for (size_t i = 0; i < include_paths_count; i++) {
 
-                        char expanded_path[256];
+                        char expanded_path[O_DEFAULT_SIZE];
                         expand_tilde(include_paths[i], expanded_path, sizeof(expanded_path));
 
                         snprintf(include_path, sizeof(include_path), "%s/%s", expanded_path, include_file);
@@ -1104,14 +1430,14 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
                         return RTS_ERROR;
                     }
 
-                    if (OrtaVM_preprocess_file(include_path) != RTS_OK) {
+                    if (OrtaVM_preprocess_file(include_path, 0, NULL) != RTS_OK) {
                         fprintf(stderr, "ERROR: Failed to preprocess include file %s\n", include_path);
                         fclose(input_file);
                         fclose(output_file);
                         return RTS_ERROR;
                     }
 
-                    char include_preprocessed[256];
+                    char include_preprocessed[O_DEFAULT_SIZE];
                     snprintf(include_preprocessed, sizeof(include_preprocessed), "%s.ppd", include_path);
                     FILE *include_processed_file = fopen(include_preprocessed, "r");
                     if (include_processed_file == NULL) {
@@ -1121,7 +1447,7 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
                         return RTS_ERROR;
                     }
 
-                    char include_line[1024];
+                    char include_line[O_DEFAULT_BUFFER_CAPACITY];
                     while (fgets(include_line, sizeof(include_line), include_processed_file)) {
                         fputs(include_line, output_file);
                     }
@@ -1134,11 +1460,14 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
             }
             continue;
         }
+        if (skip_section) {
+            continue;
+        }
 
         for (size_t i = 0; i < preprocessors_count; i++) {
             char *pos;
             while ((pos = strstr(line, preprocessors[i][0])) != NULL) {
-                char temp[1024];
+                char temp[O_DEFAULT_BUFFER_CAPACITY];
                 size_t before = pos - line;
                 snprintf(temp, before + 1, "%s", line);
                 snprintf(temp + before, sizeof(temp) - before, "%s%s", preprocessors[i][1], pos + strlen(preprocessors[i][0]));
@@ -1149,7 +1478,7 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
         for (size_t i = 0; i < macros_count; i++) {
             char *pos;
             while ((pos = strstr(line, macros[i][0])) != NULL) {
-                char temp[1024];
+                char temp[O_DEFAULT_BUFFER_CAPACITY];
                 size_t before = pos - line;
                 snprintf(temp, before + 1, "%s", line);
                 snprintf(temp + before, sizeof(temp) - before, "%s%s", macros[i][1], pos + strlen(macros[i][0]));
@@ -1157,7 +1486,7 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
 
                 for (size_t j = 0; j < preprocessors_count; j++) {
                     while ((pos = strstr(line, preprocessors[j][0])) != NULL) {
-                        char nested_temp[1024];
+                        char nested_temp[O_DEFAULT_BUFFER_CAPACITY];
                         size_t nested_before = pos - line;
                         snprintf(nested_temp, nested_before + 1, "%s", line);
                         snprintf(nested_temp + nested_before, sizeof(nested_temp) - nested_before, "%s%s",
@@ -1179,7 +1508,7 @@ RTStatus OrtaVM_preprocess_file(char *filename) {
 
 void OrtaVM_add_include_path(const char *path) {
     if (include_paths_count < 10) {
-        strncpy(include_paths[include_paths_count], path, 256);
+        strncpy(include_paths[include_paths_count], path, O_DEFAULT_SIZE);
         include_paths_count++;
     } else {
         fprintf(stderr, "ERROR: Maximum number of include paths reached\n");

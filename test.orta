@@ -1,3 +1,5 @@
+#include <lib.horta>
+#include <inet.horta>
 
 # FILE_OPEN "test.txt"
 # FILE_READ
@@ -6,10 +8,6 @@
 # PRINT
 # INPUT_STR
 # CAST_AND_PRINT
-# BFUNC 0
-#include <std.orta>
 
-PRINT_STR "Hillo, World!"
-
-exit_success()
-
+# by using a build script you cannot use exit functions then it dont will work
+# exit_success()

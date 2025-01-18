@@ -35,7 +35,9 @@ For users who prefer to compile the binaries themselves:
    ```
 3. **Build the binaries** (ensure you have a C compiler like `gcc` installed):
    ```bash
-   make
+   ./build.sh
+   or ./build.bat
+   or samba
    ```
 
 ---

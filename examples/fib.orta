@@ -1,3 +1,4 @@
+#macro fib_() {
 JMP 1
 NOP
 NOP
@@ -9,4 +10,7 @@ DUP
 DUP
 ADD
 PRINT
-JMP 6
+JMP_IFN 6 0
+}
+
+fib_()

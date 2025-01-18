@@ -1,0 +1,6 @@
+#define $B_MODE 0
+
+#include <test.orta>
+
+PRINT_STR "Hello"
+#define $B_EXIT_OK 2

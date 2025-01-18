@@ -1,24 +1,55 @@
 # Release 1.0
 
 ## What is OrtaVM
-> ### OrtaVM is a package of programs it contains:
->> ### Orta - Its the Compiler and preprocessor
->> ### Disovm - Disassembly the compiled ovm file and get the source code !Use only for analysis
+OrtaVM is a package of programs designed to facilitate virtual machine operations. The package includes:
 
-## Why you should use OrtaVM
-> ### Its CrossPlatform (works on Windows, Linux, MacOS)
-> ### Due its written in C its very fast
-> ### It is "Compiled" (BinaryCode)
+- **Orta**: Serves as the runner, compiler, and preprocessor for OrtaVM programs.
+- **Disovm**: A disassembler that retrieves source code from compiled `.ovm` files. *Note: Use Disovm for analysis purposes only.*
 
-## How to get the Binaries
-### Method 1:
-> ### Download precompiled binaries
-### Method 2:
-> ### Compile them 
+---
 
-[//]: # (Please make here crossplatform compile)
+## Why You Should Use OrtaVM
+OrtaVM offers several advantages:
+
+- **Cross-Platform Compatibility**: Operates seamlessly on Windows, Linux, and macOS.
+- **High Performance**: Developed in C, ensuring optimized speed.
+- **Compiled Output**: Generates binary code for efficient execution.
+
+---
+
+## How to Obtain the Binaries
+
+### Method 1: Download Precompiled Binaries
+Access the precompiled binaries directly from the [Releases](https://github.com/zhrexx/OrtaVM/releases) section of the GitHub repository.
+
+### Method 2: Compile from Source
+For users who prefer to compile the binaries themselves:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/zhrexx/OrtaVM.git
+   ```
+2. **Navigate to the project directory**:
+   ```bash
+   cd OrtaVM
+   ```
+3. **Build the binaries** (ensure you have a C compiler like `gcc or clang` installed on windows `cl or mingw`):
+   ```bash
+      On windows:
+        ./build.cmd 
+      On Posix:
+        ./build.sh
+      Using Samba (Posix only):
+        samba
+   ```
+
+---
 
 ## Links
-- ### [NovaLicense](https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/NovaLicense.md)
+- **License**: [NovaLicense](https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/NovaLicense.md)
+- **GitHub Repository**: [OrtaVM on GitHub](https://github.com/zhrexx/OrtaVM)
 
-[//]: # (Make it more stylish pls)
+---
+
+OrtaVM is your gateway to efficient and streamlined virtual machine programming. Start exploring today!
+

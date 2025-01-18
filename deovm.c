@@ -136,6 +136,8 @@ int main(int argc, char **argv) {
                 fprintf(f, "BFUNC %d\n", token.int_value);
            case I_CAST:
                 fprintf(f, "CAST %s\n", token.str_value);
+           case I_SEND:
+                fprintf(f, "SEND \"%s\"\n", token.str_value);
         }
 
     }

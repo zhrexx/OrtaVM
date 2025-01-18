@@ -12,3 +12,11 @@
     EXIT EXIT_FAILURE
 }
 
+#ifdef OS_WINDOWS
+#define $OS "windows"
+#else
+#define $OS "linux"
+#endif
+
+
+
