@@ -916,9 +916,11 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                } else {
                    error_occurred("CAST", "Invalid Type");
                }
-            case I_SEND:
-                no_win_support();
 
+            case I_SEND:
+                #ifdef _WIN32
+                no_win_support();
+                #else
                 if (vm->stack_size < 1) {
                     fprintf(stderr, "Stack underflow\n");
                     exit(1);
@@ -947,6 +949,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
                 vm->stack_size -= 1;
                 break;
+                #endif
             default:
                 error_occurred("Unknown Instruction", "");
         }
