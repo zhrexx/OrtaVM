@@ -9,5 +9,8 @@
 # INPUT_STR
 # CAST_AND_PRINT
 
-# by using a build script you cannot use exit functions then it dont will work
-# exit_success()
+
+PRINT_STR "Hello, World!\n"
+
+# by using a build script you cannot use exit functions, otherwise the build script dont will work
+# sys::success()

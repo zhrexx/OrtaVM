@@ -7,6 +7,7 @@ int main(int argc, char **argv) {
     int orta_argc = 0;
     int is_orta_args = 0;
     int dump = 0;
+    int target = 0;
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm]\n", argv[0]);
         fprintf(stderr, "  --build-only      Build only without execution.\n");
@@ -14,12 +15,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "  -l <limit>        Set limit value. (Default: 1000)\n");
         fprintf(stderr, "  --dump            Dumps the stack\n");
         fprintf(stderr, "  -i <path>         Add a include path (U can use ~ for home)\n");
+        fprintf(stderr, "  --target <target> Set an compilation target (1=Windows|2=Posix)\n");
         fprintf(stderr, "ERROR: No input file provided.\n");
         return 1;
     }
 
     for (int i = 3; i < argc; i++) {
-         if (argv[i][0] == '-' && argv[i][1] == '-') {
+         if (strcmp(argv[i], "--") == 0) {
              is_orta_args = 1;
              continue;
          }
@@ -48,8 +50,18 @@ int main(int argc, char **argv) {
                 return 1;
             }
             OrtaVM_add_include_path(path);
-         }
-         else {
+         } else if (strcmp(argv[i], "--target") == 0) {
+            if (i + 1 < argc) {
+                if (strcmp(argv[++i], "windows") == 0) {
+                    target = 1;
+                } else if (strcmp(argv[i], "posix") == 0) {
+                    target = 2;
+                }
+            } else {
+                fprintf(stderr, "ERROR: Missing target for --target option.\n");
+                return 1;
+            }
+         } else {
              fprintf(stderr, "ERROR: Unknown option '%s'.\n", argv[i]);
              return 1;
          }
@@ -65,7 +77,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: Missing output file for .orta input.\n");
             return 1;
         }
-        if (OrtaVM_preprocess_file(argv[1], orta_argc, orta_args) != RTS_OK) {
+        if (OrtaVM_preprocess_file(argv[1], orta_argc, orta_args, target) != RTS_OK) {
             fprintf(stderr, "ERROR: Failed to preprocess file: %s", argv[1]);
             return 1;
         }

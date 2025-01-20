@@ -3,12 +3,12 @@
 #define EXIT_FAILURE 1
 
 # Macros
-#macro exit_success() {
+#macro sys::success() {
     EXIT EXIT_SUCCESS
 }
 
-# NOTE: () does nothing, its here because its stylish
-#macro exit_failure() {
+# NOTE: () does nothing, its here because its stylish and the prefix also :)
+#macro sys::failure() {
     EXIT EXIT_FAILURE
 }
 

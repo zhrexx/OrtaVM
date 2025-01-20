@@ -1,6 +1,15 @@
 // GLOBAL TODOS:
-// TODO: Add a syscall inst there for i need a abstraction layer: int syscall(int syscall, int arg1, int arg2);
+// TODO: Add some time functions
 
+// SOMETIME TODO:
+// TODO: Make the parsing better (The argument parsing is bad and other things)
+// TODO: Add a syscall inst, there for i need a abstraction layer: int syscall(int syscall, int arg1, int arg2);
+
+// DONE:
+// TODO: Add magic code to the binaries(.ovm)                             | OVM1 (OVM_MAGIC_CODE)
+// TODO: Escape strings (PUSH_STR, PRINT_STR etc)                         | Currently only \n
+// TODO: Seperate buffers for int64_t and char *                          | I decided to make a Word union and use it as seperate buffers (Word)
+// TODO: Make the instructions look prettier (like "push" or other style) | I decided to allow both Uppercase and lowercase
 
 #ifndef ORTA_H
 #define ORTA_H
@@ -22,8 +31,10 @@
 
 #define O_STACK_CAPACITY 200000
 #define PREPROC_SYMBOL '#'
+#define O_COMMENT_SYMBOL '#'
 #define O_DEFAULT_BUFFER_CAPACITY 1024
 #define O_DEFAULT_SIZE 256
+#define OVM_MAGIC_NUMBER "OVM1"
 
 typedef enum {
     RTS_OK,
@@ -128,26 +139,31 @@ void error_occurred(char *token, char *reason) {
         printf("\033[31mError: %s (Reason: %s)\033[0m\n", token, reason);
     }
 }
+typedef union {
+    int64_t as_i64;
+    char *as_str;
+    void *as_ptr;
+} Word;
 
 typedef struct {
-    int64_t dest;
-    int64_t cond;
+    Word dest;
+    Word cond;
 } JumpIfArgs;
 
 typedef struct {
-    int64_t min;
-    int64_t max;
+    Word min;
+    Word max;
 } RandomInt;
 
 typedef struct {
-    int64_t exit_code;
-    int64_t cond;
+    Word exit_code;
+    Word cond;
 } ExitIf;
 
 typedef struct {
     Instruction inst;
     union {
-        int64_t int_value;
+        Word int_value;
         char str_value[O_DEFAULT_BUFFER_CAPACITY];
         JumpIfArgs jump_if_args;
         RandomInt random_int;
@@ -164,11 +180,11 @@ typedef struct OrtaVM OrtaVM;
 typedef void (*BFunc)(OrtaVM*);
 
 struct OrtaVM {
-    int64_t stack[O_STACK_CAPACITY];
+    Word stack[O_STACK_CAPACITY];
     size_t stack_size;
 
     // TODO: Use it somewhere
-    int64_t orta_stack[8]; // stack of runtime values (only accessible by OrtaVM) (like registers)
+    Word orta_stack[8]; // stack of runtime values (only accessible by OrtaVM) (like registers)
     size_t orta_stack_size;
 
     BFunc bfunctions[O_DEFAULT_SIZE];
@@ -187,12 +203,12 @@ void push_bfunc(OrtaVM *vm, BFunc func) {
 void OrtaVM_dump(OrtaVM *vm) {
     printf("Stack (top to bottom):\n");
     for (size_t i = vm->stack_size; i > 0; i--) {
-        if (vm->stack[i - 1] == 0) continue;
+        if (vm->stack[i - 1].as_i64 == 0) continue;
         printf("%ld\n", vm->stack[i - 1]);
     }
 }
 
-RTStatus push(OrtaVM *vm, int64_t value) {
+RTStatus push(OrtaVM *vm, Word value) {
     if (vm->stack_size >= O_STACK_CAPACITY) {
         return RTS_STACK_OVERFLOW;
     }
@@ -208,7 +224,7 @@ RTStatus push_str(OrtaVM *vm, const char *str) {
     if (!dynamic_str) {
         return RTS_ERROR;
     }
-    vm->stack[vm->stack_size++] = (int64_t)dynamic_str;
+    vm->stack[vm->stack_size++] = (Word)dynamic_str;
     return RTS_OK;
 }
 
@@ -223,7 +239,8 @@ void no_win_support() {
 // TODO: Make it os independent
 void asocket(OrtaVM *vm) {
     no_win_support();
-    int64_t result = socket(AF_INET, SOCK_STREAM, 0);
+    Word result;
+    result.as_i64= socket(AF_INET, SOCK_STREAM, 0);
     if (push(vm, result) != RTS_OK) {
         error_occurred("asocket", "Stack Overflow");
     }
@@ -235,22 +252,22 @@ void abind(OrtaVM *vm) {
         fprintf(stderr, "Stack underflow\n");
         exit(1);
     }
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
-    if (sockfd == -1) {
+    Word sockfd = vm->stack[vm->stack_size - 1];
+    if (sockfd.as_i64 == -1) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
 
     struct sockaddr_in server_addr;
-    int64_t port = vm->stack[vm->stack_size - 2];
+    Word port = vm->stack[vm->stack_size - 2];
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(port);
+    server_addr.sin_port = htons(port.as_i64);
 
-    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    if (bind(sockfd.as_i64, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Bind failed");
-        close(sockfd);
+        close(sockfd.as_i64);
         exit(EXIT_FAILURE);
     }
 }
@@ -262,10 +279,11 @@ void alisten(OrtaVM *vm) {
         fprintf(stderr, "Stack underflow\n");
         exit(1);
     }
-    int64_t sockfd = vm->stack[--vm->stack_size];
-    int64_t backlog = vm->stack[--vm->stack_size];
+    Word sockfd = vm->stack[--vm->stack_size];
+    Word backlog = vm->stack[--vm->stack_size];
 
-    int64_t result = listen(sockfd, backlog);
+    Word result;
+    result.as_i64 = listen(sockfd.as_i64, backlog.as_i64);
 }
 
 void aaccept(OrtaVM *vm) {
@@ -274,9 +292,10 @@ void aaccept(OrtaVM *vm) {
         fprintf(stderr, "Stack underflow\n");
         exit(1);
     }
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    Word sockfd = vm->stack[vm->stack_size - 1];
 
-    int64_t result = accept(sockfd, NULL, NULL);
+    Word result;
+    result.as_i64 = accept(sockfd.as_i64, NULL, NULL);
     if (push(vm, result) != RTS_OK) {
         error_occurred("aaccept", "Stack Overflow");
     }
@@ -289,17 +308,17 @@ void aconnect(OrtaVM *vm) {
         exit(1);
     }
 
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
-    int64_t port = vm->stack[vm->stack_size - 2];
+    Word sockfd = vm->stack[vm->stack_size - 1];
+    Word port = vm->stack[vm->stack_size - 2];
 
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
+    server_addr.sin_port = htons(port.as_i64);
 
-    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    if (connect(sockfd.as_i64, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connect failed");
-        close(sockfd);
+        close(sockfd.as_i64);
         exit(EXIT_FAILURE);
     }
 }
@@ -313,24 +332,24 @@ void asend(OrtaVM *vm) {
         exit(1);
     }
 
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    Word sockfd = vm->stack[vm->stack_size - 1];
 
-    char *data = (char *)vm->stack[vm->stack_size - 2];
+    char *data = vm->stack[vm->stack_size - 2].as_str;
 
     if (data == NULL) {
         fprintf(stderr, "Invalid string data\n");
         exit(1);
     }
 
-    if (sockfd < 0) {
+    if (sockfd.as_i64 < 0) {
         fprintf(stderr, "Invalid socket descriptor\n");
         exit(1);
     }
 
-    ssize_t result = send(sockfd, data, strlen(data), 0);
+    ssize_t result = send(sockfd.as_i64, data, strlen(data), 0);
     if (result < 0) {
         perror("Send failed");
-        close(sockfd);
+        close(sockfd.as_i64);
         exit(EXIT_FAILURE);
     }
 
@@ -345,12 +364,12 @@ void arecv(OrtaVM *vm) {
         exit(1);
     }
 
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
+    Word sockfd = vm->stack[vm->stack_size - 1];
     char buffer[O_DEFAULT_BUFFER_CAPACITY];
-    ssize_t result = recv(sockfd, buffer, sizeof(buffer), 0);
+    ssize_t result = recv(sockfd.as_i64, buffer, sizeof(buffer), 0);
     if (result < 0) {
         perror("Receive failed");
-        close(sockfd);
+        close(sockfd.as_i64);
         exit(EXIT_FAILURE);
     }
 
@@ -365,8 +384,8 @@ void aclose(OrtaVM *vm) {
         exit(1);
     }
 
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
-    if (close(sockfd) < 0) {
+    Word sockfd = vm->stack[vm->stack_size - 1];
+    if (close(sockfd.as_i64) < 0) {
         perror("Close failed");
         exit(EXIT_FAILURE);
     }
@@ -379,13 +398,13 @@ void aset_opt(OrtaVM *vm) {
         exit(1);
     }
 
-    int64_t sockfd = vm->stack[vm->stack_size - 1];
-    int64_t option_name = vm->stack[vm->stack_size - 2];
-    int64_t option_value = vm->stack[vm->stack_size - 3];
+    Word sockfd = vm->stack[vm->stack_size - 1];
+    Word option_name = vm->stack[vm->stack_size - 2];
+    Word option_value = vm->stack[vm->stack_size - 3];
 
-    if (setsockopt(sockfd, SOL_SOCKET, option_name, &option_value, sizeof(option_value)) < 0) {
+    if (setsockopt(sockfd.as_i64, SOL_SOCKET, option_name.as_i64, &option_value, sizeof(option_value)) < 0) {
         perror("Set socket option failed");
-        close(sockfd);
+        close(sockfd.as_i64);
         exit(EXIT_FAILURE);
     }
 }
@@ -440,27 +459,47 @@ RTStatus add(OrtaVM *vm) {
     if (vm->stack_size < 2) {
         return RTS_STACK_UNDERFLOW;
     }
-    int64_t a = vm->stack[--vm->stack_size];
-    int64_t b = vm->stack[--vm->stack_size];
-    return push(vm, a + b);
+    Word a = vm->stack[--vm->stack_size];
+    Word b = vm->stack[--vm->stack_size];
+    return push(vm, (Word)(a.as_i64 + b.as_i64));
 }
 
 RTStatus sub(OrtaVM *vm) {
     if (vm->stack_size < 2) {
         return RTS_STACK_UNDERFLOW;
     }
-    int64_t a = vm->stack[--vm->stack_size];
-    int64_t b = vm->stack[--vm->stack_size];
-    return push(vm, b - a);
+    Word a = vm->stack[--vm->stack_size];
+    Word b = vm->stack[--vm->stack_size];
+    return push(vm, (Word)(b.as_i64 - a.as_i64));
 }
 
 RTStatus print(OrtaVM *vm) {
     if (vm->stack_size == 0) {
         return RTS_STACK_UNDERFLOW;
     }
-    printf("%ld\n", vm->stack[vm->stack_size - 1]);
+    printf("%ld\n", vm->stack[vm->stack_size - 1].as_i64);
     return RTS_OK;
 }
+
+void process_and_print_string(const char *str) {
+    while (*str) {
+        if (*str == '\\' && *(str + 1) == 'n') {
+            putchar('\n');
+            str += 2;
+        } else if (*str == '\\' && *(str + 1) == 'c') {
+            printf("\033[%sm", str + 2);
+            while (*str && *str != '\\') {
+                str++;
+            }
+            if (*str == '\\') str--;
+        } else {
+            putchar(*str);
+            str++;
+        }
+    }
+    putchar('\n');
+}
+
 
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     init_bfuncs(vm);
@@ -495,9 +534,9 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("MUL", "Stack Underflow");
                 }
-                int64_t a = vm->stack[--vm->stack_size];
-                int64_t b = vm->stack[--vm->stack_size];
-                if (push(vm, a * b) != RTS_OK) {
+                Word a = vm->stack[--vm->stack_size];
+                Word b = vm->stack[--vm->stack_size];
+                if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
                     error_occurred("MUL", "Stack Overflow");
                 }
                 break;
@@ -505,18 +544,18 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("DIV", "Stack Underflow");
                 }
-                int64_t c = vm->stack[--vm->stack_size];
-                int64_t d = vm->stack[--vm->stack_size];
-                if (d == 0) {
+                Word c = vm->stack[--vm->stack_size];
+                Word d = vm->stack[--vm->stack_size];
+                if (d.as_i64 == 0) {
                     return RTS_ERROR;
                 }
-                if (push(vm, c / d) != RTS_OK) {
+                if (push(vm, (Word)(c.as_i64 / d.as_i64)) != RTS_OK) {
                     error_occurred("DIV", "Stack Overflow");
                 }
                 break;
             case I_PRINT_STR:
                 if (token.str_value[0] != '\0') {
-                    printf("%s\n", token.str_value);
+                    process_and_print_string(token.str_value);
                 }
 
                 break;
@@ -527,20 +566,20 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 vm->stack_size--;
                 break;
             case I_JMP:
-                 if (token.int_value < 0 || token.int_value > program.size) {
+                 if (token.int_value.as_i64 < 0 || token.int_value.as_i64 > program.size) {
                      error_occurred("JMP", "Stack Underflow");
                  }
-                 i = token.int_value;
+                 i = token.int_value.as_i64;
                  continue;
             case I_JMP_IFN: // JMP_IFB DEST COND | JMP_IFN 0 10 | JMP_IFN 0 (!= 10)
                  if (vm->stack_size == 0) {
                      error_occurred("JMP_IF", "Stack Underflow");
                  }
-                 if (vm->stack[vm->stack_size - 1] != token.jump_if_args.cond) {
-                     if (token.jump_if_args.dest < 0 || token.jump_if_args.dest > program.size) {
+                 if (vm->stack[vm->stack_size - 1].as_i64 != token.jump_if_args.cond.as_i64) {
+                     if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
                          error_occurred("JMP_IFN", "Stack Underflow");
                      }
-                     i = token.jump_if_args.dest;
+                     i = token.jump_if_args.dest.as_i64;
                      continue;
                  }
                  break;
@@ -548,11 +587,11 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                  if (vm->stack_size == 0) {
                      error_occurred("JMP_IF", "Stack Underflow");
                  }
-                 if (vm->stack[vm->stack_size - 1] == token.jump_if_args.cond) {
-                     if (token.jump_if_args.dest < 0 || token.jump_if_args.dest > program.size) {
+                 if (vm->stack[vm->stack_size - 1].as_i64 == token.jump_if_args.cond.as_i64) {
+                     if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
                          error_occurred("JMP_IF", "Stack Underflow");
                      }
-                     i = token.jump_if_args.dest;
+                     i = token.jump_if_args.dest.as_i64;
                      continue;
                  }
                  break;
@@ -563,15 +602,15 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size >= O_STACK_CAPACITY) {
                     error_occurred("DUP", "Stack Overflow");
                 }
-                vm->stack[vm->stack_size] = vm->stack[vm->stack_size - 1];
+                vm->stack[vm->stack_size].as_i64 = vm->stack[vm->stack_size - 1].as_i64;
                 vm->stack_size++;
                 break;
             case I_NOP:
                  break;
             case I_EXIT:
-                exit(token.int_value);
+                exit(token.int_value.as_i64);
             case I_INPUT:
-                int64_t input;
+                Word input;
                 scanf("%ld", &input);
                  if (push(vm, input) != RTS_OK) {
                      error_occurred("INPUT", "Stack Overflow");
@@ -582,7 +621,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (file == NULL) {
                     error_occurred("FILE_OPEN", "File allocation failed");
                 }
-                int64_t fd = (int64_t)file;
+                Word fd;
+                fd.as_i64 = (int64_t)file;
                 if (push(vm, fd) != RTS_OK) {
                     fclose(file);
                     error_occurred("FILE_OPEN", "Stack Overflow");
@@ -591,7 +631,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
             case I_FILE_WRITE:
                 {
-                    FILE *file1 = (FILE *)vm->stack[vm->stack_size - 1];
+                    FILE *file1 = (FILE *)vm->stack[vm->stack_size - 1].as_i64;
                     char *buffer = token.str_value;
 
                     if (file1 == NULL) {
@@ -604,7 +644,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
             case I_FILE_READ:
                 {
-                    FILE *file2 = (FILE *)vm->stack[vm->stack_size - 1];
+                    FILE *file2 = (FILE *)vm->stack[vm->stack_size - 1].as_i64;
                     if (file2 == NULL) {
                         error_occurred("FILE_READ", "File allocation failed");
                     }
@@ -613,14 +653,14 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     fread(buffer, sizeof(char), 1023, file2);
                     buffer[strlen(buffer)] = '\0';
 
-                    if (push(vm, (int64_t)buffer) != RTS_OK) {
+                    if (push(vm, (Word)buffer) != RTS_OK) {
                         error_occurred("FILE_READ", "Stack Overflow");
                     }
                     break;
                 }
             case I_CAST_AND_PRINT:
                 {
-                    char *buffer = (char *)vm->stack[vm->stack_size - 1];
+                    char *buffer = vm->stack[vm->stack_size - 1].as_str;
                     if (buffer == NULL) {
                         error_occurred("CAST_AND_PRINT", "Cast failed");
                     }
@@ -633,7 +673,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("SWAP", "Stack Underflow");
                 }
-                int64_t temp = vm->stack[vm->stack_size - 1];
+                Word temp = vm->stack[vm->stack_size - 1];
                 vm->stack[vm->stack_size - 1] = vm->stack[vm->stack_size - 2];
                 vm->stack[vm->stack_size - 2] = temp;
                 break;
@@ -641,9 +681,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("EQ", "Stack Underflow");
                 }
-                int64_t a1 = vm->stack[vm->stack_size - 1];
-                int64_t b1 = vm->stack[vm->stack_size - 2];
-                int64_t result = (a1 == b1) ? 1 : 0;
+                Word a1 = vm->stack[vm->stack_size - 1];
+                Word b1 = vm->stack[vm->stack_size - 2];
+                Word result;
+                result.as_i64 = (a1.as_i64 == b1.as_i64) ? 1 : 0;
                 if (push(vm, result) != RTS_OK) {
                     error_occurred("EQ", "Stack Overflow");
                 }
@@ -651,9 +692,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
             case I_RANDOM_INT:
                 {
                     srand(time(NULL));
-                    int64_t min = token.random_int.min;
-                    int64_t max = token.random_int.max;
-                    int64_t random = min + rand() % (max - min + 1);
+                    int64_t min = token.random_int.min.as_i64;
+                    int64_t max = token.random_int.max.as_i64;
+                    Word random;
+                    random.as_i64 = min + rand() % (max - min + 1);
                     if (push(vm, random) != RTS_OK) {
                         error_occurred("RANDOM_INT", "Stack Overflow");
                     }
@@ -722,8 +764,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_SLEEP:
                 struct timespec req;
-                req.tv_sec = token.int_value / 1000;
-                req.tv_nsec = (token.int_value % 1000) * 1000000;
+                req.tv_sec = token.int_value.as_i64 / 1000;
+                req.tv_nsec = (token.int_value.as_i64 % 1000) * 1000000;
                 nanosleep(&req, NULL);
                 break;
 
@@ -734,9 +776,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("LT", "Stack Underflow");
                 }
-                int64_t a2 = vm->stack[vm->stack_size - 1];
-                int64_t b2 = vm->stack[vm->stack_size - 2];
-                int64_t result2 = (b2 < a2) ? 1 : 0;
+                Word a2 = vm->stack[vm->stack_size - 1];
+                Word b2 = vm->stack[vm->stack_size - 2];
+                Word result2;
+                result2.as_i64 = (b2.as_i64 < a2.as_i64) ? 1 : 0;
                 if (push(vm, result2) != RTS_OK) {
                     error_occurred("LT", "Stack Overflow");
                 }
@@ -745,9 +788,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size < 2) {
                     error_occurred("GT", "Stack Underflow");
                 }
-                int64_t a3 = vm->stack[vm->stack_size - 1];
-                int64_t b3 = vm->stack[vm->stack_size - 2];
-                int64_t result3 = (b3 > a3) ? 1 : 0;
+                Word a3 = vm->stack[vm->stack_size - 1];
+                Word b3 = vm->stack[vm->stack_size - 2];
+                Word result3;
+                result3.as_i64 = (b3.as_i64 > a3.as_i64) ? 1 : 0;
                 if (push(vm, result3) != RTS_OK) {
                     error_occurred("GT", "Stack Overflow");
                 }
@@ -762,10 +806,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size == 0) {
                     error_occurred("EXIT_IF", "Stack Underflow");
                 }
-                int64_t cond = token.exit_if.cond;
-                int64_t exit_code = token.exit_if.exit_code;
-                if (vm->stack[vm->stack_size - 1] == cond) {
-                    exit(exit_code);
+                Word cond = token.exit_if.cond;
+                Word exit_code = token.exit_if.exit_code;
+                if (vm->stack[vm->stack_size - 1].as_i64 == cond.as_i64) {
+                    exit(exit_code.as_i64);
                 }
                 break;
 
@@ -773,8 +817,9 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size == 0) {
                     error_occurred("STRLEN", "Stack Underflow");
                 }
-                char *str = (char *)vm->stack[vm->stack_size - 1];
-                int64_t len = strlen(str);
+                char *str = vm->stack[vm->stack_size - 1].as_str;
+                Word len;
+                len.as_i64 = strlen(str);
 
                 if (push(vm, len) != RTS_OK) {
                     error_occurred("STRLEN", "Stack Overflow");
@@ -798,19 +843,20 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size == 0) {
                     error_occurred("IGNORE_IF", "Stack Underflow");
                 }
-                int64_t cond1 = token.int_value;
-                if (vm->stack[vm->stack_size - 1] == cond1) {
+                Word cond1 = token.int_value;
+                if (vm->stack[vm->stack_size - 1].as_i64 == cond1.as_i64) {
                     i += 2;
                 }
                 break;
             case I_GET:
                 if (vm->stack_size == 0) {
                     error_occurred("GET", "Stack Underflow");
-                } else if (token.int_value > vm->stack_size) {
+                } else if (token.int_value.as_i64 > vm->stack_size) {
                     error_occurred("GET", "Stack Overflow");
                 }
-                int64_t index = token.int_value;
-                if (push(vm, vm->stack[index]) != RTS_OK) {
+                Word index;
+                index.as_i64 = token.int_value.as_i64;
+                if (push(vm, vm->stack[index.as_i64]) != RTS_OK) {
                     error_occurred("GET", "Stack Overflow");
                 }
                 break;
@@ -819,19 +865,23 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     error_occurred("STRCMP", "Stack Underflow");
                 }
 
-                char *str1 = (char *)vm->stack[vm->stack_size - 1];
+                char *str1 = vm->stack[vm->stack_size - 1].as_str;
                 char *str2 = token.str_value;
 
-                int64_t strcmpres = strcmp(str1, str2);
-                int64_t result4 = 0;
-                if (strcmpres == 0) result4 = 1;
+                Word strcmpres;
+                strcmpres.as_i64 = strcmp(str1, str2);
+                Word result4;
+                result4.as_i64 = 0;
+                if (strcmpres.as_str == 0) result4.as_i64 = 1;
                 if (push(vm, result4) != RTS_OK) {
                     error_occurred("STRCMP", "Stack Overflow");
                 }
                 break;
 
             case I_PUSH_CURRENT_INST:
-                if (push(vm, i) != RTS_OK) {
+                Word itp;
+                itp.as_i64 = i;
+                if (push(vm, itp) != RTS_OK) {
                     error_occurred("PUSH_CURRENT", "Stack Overflow");
                 }
                 break;
@@ -839,27 +889,27 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 if (vm->stack_size == 0) {
                     error_occurred("JMP_FS", "Stack Underflow");
                 }
-                i = vm->stack[vm->stack_size];
+                i = vm->stack[vm->stack_size].as_i64;
                 continue;
             case I_BFUNC:
-                if (vm->bfunctions_size < token.int_value) {
+                if (vm->bfunctions_size < token.int_value.as_i64) {
                     error_occurred("BFUNC", "Invalid Function index");
                 }
 
-                vm->bfunctions[token.int_value](vm);
+                vm->bfunctions[token.int_value.as_i64](vm);
                 break;
             case I_CAST:
                if (vm->stack_size == 0) {
                    error_occurred("CAST", "Stack Underflow");
                }
-               int64_t value = vm->stack[vm->stack_size - 1];
+               Word value = vm->stack[vm->stack_size - 1];
                vm->stack_size--;
                if (strcmp(token.str_value, "int") == 0) {
                    if (push(vm, value) != RTS_OK) {
                        error_occurred("CAST", "Stack Overflow");
                    }
                } else if (strcmp(token.str_value, "str") == 0) {
-                   char *str = (char *)value;
+                   char *str = value.as_str;
                    if (push_str(vm, str) != RTS_OK) {
                        error_occurred("CAST", "Stack Overflow");
                    }
@@ -874,7 +924,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     exit(1);
                 }
 
-                int64_t sockfd = vm->stack[vm->stack_size - 1];
+                Word sockfd = vm->stack[vm->stack_size - 1];
 
                 char *data = token.str_value;
 
@@ -883,15 +933,15 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     exit(1);
                 }
 
-                if (sockfd < 0) {
+                if (sockfd.as_i64 < 0) {
                     fprintf(stderr, "Invalid socket descriptor\n");
                     exit(1);
                 }
 
-                ssize_t result6 = send(sockfd, data, strlen(data), 0);
-                if (result < 0) {
+                ssize_t result6 = send(sockfd.as_i64, data, strlen(data), 0);
+                if (result6 < 0) {
                     perror("Send failed");
-                    close(sockfd);
+                    close(sockfd.as_i64);
                     exit(EXIT_FAILURE);
                 }
 
@@ -905,15 +955,28 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
     return RTS_OK;
 }
 
+// Ovm File description
+// | 16 bytes | ...bytes |
+//    ^
+
+
+//    Magic Number(4byte), OvmFile metadata (12byte)
 RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
         return RTS_ERROR;
     }
 
+    char magic_number[5] = {0};
+    size_t read = fread(magic_number, sizeof(char), 4, file);
+    if (read != 4 || strcmp(magic_number, OVM_MAGIC_NUMBER) != 0) {
+        fclose(file);
+        error_occurred("loading ovm binary", "Invalid Magic Number, try to recompile the orta");
+    }
+
     fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    long file_size = ftell(file) - 4;
+    fseek(file, 4, SEEK_SET);
 
     if (file_size % sizeof(Token) != 0) {
         fclose(file);
@@ -927,17 +990,23 @@ RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
     return RTS_OK;
 }
 
+
 RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, char *filename) {
     FILE *file = fopen(filename, "wb");
     if (file == NULL) {
         return RTS_ERROR;
     }
 
-    size_t written = fwrite(vm->program.tokens,
+    const char magic_number[] = OVM_MAGIC_NUMBER;
+    size_t written = fwrite(magic_number, sizeof(char), sizeof(magic_number) - 1, file);
+    if (written != sizeof(magic_number) - 1) {
+        fclose(file);
+        return RTS_ERROR;
+    }
+    written = fwrite(vm->program.tokens,
                            sizeof(Token),
                            vm->program.size,
                            file);
-
     if (written != vm->program.size) {
         fclose(file);
         return RTS_ERROR;
@@ -983,6 +1052,13 @@ void init_variables() {
     #endif
 }
 
+void toLowercase(char *str) {
+    while (*str) {
+        *str = tolower((unsigned char)*str);
+        str++;
+    }
+}
+
 RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -996,7 +1072,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     int line_count = 0;
     init_variables();
     while (fgets(line, sizeof(line), file)) {
-        if (line[0] == '\n' || line[0] == '#') continue;
+        if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
 
         char instruction[32];
         char args[4][128] = {{0}};
@@ -1010,63 +1086,64 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             return RTS_ERROR;
         }
 
+        toLowercase(instruction);
         line_count++;
 
         Token token = {0};
         token.inst = -1;
 
-        if (strcmp(instruction, "PUSH") == 0) {
+        if (strcmp(instruction, "push") == 0) {
             token.inst = I_PUSH;
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
                 fprintf(stderr, "ERROR: PUSH expects an integer: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        }  else if (strcmp(instruction, "ADD") == 0) {
+        }  else if (strcmp(instruction, "add") == 0) {
             token.inst = I_ADD;
-        } else if (strcmp(instruction, "SUB") == 0) {
+        } else if (strcmp(instruction, "sub") == 0) {
             token.inst = I_SUB;
-        } else if (strcmp(instruction, "DIV") == 0) {
+        } else if (strcmp(instruction, "div") == 0) {
             token.inst = I_DIV;
-        } else if (strcmp(instruction, "MUL") == 0) {
+        } else if (strcmp(instruction, "mul") == 0) {
             token.inst = I_MUL;
-        } else if (strcmp(instruction, "PRINT") == 0) {
+        } else if (strcmp(instruction, "print") == 0) {
             token.inst = I_PRINT;
-        } else if (strcmp(instruction, "PRINT_STR") == 0) {
+        } else if (strcmp(instruction, "print_str") == 0) {
              token.inst = I_PRINT_STR;
 
              strcpy(token.str_value, extract_content(line));
              token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "DUP") == 0) {
+        } else if (strcmp(instruction, "dup") == 0) {
             token.inst = I_DUP;
-        } else if (strcmp(instruction, "JMP") == 0) {
+        } else if (strcmp(instruction, "jmp") == 0) {
             token.inst = I_JMP;
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
                 fprintf(stderr, "ERROR: JMP expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "JMP_IFN") == 0) {
+        } else if (strcmp(instruction, "jmp_ifn") == 0) {
             token.inst = I_JMP_IFN;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
                 fprintf(stderr, "ERROR: JMP_IFN expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "JMP_IF") == 0) {
+        } else if (strcmp(instruction, "jmp_if") == 0) {
             token.inst = I_JMP_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
                 fprintf(stderr, "ERROR: JMP_IF expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "DROP") == 0) {
+        } else if (strcmp(instruction, "drop") == 0) {
             token.inst = I_DROP;
         }
-        else if (strcmp(instruction, "NOP") == 0) {
+        else if (strcmp(instruction, "nop") == 0) {
             token.inst = I_NOP;
         }
-        else if (strcmp(instruction, "EXIT") == 0) {
+        else if (strcmp(instruction, "exit") == 0) {
             token.inst = I_EXIT;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
@@ -1075,43 +1152,43 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 return RTS_ERROR;
             }
         }
-        else if (strcmp(instruction, "INPUT") == 0) {
+        else if (strcmp(instruction, "input") == 0) {
             token.inst = I_INPUT;
         }
-        else if (strcmp(instruction, "FILE_OPEN") == 0) {
+        else if (strcmp(instruction, "file_open") == 0) {
             token.inst = I_FILE_OPEN;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
         }
-        else if (strcmp(instruction, "FILE_WRITE") == 0) {
+        else if (strcmp(instruction, "file_write") == 0) {
             token.inst = I_FILE_WRITE;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
         }
-        else if (strcmp(instruction, "FILE_READ") == 0) {
+        else if (strcmp(instruction, "file_read") == 0) {
             token.inst = I_FILE_READ;
-        } else if (strcmp(instruction, "CAST_AND_PRINT") == 0) {
+        } else if (strcmp(instruction, "cast_and_print") == 0) {
             token.inst = I_CAST_AND_PRINT;
             insecure_function(line_count, "CAST_AND_PRINT", "The latest stack element is casting to char *");
-        } else if (strcmp(instruction, "SWAP") == 0) {
+        } else if (strcmp(instruction, "swap") == 0) {
             token.inst = I_SWAP;
-        } else if (strcmp(instruction, "EQ") == 0) {
+        } else if (strcmp(instruction, "eq") == 0) {
             token.inst = I_EQ;
-        } else if (strcmp(instruction, "RANDOM_INT") == 0) {
+        } else if (strcmp(instruction, "random_int") == 0) {
             token.inst = I_RANDOM_INT;
             if (matched < 3 || sscanf(args[0], "%ld", &token.random_int.min) != 1 || sscanf(args[1], "%ld", &token.random_int.max) != 1) {
                 fprintf(stderr, "ERROR: RANDOM_INT expects two integers: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "COLOR") == 0) {
+        } else if (strcmp(instruction, "color") == 0) {
             token.inst = I_COLOR;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
         } else if (strcmp(instruction, "CLEAR") == 0) {
             token.inst = I_CLEAR;
         }
-        else if (strcmp(instruction, "SLEEP") == 0) {
+        else if (strcmp(instruction, "sleep") == 0) {
             token.inst = I_SLEEP;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
@@ -1119,42 +1196,42 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "CLEAR_STACK") == 0) {
+        } else if (strcmp(instruction, "clear_stack") == 0) {
             token.inst = I_CLEAR_STACK;
-        } else if (strcmp(instruction, "GT") == 0) {
+        } else if (strcmp(instruction, "gt") == 0) {
             token.inst = I_GT; // Greater than
-        } else if (strcmp(instruction, "LT") == 0) {
+        } else if (strcmp(instruction, "lt") == 0) {
             token.inst = I_LT; // Less then
-        } else if (strcmp(instruction, "PUSH_STR") == 0) {
+        } else if (strcmp(instruction, "push_str") == 0) {
             token.inst = I_PUSH_STR;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "EXIT_IF") == 0) {
+        } else if (strcmp(instruction, "exit_if") == 0) {
             token.inst = I_EXIT_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.exit_if.exit_code) != 1 || sscanf(args[1], "%ld", &token.exit_if.cond) != 1) {
                 fprintf(stderr, "ERROR: EXIT_IF expects an exit code and condition: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "STRLEN") == 0) {
+        } else if (strcmp(instruction, "strlen") == 0) {
             insecure_function(line_count, "STRLEN", "if the latest element is not a char * it will throw an segfault");
             token.inst = I_STR_LEN;
-        } else if (strcmp(instruction, "INPUT_STR") == 0) {
+        } else if (strcmp(instruction, "input_str") == 0) {
             token.inst = I_INPUT_STR;
-        } else if (strcmp(instruction, "EXECUTE_CMD") == 0) {
+        } else if (strcmp(instruction, "execute_cmd") == 0) {
             token.inst = I_EXECUTE_CMD;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "IGNORE") == 0) {
+        } else if (strcmp(instruction, "ignore") == 0) {
             token.inst = I_IGNORE;
-        } else if (strcmp(instruction, "IGNORE_IF") == 0) {
+        } else if (strcmp(instruction, "ignore_if") == 0) {
             token.inst = I_IGNORE_IF;
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
                 fprintf(stderr, "ERROR: IGNORE_IF expects cond: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "GET") == 0) {
+        } else if (strcmp(instruction, "get") == 0) {
             token.inst = I_GET;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
@@ -1162,21 +1239,21 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "STRCMP") == 0) {
+        } else if (strcmp(instruction, "strcmp") == 0) {
             token.inst = I_STR_CMP;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "PUSH_CURRENT") == 0) {
+        } else if (strcmp(instruction, "push_current") == 0) {
             token.inst = I_PUSH_CURRENT_INST;
-        } else if (strcmp(instruction, "JMP_FS") == 0) {
+        } else if (strcmp(instruction, "jmp_fs") == 0) {
             token.inst = I_JMP_FS;
-        } else if (strcmp(instruction, "VAR") == 0) {
+        } else if (strcmp(instruction, "var") == 0) {
             token.inst = I_PUSH_STR;
             char variable[O_DEFAULT_BUFFER_CAPACITY];
             strcpy(variable, extract_content(line));
             variable[strlen(variable) + 1] = '\0';
             strcpy(token.str_value, get_variable(variable));
-        } else if (strcmp(instruction, "BFUNC") == 0) {
+        } else if (strcmp(instruction, "bfunc") == 0) {
             token.inst = I_BFUNC;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
@@ -1184,11 +1261,11 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "CAST") == 0) {
+        } else if (strcmp(instruction, "cast") == 0) {
             token.inst = I_CAST;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "SEND") == 0) {
+        } else if (strcmp(instruction, "net::send") == 0) {
             token.inst = I_SEND;
             strcpy(token.str_value, extract_content(line));
             token.str_value[strlen(token.str_value) + 1] = '\0';
@@ -1258,7 +1335,7 @@ static int is_preprocessor_defined(char preprocessors[O_DEFAULT_SIZE][2][O_DEFAU
     return 0;
 }
 
-RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256]) {
+RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], int target) {
     char preprocessed_filename[O_DEFAULT_SIZE];
     static char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
     static size_t preprocessors_count = 0;
@@ -1270,15 +1347,28 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256]) {
         strncpy(preprocessors[preprocessors_count][1], argv[i], O_DEFAULT_SIZE);
         preprocessors_count++;
     }
-    #ifdef _WIN32
+    if (target == 0) {
+        #ifdef _WIN32
+            strncpy(preprocessors[preprocessors_count][0], "OS_WINDOWS", O_DEFAULT_SIZE);
+            strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
+            preprocessors_count++;
+        #else
+            strncpy(preprocessors[preprocessors_count][0], "OS_POSIX", O_DEFAULT_SIZE);
+            strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
+            preprocessors_count++;
+        #endif
+    } else if (target == 1) {
         strncpy(preprocessors[preprocessors_count][0], "OS_WINDOWS", O_DEFAULT_SIZE);
         strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
         preprocessors_count++;
-    #else
+    } else if (target == 2) {
         strncpy(preprocessors[preprocessors_count][0], "OS_POSIX", O_DEFAULT_SIZE);
         strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
         preprocessors_count++;
-    #endif
+    } else {
+        fprintf(stderr, "ERROR: Invalid target\n");
+        return RTS_ERROR;
+    }
 
     snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%s.ppd", filename);
 
@@ -1348,14 +1438,8 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256]) {
                 continue;
             }
 
-            if (strncmp(line + 1, "var", 3) == 0) {
-                char name[O_DEFAULT_SIZE], value[O_DEFAULT_SIZE];
-                if (sscanf(line + 4, "%s %s", name, value) == 2) {
-                    push_variable(name, value);
-                } else {
-                    fprintf(stderr, "WARNING: Malformed #var in line: %s\n", line);
-                }
-            }
+            // REMOVED #var because it dont works if you run the program as .ovm
+
             if (strncmp(line + 1, "macro", 5) == 0) {
                 char name[O_DEFAULT_SIZE];
                 char value[O_DEFAULT_BUFFER_CAPACITY] = "";
@@ -1430,7 +1514,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256]) {
                         return RTS_ERROR;
                     }
 
-                    if (OrtaVM_preprocess_file(include_path, 0, NULL) != RTS_OK) {
+                    if (OrtaVM_preprocess_file(include_path, 0, NULL, target) != RTS_OK) {
                         fprintf(stderr, "ERROR: Failed to preprocess include file %s\n", include_path);
                         fclose(input_file);
                         fclose(output_file);

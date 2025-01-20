@@ -5,37 +5,37 @@ COLOR "reset"
 EXIT 1
 #endif
 
-#macro socket() {
+#macro net::socket() {
     BFUNC 0
 }
 
-#macro sock_bind() {
+#macro net::bind() {
     BFUNC 1
 }
 
-#macro sock_listen() {
+#macro net::listen() {
     BFUNC 2
 }
 
-#macro sock_accept() {
+#macro net::accept() {
     BFUNC 3
 }
 
-#macro sock_connect() {
+#macro net::connect() {
     BFUNC 4
 }
 
-#macro sock_send() {
+#macro net::send() {
     BFUNC 5
 }
-#macro sock_recv() {
+#macro net::recv() {
     BFUNC 6
 }
 
-#macro sock_close() {
+#macro net::close() {
     BFUNC 7
 }
 
-#macro sock_set_opt() {
+#macro net::set_opt() {
     BFUNC 8
 }
