@@ -1208,7 +1208,7 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
             fclose(file);
             return RTS_ERROR;
         }
-        // TODO: Add more instruction handlings (TOGO STRING_HANDLING)
+        // TODO(#2): Add more instruction handlings (TOGO STRING_HANDLING)
         if (token->inst == I_PUSH_STR || token->inst == I_PRINT_STR) {
             size_t str_len = strlen(token->word.as_str) + 1;
             if (fwrite(&str_len, sizeof(size_t), 1, file) != 1 ||
