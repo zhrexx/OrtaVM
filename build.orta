@@ -1,4 +1,0 @@
-#define $B_MODE 0
-#include <test.orta>
-
-

@@ -1,15 +1,44 @@
+// OrtaVM | Informations:
+// Current Version: 1.0
+// Next Version Release Date: February 20 2025
+// License: NovaLicense(https://github.com/zhrxxgroup/files/blob/main/NovaLicense.md)
+
+// Goals of OrtaVM:
+// - High Performance             | Fast execution speed                                                      | DONE
+// - Small Size                   | We wanna make the binaries very small                                     | Expected to be fixed in 1.4
+// - Cross Platform               | You can run the code on MacOS, Linux, Windows and others                  | DONE
+// - Good Error Handling          | Informative Error messages                                                | DONE
+
+//---------------------------------------------------------------------------------------------------------------------------------
+
 // GLOBAL TODOS:
-// TODO: Add some time functions
+// TODO: Add more functions
 
 // SOMETIME TODO:
-// TODO: Make the parsing better (The argument parsing is bad and other things)
+// TODO: Add Graphics and Audio libraries
+// TODO: Renew deovm
 // TODO: Add a syscall inst, there for i need a abstraction layer: int syscall(int syscall, int arg1, int arg2);
+// TODO: Implement STR support for dump
 
 // DONE:
-// TODO: Add magic code to the binaries(.ovm)                             | OVM1 (OVM_MAGIC_CODE)
-// TODO: Escape strings (PUSH_STR, PRINT_STR etc)                         | Currently only \n
-// TODO: Seperate buffers for int64_t and char *                          | I decided to make a Word union and use it as seperate buffers (Word)
-// TODO: Make the instructions look prettier (like "push" or other style) | I decided to allow both Uppercase and lowercase
+// DONE: Add magic code to the binaries(.ovm)                               | OVM1 (OVM_MAGIC_CODE)
+// DONE: Escape strings (PUSH_STR, PRINT_STR etc)                           | Currently only \n
+// DONE: Separate buffers for int64_t and char *                            | I decided to make a Word union and use it as seperate buffers (Word)
+// DONE: Make the instructions look prettier (like "push" or other style)   | I decided to allow both Uppercase(add flag --support=uppercase) and lowercase
+// DONE: Add some time functions
+// DONE: Optimize the OVM files (some compression or other idk i tried every thing (compression not)) | Read code
+
+// IDEAS:
+// IDEA: I think it were be cool to add support to open .so or .a files and call a function
+
+//---------------------------------------------------------------------------------------------------------------------------------
+
+// Changelog:
+// Combined push and push_str (use push)
+// Combined print and print_str (use print)
+// print allows to get items from stack using $1=stack top or $2=second item on stack top
+
+//---------------------------------------------------------------------------------------------------------------------------------
 
 #ifndef ORTA_H
 #define ORTA_H
@@ -29,12 +58,19 @@
 #include <unistd.h>
 #endif
 
+//---------------------------------------------------------------------------------------------------------------------------------
+
 #define O_STACK_CAPACITY 200000
-#define PREPROC_SYMBOL '#'
-#define O_COMMENT_SYMBOL '#'
 #define O_DEFAULT_BUFFER_CAPACITY 1024
 #define O_DEFAULT_SIZE 256
+#define O_COMMENT_SYMBOL '#'
+//---
 #define OVM_MAGIC_NUMBER "OVM1"
+#define OVM_VERSION 1
+//---
+#define PREPROC_SYMBOL '#'
+
+//---------------------------------------------------------------------------------------------------------------------------------
 
 typedef enum {
     RTS_OK,
@@ -44,25 +80,6 @@ typedef enum {
     RTS_UNDEFINED_INSTRUCTION,
     RTS_INVALID_TYPE,
 } RTStatus;
-
-char *error_to_string(RTStatus status) {
-    switch (status) {
-    case RTS_OK:
-        return "OK";
-    case RTS_STACK_OVERFLOW:
-        return "Stack Overflow";
-    case RTS_STACK_UNDERFLOW:
-        return "Stack Underflow";
-    case RTS_ERROR:
-        return "Error";
-    case RTS_UNDEFINED_INSTRUCTION:
-        return "Undefined Instruction";
-    case RTS_INVALID_TYPE:
-        return "Invalid Type";
-    default:
-        return "Unknown Error";
-    }
-}
 
 typedef enum {
     I_NOP,            // Used to jmp
@@ -122,23 +139,16 @@ typedef enum {
     I_BFUNC,           // Builtin Functions (C functions)
     I_CAST,
     I_SEND,            // Send a message to a socket
+
+    I_GET_DATE,        // Pushes current date to stack (%d:%m:%y)
 } Instruction;
 
-// Flags
-size_t level = 0;
-size_t limit = 1000;
+typedef enum {
+    T_INT,
+    T_STR,
+    T_PTR,
+} Type;
 
-void insecure_function(int line_count, char *func, char *reason) {
-    if (level == 1) {
-        printf("\033[33mWarning: Usage of insecure function at token %d (Reason: %s): %s\033[0m\n", line_count, reason, func);
-    }
-}
-
-void error_occurred(char *token, char *reason) {
-    if (level == 1) {
-        printf("\033[31mError: %s (Reason: %s)\033[0m\n", token, reason);
-    }
-}
 typedef union {
     int64_t as_i64;
     char *as_str;
@@ -149,12 +159,10 @@ typedef struct {
     Word dest;
     Word cond;
 } JumpIfArgs;
-
 typedef struct {
     Word min;
     Word max;
 } RandomInt;
-
 typedef struct {
     Word exit_code;
     Word cond;
@@ -163,16 +171,17 @@ typedef struct {
 typedef struct {
     Instruction inst;
     union {
-        Word int_value;
-        char str_value[O_DEFAULT_BUFFER_CAPACITY];
+        Word word;
         JumpIfArgs jump_if_args;
         RandomInt random_int;
         ExitIf exit_if;
-};
+    };
+    int pos;
 } Token;
 
 typedef struct {
     Token tokens[O_DEFAULT_BUFFER_CAPACITY];
+    size_t current_token;
     size_t size;
 } Program;
 
@@ -191,7 +200,25 @@ struct OrtaVM {
     size_t bfunctions_size;
 
     Program program;
+    char *file_path;
 };
+
+//---------------------------------------------------------------------------------------------------------------------------------
+
+// Flags
+size_t level = 0;
+size_t limit = 1000;
+size_t support_uppercase = 0;
+
+// Variables
+char variables[O_DEFAULT_BUFFER_CAPACITY][2][O_DEFAULT_BUFFER_CAPACITY] = {0};
+size_t variable_count = 0;
+static char include_paths[10][O_DEFAULT_SIZE] = {".", "~/.orta"};
+static size_t include_paths_count = 2;
+static char macros[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
+static size_t macros_count = 0;
+
+//---------------------------------------------------------------------------------------------------------------------------------
 
 void push_bfunc(OrtaVM *vm, BFunc func) {
     if (vm->bfunctions_size >= O_DEFAULT_SIZE) {
@@ -199,12 +226,191 @@ void push_bfunc(OrtaVM *vm, BFunc func) {
     }
     vm->bfunctions[vm->bfunctions_size++] = func;
 }
+void insecure_function(int line_count, char *func, char *reason) {
+    if (level == 1) {
+        printf("\033[33mWarning: Usage of insecure function at token %d (Reason: %s): %s\033[0m\n", line_count, reason, func);
+    }
+}
+void error_occurred(char *file, int line_count, char *token, char *reason) {
+    fprintf(stderr, "\033[31m%s:%d: Token <%s>: %s\033[0m\n", file, line_count, token, reason);
+    exit(0);
+}
 
 void OrtaVM_dump(OrtaVM *vm) {
-    printf("Stack (top to bottom):\n");
+    if (vm == NULL) {
+        printf("Error: VM is NULL.\n");
+        return;
+    }
+    if (vm->stack_size == 0) {
+        printf("Stack is empty.\n");
+        return;
+    }
+
+    printf("| STACK DUMP |\n");
+    printf("| INT64      | PTR         |\n");
     for (size_t i = vm->stack_size; i > 0; i--) {
-        if (vm->stack[i - 1].as_i64 == 0) continue;
-        printf("%ld\n", vm->stack[i - 1]);
+        Word word = vm->stack[i - 1];
+        printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
+    }
+}
+
+
+void no_win_support() {
+    #ifdef _WIN32
+    printf("Sorry, but this Function is not supported on Windows.\n");
+    exit(1);
+    #endif
+}
+char *extract_content(const char *line) {
+    const char *start = strchr(line, '"');
+    const char *end = strrchr(line, '"');
+    if (!start || !end || start == end) {
+        return "No text provided";
+    }
+    size_t length = end - start - 1;
+    static char content[O_DEFAULT_BUFFER_CAPACITY];
+    if (length >= sizeof(content)) {
+        return "Sorry Content is to long!";
+    }
+    strncpy(content, start + 1, length);
+    content[length] = '\0';
+    return content;
+}
+void process_and_print_string(const char *str) {
+    while (*str) {
+        if (*str == '\\' && *(str + 1) == 'n') {
+            putchar('\n');
+            str += 2;
+        } else if (*str == '\\' && *(str + 1) == 'c') {
+            printf("\033[%sm", str + 2);
+            while (*str && *str != '\\') {
+                str++;
+            }
+            if (*str == '\\') str--;
+        } else {
+            putchar(*str);
+            str++;
+        }
+    }
+}
+void push_variable(const char *name, const char *value) {
+    if (variable_count >= O_DEFAULT_BUFFER_CAPACITY) {
+        printf("Error: Variable storage full.\n");
+        return;
+    }
+
+    strncpy(variables[variable_count][0], name, O_DEFAULT_BUFFER_CAPACITY - 1);
+    variables[variable_count][0][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
+
+    strncpy(variables[variable_count][1], value, O_DEFAULT_BUFFER_CAPACITY - 1);
+    variables[variable_count][1][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
+
+    variable_count++;
+}
+char *get_variable(char *name) {
+    for (size_t i = 0; i < variable_count; i++) {
+        if (strcmp(variables[i][0], name) == 0) {
+            return variables[i][1];
+        }
+    }
+    return "unknown";
+}
+void init_variables() {
+    push_variable("orta_version", "1.0"); // TODO: Dont forgot to update
+    #ifdef _WIN32
+        push_variable("os", "windows");
+    #else
+        push_variable("os", "linux");
+    #endif
+}
+void toLowercase(char *str) {
+    while (*str) {
+        *str = tolower((unsigned char)*str);
+        str++;
+    }
+}
+static int is_preprocessor_defined(char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE], size_t preprocessors_count,const char *name) {
+    for (size_t i = 0; i < preprocessors_count; i++) {
+        if (strcmp(preprocessors[i][0], name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+bool ends_with(const char *string, const char *suffix) {
+    size_t string_len = strlen(string);
+    size_t suffix_len = strlen(suffix);
+
+    if (suffix_len > string_len) return false;
+
+    return strncmp(string + string_len - suffix_len, suffix, suffix_len) == 0;
+}
+void expand_tilde(const char *path, char *expanded_path, size_t max_length) {
+    if (path[0] == '~') {
+        #ifdef _WIN32
+            const char *home = getenv("USERPROFILE");
+        #else
+            const char *home = getenv("HOME");
+        #endif
+        if (home) {
+            snprintf(expanded_path, max_length, "%s%s", home, path + 1);
+        } else {
+            fprintf(stderr, "ERROR: HOME environment variable is not set\n");
+            strncpy(expanded_path, path, max_length);
+        }
+    } else {
+        strncpy(expanded_path, path, max_length);
+    }
+}
+void OrtaVM_add_include_path(const char *path) {
+    if (include_paths_count < 10) {
+        strncpy(include_paths[include_paths_count], path, O_DEFAULT_SIZE);
+        include_paths_count++;
+    } else {
+        fprintf(stderr, "ERROR: Maximum number of include paths reached\n");
+    }
+}
+char* trim_all(char* str) {
+    while (isspace((unsigned char)*str)) str++;
+    if (*str == '\0') return str;
+    char* end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    *(end + 1) = '\0';
+    return str;
+}
+char* trim_left(char* str) {
+    while (isspace((unsigned char)*str)) {
+        str++;
+    }
+    return str;
+}
+char* trim_right(char* str) {
+    if (str == NULL || *str == '\0') {
+        return str;
+    }
+    char* end = str + strlen(str) - 1;
+    while (end >= str && isspace((unsigned char)*end)) {
+        end--;
+    }
+    *(end + 1) = '\0';
+    return str;
+}
+char *error_to_string(RTStatus status) {
+    switch (status) {
+    case RTS_OK:
+        return "OK";
+    case RTS_STACK_OVERFLOW:
+        return "Stack Overflow";
+    case RTS_STACK_UNDERFLOW:
+        return "Stack Underflow";
+    case RTS_ERROR:
+        return "Error";
+    case RTS_UNDEFINED_INSTRUCTION:
+        return "Undefined Instruction";
+    case RTS_INVALID_TYPE:
+        return "Invalid Type";
+    default:
+        return "Unknown Error";
     }
 }
 
@@ -212,10 +418,12 @@ RTStatus push(OrtaVM *vm, Word value) {
     if (vm->stack_size >= O_STACK_CAPACITY) {
         return RTS_STACK_OVERFLOW;
     }
-    vm->stack[vm->stack_size++] = value;
+    Word temp;
+    temp.as_i64 = value.as_i64;
+    vm->stack[vm->stack_size] = temp;
+    vm->stack_size++;
     return RTS_OK;
 }
-
 RTStatus push_str(OrtaVM *vm, const char *str) {
     if (vm->stack_size >= O_STACK_CAPACITY) {
         return RTS_STACK_OVERFLOW;
@@ -224,15 +432,40 @@ RTStatus push_str(OrtaVM *vm, const char *str) {
     if (!dynamic_str) {
         return RTS_ERROR;
     }
-    vm->stack[vm->stack_size++] = (Word)dynamic_str;
+    Word temp;
+    temp.as_str = strdup(dynamic_str);
+
+    vm->stack[vm->stack_size++] = temp;
     return RTS_OK;
 }
-
-void no_win_support() {
-    #ifdef _WIN32
-    printf("Sorry, but this Function is not supported on Windows.\n");
-    exit(1);
-    #endif
+RTStatus add(OrtaVM *vm) {
+    if (vm->stack_size < 2) {
+        return RTS_STACK_UNDERFLOW;
+    }
+    Word a = vm->stack[--vm->stack_size];
+    Word b = vm->stack[--vm->stack_size];
+    return push(vm, (Word)(a.as_i64 + b.as_i64));
+}
+RTStatus sub(OrtaVM *vm) {
+    if (vm->stack_size < 2) {
+        return RTS_STACK_UNDERFLOW;
+    }
+    Word a = vm->stack[--vm->stack_size];
+    Word b = vm->stack[--vm->stack_size];
+    return push(vm, (Word)(b.as_i64 - a.as_i64));
+}
+RTStatus print(OrtaVM *vm) {
+    if (vm->stack_size == 0) {
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"print", "Stack Underflow");
+    }
+    printf("%ld\n", vm->stack[vm->stack_size - 1].as_i64);
+    return RTS_OK;
+}
+Word pop(OrtaVM *vm) {
+    if (vm->stack_size == 0) {
+        return (Word){0};
+    }
+    return vm->stack[--vm->stack_size];
 }
 
 #ifndef _WIN32
@@ -242,15 +475,13 @@ void asocket(OrtaVM *vm) {
     Word result;
     result.as_i64= socket(AF_INET, SOCK_STREAM, 0);
     if (push(vm, result) != RTS_OK) {
-        error_occurred("asocket", "Stack Overflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"asocket", "Stack Overflow");
     }
 }
-
 void abind(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"bind", "Stack Underflow");
     }
     Word sockfd = vm->stack[vm->stack_size - 1];
     if (sockfd.as_i64 == -1) {
@@ -271,13 +502,10 @@ void abind(OrtaVM *vm) {
         exit(EXIT_FAILURE);
     }
 }
-
-
 void alisten(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"listen", "Stack Underflow");
     }
     Word sockfd = vm->stack[--vm->stack_size];
     Word backlog = vm->stack[--vm->stack_size];
@@ -285,27 +513,23 @@ void alisten(OrtaVM *vm) {
     Word result;
     result.as_i64 = listen(sockfd.as_i64, backlog.as_i64);
 }
-
 void aaccept(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"accept", "Stack Underflow");
     }
     Word sockfd = vm->stack[vm->stack_size - 1];
 
     Word result;
     result.as_i64 = accept(sockfd.as_i64, NULL, NULL);
     if (push(vm, result) != RTS_OK) {
-        error_occurred("aaccept", "Stack Overflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"aaccept", "Stack Overflow");
     }
 }
-
 void aconnect(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"connect", "Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -322,14 +546,11 @@ void aconnect(OrtaVM *vm) {
         exit(EXIT_FAILURE);
     }
 }
-
-
 void asend(OrtaVM *vm) {
     no_win_support();
 
     if (vm->stack_size < 2) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -337,13 +558,11 @@ void asend(OrtaVM *vm) {
     char *data = vm->stack[vm->stack_size - 2].as_str;
 
     if (data == NULL) {
-        fprintf(stderr, "Invalid string data\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Invalid String data");
     }
 
     if (sockfd.as_i64 < 0) {
-        fprintf(stderr, "Invalid socket descriptor\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Invalid Socket Descriptor");
     }
 
     ssize_t result = send(sockfd.as_i64, data, strlen(data), 0);
@@ -355,13 +574,10 @@ void asend(OrtaVM *vm) {
 
     vm->stack_size -= 2;
 }
-
-
 void arecv(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"recv", "Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -376,12 +592,10 @@ void arecv(OrtaVM *vm) {
     buffer[result] = '\0';
     push_str(vm, buffer);
 }
-
 void aclose(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"close", "Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -390,12 +604,10 @@ void aclose(OrtaVM *vm) {
         exit(EXIT_FAILURE);
     }
 }
-
 void aset_opt(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 3) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(1);
+        error_occurred(vm->file_path,vm->program.tokens[vm->program.current_token].pos,"set_opt", "Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -408,7 +620,6 @@ void aset_opt(OrtaVM *vm) {
         exit(EXIT_FAILURE);
     }
 }
-
 void init_socket_bfuncs(OrtaVM *vm) {
     BFunc sockett = asocket;
     BFunc bindd = abind;
@@ -430,7 +641,6 @@ void init_socket_bfuncs(OrtaVM *vm) {
     push_bfunc(vm, closet);
     push_bfunc(vm, setoptt);
 }
-
 #endif
 void init_bfuncs(OrtaVM *vm) {
     #ifndef _WIN32
@@ -438,68 +648,7 @@ void init_bfuncs(OrtaVM *vm) {
     #endif
 }
 
-char *extract_content(const char *line) {
-    const char *start = strchr(line, '"');
-    const char *end = strrchr(line, '"');
-    if (!start || !end || start == end) {
-        return "No text provided";
-    }
-    size_t length = end - start - 1;
-    static char content[O_DEFAULT_BUFFER_CAPACITY];
-    if (length >= sizeof(content)) {
-        return "Sorry Content is to long!";
-    }
-    strncpy(content, start + 1, length);
-    content[length] = '\0';
-    return content;
-}
-
-
-RTStatus add(OrtaVM *vm) {
-    if (vm->stack_size < 2) {
-        return RTS_STACK_UNDERFLOW;
-    }
-    Word a = vm->stack[--vm->stack_size];
-    Word b = vm->stack[--vm->stack_size];
-    return push(vm, (Word)(a.as_i64 + b.as_i64));
-}
-
-RTStatus sub(OrtaVM *vm) {
-    if (vm->stack_size < 2) {
-        return RTS_STACK_UNDERFLOW;
-    }
-    Word a = vm->stack[--vm->stack_size];
-    Word b = vm->stack[--vm->stack_size];
-    return push(vm, (Word)(b.as_i64 - a.as_i64));
-}
-
-RTStatus print(OrtaVM *vm) {
-    if (vm->stack_size == 0) {
-        return RTS_STACK_UNDERFLOW;
-    }
-    printf("%ld\n", vm->stack[vm->stack_size - 1].as_i64);
-    return RTS_OK;
-}
-
-void process_and_print_string(const char *str) {
-    while (*str) {
-        if (*str == '\\' && *(str + 1) == 'n') {
-            putchar('\n');
-            str += 2;
-        } else if (*str == '\\' && *(str + 1) == 'c') {
-            printf("\033[%sm", str + 2);
-            while (*str && *str != '\\') {
-                str++;
-            }
-            if (*str == '\\') str--;
-        } else {
-            putchar(*str);
-            str++;
-        }
-    }
-    putchar('\n');
-}
-
+//---------------------------------------------------------------------------------------------------------------------------------
 
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     init_bfuncs(vm);
@@ -508,76 +657,82 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
     for (size_t i = 0; i < program.size && iterations < limit*4; i++) {
         iterations++;
         Token token = program.tokens[i];
+        vm->program.current_token = i;
         switch (token.inst) {
             case I_PUSH:
-                if (push(vm, token.int_value) != RTS_OK) {
-                    error_occurred("PUSH", "Stack Overflow");
+                if (push(vm, token.word) != RTS_OK) {
+                    error_occurred(vm->file_path, token.pos,"push", "Stack Overflow");
                 }
                 break;
             case I_ADD:
                 if (add(vm) != RTS_OK) {
-                    error_occurred("ADD", "Stack Underflow");
-
+                    error_occurred(vm->file_path, token.pos,"add", "Stack Underflow");
                 }
                 break;
             case I_SUB:
                 if (sub(vm) != RTS_OK) {
-                    error_occurred("SUB", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"sub", "Stack Underflow");
                 }
                 break;
             case I_PRINT:
                 if (print(vm) != RTS_OK) {
-                    error_occurred("PRINT", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"print", "Stack Underflow");
                 }
                 break;
             case I_MUL:
                 if (vm->stack_size < 2) {
-                    error_occurred("MUL", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"mul", "Stack Underflow");
                 }
-                Word a = vm->stack[--vm->stack_size];
-                Word b = vm->stack[--vm->stack_size];
+                Word a = pop(vm);
+                Word b = pop(vm);
                 if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
-                    error_occurred("MUL", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"mul", "Stack Overflow");
                 }
                 break;
             case I_DIV:
                 if (vm->stack_size < 2) {
-                    error_occurred("DIV", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"div", "Stack Underflow");
                 }
-                Word c = vm->stack[--vm->stack_size];
-                Word d = vm->stack[--vm->stack_size];
+                Word c = pop(vm);
+                Word d = pop(vm);
                 if (d.as_i64 == 0) {
                     return RTS_ERROR;
                 }
                 if (push(vm, (Word)(c.as_i64 / d.as_i64)) != RTS_OK) {
-                    error_occurred("DIV", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"div", "Stack Overflow");
                 }
                 break;
             case I_PRINT_STR:
-                if (token.str_value[0] != '\0') {
-                    process_and_print_string(token.str_value);
+                if (strcmp(token.word.as_str, "$1") == 0 && vm->stack_size > 0) {
+                    strcpy(token.word.as_str, vm->stack[vm->stack_size - 1].as_str);
+                } else if (strcmp(token.word.as_str, "$2") == 0 && vm->stack_size > 1) {
+                    strcpy(token.word.as_str, vm->stack[vm->stack_size - 2].as_str);
+                } else if (strcmp(token.word.as_str, "$3") == 0 && vm->stack_size > 2) {
+                    strcpy(token.word.as_str, vm->stack[vm->stack_size - 3].as_str);
                 }
-
+                if (token.word.as_str[0] != '\0') {
+                    process_and_print_string(token.word.as_str);
+                }
                 break;
             case I_DROP:
                 if (vm->stack_size == 0) {
-                    error_occurred("DROP", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"drop", "Stack Underflow");
                 }
                 vm->stack_size--;
                 break;
             case I_JMP:
-                 if (token.int_value.as_i64 < 0 || token.int_value.as_i64 > program.size) {
-                     error_occurred("JMP", "Stack Underflow");
+                 if (token.word.as_i64 < 0 || token.word.as_i64 > program.size) {
+                     error_occurred(vm->file_path, token.pos,"jmp", "Stack Underflow");
                  }
-                 i = token.int_value.as_i64;
+                 i = token.word.as_i64;
                  continue;
             case I_JMP_IFN: // JMP_IFB DEST COND | JMP_IFN 0 10 | JMP_IFN 0 (!= 10)
                  if (vm->stack_size == 0) {
-                     error_occurred("JMP_IF", "Stack Underflow");
+                     error_occurred(vm->file_path, token.pos,"jmp_ifn", "Stack Underflow");
                  }
                  if (vm->stack[vm->stack_size - 1].as_i64 != token.jump_if_args.cond.as_i64) {
                      if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
-                         error_occurred("JMP_IFN", "Stack Underflow");
+                         error_occurred(vm->file_path, token.pos,"jmp_ifn", "Stack Underflow");
                      }
                      i = token.jump_if_args.dest.as_i64;
                      continue;
@@ -585,11 +740,11 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                  break;
             case I_JMP_IF: // JMP_IF DEST COND | JMP_IF 0 10 | JMP_IF 0 (== 10)
                  if (vm->stack_size == 0) {
-                     error_occurred("JMP_IF", "Stack Underflow");
+                     error_occurred(vm->file_path, token.pos,"jmp_if", "Stack Underflow");
                  }
                  if (vm->stack[vm->stack_size - 1].as_i64 == token.jump_if_args.cond.as_i64) {
                      if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
-                         error_occurred("JMP_IF", "Stack Underflow");
+                         error_occurred(vm->file_path, token.pos,"jmp_if", "Stack Underflow");
                      }
                      i = token.jump_if_args.dest.as_i64;
                      continue;
@@ -597,10 +752,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                  break;
             case I_DUP:
                 if (vm->stack_size == 0) {
-                    error_occurred("DUP", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"dup", "Stack Underflow");
                 }
                 if (vm->stack_size >= O_STACK_CAPACITY) {
-                    error_occurred("DUP", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"dup", "Stack Overflow");
                 }
                 vm->stack[vm->stack_size].as_i64 = vm->stack[vm->stack_size - 1].as_i64;
                 vm->stack_size++;
@@ -608,36 +763,34 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
             case I_NOP:
                  break;
             case I_EXIT:
-                exit(token.int_value.as_i64);
+                exit(token.word.as_i64);
             case I_INPUT:
                 Word input;
                 scanf("%ld", &input);
                  if (push(vm, input) != RTS_OK) {
-                     error_occurred("INPUT", "Stack Overflow");
+                     error_occurred(vm->file_path, token.pos,"input", "Stack Overflow");
                  }
                  break;
             case I_FILE_OPEN:
-                FILE *file = fopen(token.str_value, "a+");
+                FILE *file = fopen(token.word.as_str, "a+");
                 if (file == NULL) {
-                    error_occurred("FILE_OPEN", "File allocation failed");
+                    error_occurred(vm->file_path, token.pos,"file_open", "File allocation failed");
                 }
                 Word fd;
                 fd.as_i64 = (int64_t)file;
                 if (push(vm, fd) != RTS_OK) {
                     fclose(file);
-                    error_occurred("FILE_OPEN", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"file_open", "Stack Overflow");
                 }
                 break;
 
             case I_FILE_WRITE:
                 {
                     FILE *file1 = (FILE *)vm->stack[vm->stack_size - 1].as_i64;
-                    char *buffer = token.str_value;
-
+                    char *buffer = token.word.as_str;
                     if (file1 == NULL) {
-                        error_occurred("FILE_WRITE", "File allocation failed");
+                        error_occurred(vm->file_path, token.pos,"file_write", "File allocation failed");
                     }
-
                     fwrite(buffer, sizeof(char), strlen(buffer), file1);
                     break;
                 }
@@ -646,15 +799,14 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 {
                     FILE *file2 = (FILE *)vm->stack[vm->stack_size - 1].as_i64;
                     if (file2 == NULL) {
-                        error_occurred("FILE_READ", "File allocation failed");
+                        error_occurred(vm->file_path, token.pos,"file_read", "File allocation failed");
                     }
-
                     char buffer[O_DEFAULT_BUFFER_CAPACITY] = {0};
                     fread(buffer, sizeof(char), 1023, file2);
                     buffer[strlen(buffer)] = '\0';
 
                     if (push(vm, (Word)buffer) != RTS_OK) {
-                        error_occurred("FILE_READ", "Stack Overflow");
+                        error_occurred(vm->file_path, token.pos,"file_read", "Stack Overflow");
                     }
                     break;
                 }
@@ -662,16 +814,15 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 {
                     char *buffer = vm->stack[vm->stack_size - 1].as_str;
                     if (buffer == NULL) {
-                        error_occurred("CAST_AND_PRINT", "Cast failed");
+                        error_occurred(vm->file_path, token.pos,"cast_and_print", "Cast failed");
                     }
-
-                    printf("%s\n", buffer);
+                    process_and_print_string(buffer);
                     break;
                 }
 
             case I_SWAP:
                 if (vm->stack_size < 2) {
-                    error_occurred("SWAP", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"swap", "Stack Underflow");
                 }
                 Word temp = vm->stack[vm->stack_size - 1];
                 vm->stack[vm->stack_size - 1] = vm->stack[vm->stack_size - 2];
@@ -679,14 +830,14 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_EQ:
                 if (vm->stack_size < 2) {
-                    error_occurred("EQ", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"eq", "Stack Underflow");
                 }
                 Word a1 = vm->stack[vm->stack_size - 1];
                 Word b1 = vm->stack[vm->stack_size - 2];
                 Word result;
                 result.as_i64 = (a1.as_i64 == b1.as_i64) ? 1 : 0;
                 if (push(vm, result) != RTS_OK) {
-                    error_occurred("EQ", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"eq", "Stack Overflow");
                 }
                 break;
             case I_RANDOM_INT:
@@ -697,7 +848,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     Word random;
                     random.as_i64 = min + rand() % (max - min + 1);
                     if (push(vm, random) != RTS_OK) {
-                        error_occurred("RANDOM_INT", "Stack Overflow");
+                        error_occurred(vm->file_path, token.pos,"random_int", "Stack Overflow");
                     }
                     break;
                 }
@@ -713,42 +864,42 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     #endif
 
                     char color[O_DEFAULT_BUFFER_CAPACITY] = {0};
-                    if (strcmp(token.str_value, "red") == 0) {
+                    if (strcmp(token.word.as_str, "red") == 0) {
                         strcpy(color, "\033[31m");
-                    } else if (strcmp(token.str_value, "green") == 0) {
+                    } else if (strcmp(token.word.as_str, "green") == 0) {
                         strcpy(color, "\033[32m");
-                    } else if (strcmp(token.str_value, "yellow") == 0) {
+                    } else if (strcmp(token.word.as_str, "yellow") == 0) {
                         strcpy(color, "\033[33m");
-                    } else if (strcmp(token.str_value, "blue") == 0) {
+                    } else if (strcmp(token.word.as_str, "blue") == 0) {
                         strcpy(color, "\033[34m");
-                    } else if (strcmp(token.str_value, "magenta") == 0) {
+                    } else if (strcmp(token.word.as_str, "magenta") == 0) {
                         strcpy(color, "\033[35m");
-                    } else if (strcmp(token.str_value, "cyan") == 0) {
+                    } else if (strcmp(token.word.as_str, "cyan") == 0) {
                         strcpy(color, "\033[36m");
-                    } else if (strcmp(token.str_value, "white") == 0) {
+                    } else if (strcmp(token.word.as_str, "white") == 0) {
                         strcpy(color, "\033[37m");
-                    } else if (strcmp(token.str_value, "black") == 0) {
+                    } else if (strcmp(token.word.as_str, "black") == 0) {
                         strcpy(color, "\033[30m");
-                    } else if (strcmp(token.str_value, "gray") == 0) {
+                    } else if (strcmp(token.word.as_str, "gray") == 0) {
                         strcpy(color, "\033[90m");
-                    } else if (strcmp(token.str_value, "light_red") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_red") == 0) {
                         strcpy(color, "\033[91m");
-                    } else if (strcmp(token.str_value, "light_green") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_green") == 0) {
                         strcpy(color, "\033[92m");
-                    } else if (strcmp(token.str_value, "light_yellow") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_yellow") == 0) {
                         strcpy(color, "\033[93m");
-                    } else if (strcmp(token.str_value, "light_blue") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_blue") == 0) {
                         strcpy(color, "\033[94m");
-                    } else if (strcmp(token.str_value, "light_magenta") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_magenta") == 0) {
                         strcpy(color, "\033[95m");
-                    } else if (strcmp(token.str_value, "light_cyan") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_cyan") == 0) {
                         strcpy(color, "\033[96m");
-                    } else if (strcmp(token.str_value, "light_white") == 0) {
+                    } else if (strcmp(token.word.as_str, "light_white") == 0) {
                         strcpy(color, "\033[97m");
-                    } else if (strcmp(token.str_value, "reset") == 0) {
+                    } else if (strcmp(token.word.as_str, "reset") == 0) {
                         strcpy(color, "\033[0m");
                     } else {
-                        error_occurred("COLOR", "Invalid Color");
+                        error_occurred(vm->file_path, token.pos,"color", "Invalid Color");
                     }
 
                     printf("%s", color);
@@ -764,8 +915,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_SLEEP:
                 struct timespec req;
-                req.tv_sec = token.int_value.as_i64 / 1000;
-                req.tv_nsec = (token.int_value.as_i64 % 1000) * 1000000;
+                req.tv_sec = token.word.as_i64 / 1000;
+                req.tv_nsec = (token.word.as_i64 % 1000) * 1000000;
                 nanosleep(&req, NULL);
                 break;
 
@@ -774,37 +925,36 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_LT:
                 if (vm->stack_size < 2) {
-                    error_occurred("LT", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"lt", "Stack Underflow");
                 }
                 Word a2 = vm->stack[vm->stack_size - 1];
                 Word b2 = vm->stack[vm->stack_size - 2];
                 Word result2;
                 result2.as_i64 = (b2.as_i64 < a2.as_i64) ? 1 : 0;
                 if (push(vm, result2) != RTS_OK) {
-                    error_occurred("LT", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"lt", "Stack Overflow");
                 }
                 break;
             case I_GT:
                 if (vm->stack_size < 2) {
-                    error_occurred("GT", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"gt", "Stack Underflow");
                 }
                 Word a3 = vm->stack[vm->stack_size - 1];
                 Word b3 = vm->stack[vm->stack_size - 2];
                 Word result3;
                 result3.as_i64 = (b3.as_i64 > a3.as_i64) ? 1 : 0;
                 if (push(vm, result3) != RTS_OK) {
-                    error_occurred("GT", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"gt", "Stack Overflow");
                 }
                 break;
             case I_PUSH_STR:
-                if (push_str(vm, token.str_value) != RTS_OK) {
-                    error_occurred("PUSH_STR", "Stack Overflow");
+                if (push_str(vm, token.word.as_str) != RTS_OK) {
+                    error_occurred(vm->file_path, token.pos,"push", "Stack Overflow");
                 }
                 break;
-
             case I_EXIT_IF:
                 if (vm->stack_size == 0) {
-                    error_occurred("EXIT_IF", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"exit_if", "Stack Underflow");
                 }
                 Word cond = token.exit_if.cond;
                 Word exit_code = token.exit_if.exit_code;
@@ -815,58 +965,58 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
             case I_STR_LEN:
                 if (vm->stack_size == 0) {
-                    error_occurred("STRLEN", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"strlen", "Stack Underflow");
                 }
                 char *str = vm->stack[vm->stack_size - 1].as_str;
                 Word len;
                 len.as_i64 = strlen(str);
 
                 if (push(vm, len) != RTS_OK) {
-                    error_occurred("STRLEN", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"strlen", "Stack Overflow");
                 }
                 break;
             case I_INPUT_STR:
                 char buffer[O_DEFAULT_BUFFER_CAPACITY] = {0};
                 scanf("%1023s", buffer);
                 if (push_str(vm, buffer) != RTS_OK) {
-                    error_occurred("INPUT_STR", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"input_str", "Stack Overflow");
                 }
                 break;
 
             case I_EXECUTE_CMD:
-                system(token.str_value);
+                system(token.word.as_str);
                 break;
             case I_IGNORE:
                 i += 2;
                 break;
             case I_IGNORE_IF:
                 if (vm->stack_size == 0) {
-                    error_occurred("IGNORE_IF", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"ignore_if", "Stack Underflow");
                 }
-                Word cond1 = token.int_value;
+                Word cond1 = token.word;
                 if (vm->stack[vm->stack_size - 1].as_i64 == cond1.as_i64) {
                     i += 2;
                 }
                 break;
             case I_GET:
                 if (vm->stack_size == 0) {
-                    error_occurred("GET", "Stack Underflow");
-                } else if (token.int_value.as_i64 > vm->stack_size) {
-                    error_occurred("GET", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"get", "Stack Underflow");
+                } else if (token.word.as_i64 > vm->stack_size) {
+                    error_occurred(vm->file_path, token.pos,"get", "Stack Overflow");
                 }
                 Word index;
-                index.as_i64 = token.int_value.as_i64;
+                index.as_i64 = token.word.as_i64;
                 if (push(vm, vm->stack[index.as_i64]) != RTS_OK) {
-                    error_occurred("GET", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"get", "Stack Overflow");
                 }
                 break;
             case I_STR_CMP:
                 if (vm->stack_size == 0) {
-                    error_occurred("STRCMP", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"strcmp", "Stack Underflow");
                 }
 
                 char *str1 = vm->stack[vm->stack_size - 1].as_str;
-                char *str2 = token.str_value;
+                char *str2 = token.word.as_str;
 
                 Word strcmpres;
                 strcmpres.as_i64 = strcmp(str1, str2);
@@ -874,7 +1024,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 result4.as_i64 = 0;
                 if (strcmpres.as_str == 0) result4.as_i64 = 1;
                 if (push(vm, result4) != RTS_OK) {
-                    error_occurred("STRCMP", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"strcmp", "Stack Overflow");
                 }
                 break;
 
@@ -882,39 +1032,38 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 Word itp;
                 itp.as_i64 = i;
                 if (push(vm, itp) != RTS_OK) {
-                    error_occurred("PUSH_CURRENT", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"push_current", "Stack Overflow");
                 }
                 break;
             case I_JMP_FS:
                 if (vm->stack_size == 0) {
-                    error_occurred("JMP_FS", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"jmp_fs", "Stack Underflow");
                 }
                 i = vm->stack[vm->stack_size].as_i64;
                 continue;
             case I_BFUNC:
-                if (vm->bfunctions_size < token.int_value.as_i64) {
-                    error_occurred("BFUNC", "Invalid Function index");
+                if (vm->bfunctions_size < token.word.as_i64) {
+                    error_occurred(vm->file_path, token.pos,"bfunc", "Invalid Function index");
                 }
 
-                vm->bfunctions[token.int_value.as_i64](vm);
+                vm->bfunctions[token.word.as_i64](vm);
                 break;
             case I_CAST:
                if (vm->stack_size == 0) {
-                   error_occurred("CAST", "Stack Underflow");
+                   error_occurred(vm->file_path, token.pos,"cast", "Stack Underflow");
                }
-               Word value = vm->stack[vm->stack_size - 1];
-               vm->stack_size--;
-               if (strcmp(token.str_value, "int") == 0) {
+               Word value = pop(vm);
+               if (strcmp(token.word.as_str, "int") == 0) {
                    if (push(vm, value) != RTS_OK) {
-                       error_occurred("CAST", "Stack Overflow");
+                       error_occurred(vm->file_path, token.pos,"cast", "Stack Overflow");
                    }
-               } else if (strcmp(token.str_value, "str") == 0) {
+               } else if (strcmp(token.word.as_str, "str") == 0) {
                    char *str = value.as_str;
                    if (push_str(vm, str) != RTS_OK) {
-                       error_occurred("CAST", "Stack Overflow");
+                       error_occurred(vm->file_path, token.pos,"cast", "Stack Overflow");
                    }
                } else {
-                   error_occurred("CAST", "Invalid Type");
+                   error_occurred(vm->file_path, token.pos,"cast", "Invalid Type");
                }
 
             case I_SEND:
@@ -922,24 +1071,16 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 no_win_support();
                 #else
                 if (vm->stack_size < 1) {
-                    fprintf(stderr, "Stack underflow\n");
-                    exit(1);
+                   error_occurred(vm->file_path, token.pos,"send", "Stack Underflow");
                 }
-
                 Word sockfd = vm->stack[vm->stack_size - 1];
-
-                char *data = token.str_value;
-
+                char *data = token.word.as_str;
                 if (data == NULL) {
-                    fprintf(stderr, "Invalid string data\n");
-                    exit(1);
+                    error_occurred(vm->file_path, token.pos,"send", "Invalid String Data");
                 }
-
                 if (sockfd.as_i64 < 0) {
-                    fprintf(stderr, "Invalid socket descriptor\n");
-                    exit(1);
+                    error_occurred(vm->file_path, token.pos,"send", "Invalid Socket Descriptor");
                 }
-
                 ssize_t result6 = send(sockfd.as_i64, data, strlen(data), 0);
                 if (result6 < 0) {
                     perror("Send failed");
@@ -950,19 +1091,27 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 vm->stack_size -= 1;
                 break;
                 #endif
+            case I_GET_DATE:
+                char date[9];
+                time_t t = time(NULL);
+                struct tm tm = *localtime(&t);
+
+                strftime(date, sizeof(date), "%d:%m:%y", &tm);
+
+                push_str(vm, date);
+                break;
             default:
-                error_occurred("Unknown Instruction", "");
+                error_occurred(vm->file_path, token.pos,"InstError", "Unknown Instruction");
         }
 
     }
     return RTS_OK;
 }
 
+
 // Ovm File description
 // | 16 bytes | ...bytes |
 //    ^
-
-
 //    Magic Number(4byte), OvmFile metadata (12byte)
 RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "rb");
@@ -970,97 +1119,115 @@ RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
         return RTS_ERROR;
     }
 
+    vm->file_path = strdup(filename);
+
     char magic_number[5] = {0};
-    size_t read = fread(magic_number, sizeof(char), 4, file);
-    if (read != 4 || strcmp(magic_number, OVM_MAGIC_NUMBER) != 0) {
-        fclose(file);
-        error_occurred("loading ovm binary", "Invalid Magic Number, try to recompile the orta");
-    }
+    char meta[12] = {0};
+    int version = 0;
 
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file) - 4;
-    fseek(file, 4, SEEK_SET);
-
-    if (file_size % sizeof(Token) != 0) {
+    if (fread(magic_number, sizeof(char), 4, file) != 4 ||
+        strcmp(magic_number, OVM_MAGIC_NUMBER) != 0) {
         fclose(file);
         return RTS_ERROR;
     }
 
-    vm->program.size = file_size / sizeof(Token);
-    fread(vm->program.tokens, sizeof(Token), vm->program.size, file);
+    if (fread(meta, sizeof(char), 12, file) != 12) {
+        fclose(file);
+        return RTS_ERROR;
+    }
 
+    memcpy(&version, meta, sizeof(int));
+    if (version != OVM_VERSION) {
+        fclose(file);
+        return RTS_ERROR;
+    }
+
+    size_t program_size = 0;
+    while (!feof(file)) {
+        Token token = {0};
+        if (fread(&token.inst, sizeof(token.inst), 1, file) != 1) {
+            break;
+        }
+
+        // TODO(#1): Add more instruction handlings (TOGO STRING_HANDLING)
+        if (token.inst == I_PUSH_STR || token.inst == I_PRINT_STR) {
+            size_t str_len;
+            if (fread(&str_len, sizeof(size_t), 1, file) != 1) {
+                fclose(file);
+                return RTS_ERROR;
+            }
+            token.word.as_str = malloc(str_len);
+            if (fread(token.word.as_str, sizeof(char), str_len, file) != str_len) {
+                free(token.word.as_str);
+                fclose(file);
+                return RTS_ERROR;
+            }
+        } else {
+            if (fread(&token.word, sizeof(token.word), 1, file) != 1) {
+                fclose(file);
+                return RTS_ERROR;
+            }
+        }
+
+        if (program_size >= O_DEFAULT_BUFFER_CAPACITY) {
+            fclose(file);
+            return RTS_ERROR;
+        }
+        vm->program.tokens[program_size++] = token;
+    }
+
+    vm->program.size = program_size;
     fclose(file);
     return RTS_OK;
 }
 
 
-RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, char *filename) {
+RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "wb");
-    if (file == NULL) {
+    if (!file) {
         return RTS_ERROR;
     }
 
     const char magic_number[] = OVM_MAGIC_NUMBER;
-    size_t written = fwrite(magic_number, sizeof(char), sizeof(magic_number) - 1, file);
-    if (written != sizeof(magic_number) - 1) {
+    if (fwrite(magic_number, sizeof(char), 4, file) != 4) {
         fclose(file);
         return RTS_ERROR;
     }
-    written = fwrite(vm->program.tokens,
-                           sizeof(Token),
-                           vm->program.size,
-                           file);
-    if (written != vm->program.size) {
+
+    char meta[12] = {0};
+    int version = OVM_VERSION;
+    memcpy(meta, &version, sizeof(int));
+    if (fwrite(meta, sizeof(char), 12, file) != 12) {
         fclose(file);
         return RTS_ERROR;
+    }
+
+    for (size_t i = 0; i < vm->program.size; i++) {
+        Token *token = &vm->program.tokens[i];
+        if (fwrite(&token->inst, sizeof(token->inst), 1, file) != 1) {
+            fclose(file);
+            return RTS_ERROR;
+        }
+        // TODO: Add more instruction handlings (TOGO STRING_HANDLING)
+        if (token->inst == I_PUSH_STR || token->inst == I_PRINT_STR) {
+            size_t str_len = strlen(token->word.as_str) + 1;
+            if (fwrite(&str_len, sizeof(size_t), 1, file) != 1 ||
+                fwrite(token->word.as_str, sizeof(char), str_len, file) != str_len) {
+                fclose(file);
+                return RTS_ERROR;
+            }
+        } else {
+            if (fwrite(&token->word, sizeof(token->word), 1, file) != 1) {
+                fclose(file);
+                return RTS_ERROR;
+            }
+        }
     }
 
     fclose(file);
     return RTS_OK;
 }
 
-char variables[O_DEFAULT_BUFFER_CAPACITY][2][O_DEFAULT_BUFFER_CAPACITY] = {0};
-size_t variable_count = 0;
-
-void push_variable(const char *name, const char *value) {
-    if (variable_count >= O_DEFAULT_BUFFER_CAPACITY) {
-        printf("Error: Variable storage full.\n");
-        return;
-    }
-
-    strncpy(variables[variable_count][0], name, O_DEFAULT_BUFFER_CAPACITY - 1);
-    variables[variable_count][0][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
-
-    strncpy(variables[variable_count][1], value, O_DEFAULT_BUFFER_CAPACITY - 1);
-    variables[variable_count][1][O_DEFAULT_BUFFER_CAPACITY - 1] = '\0';
-
-    variable_count++;
-}
-
-char *get_variable(char *name) {
-    for (size_t i = 0; i < variable_count; i++) {
-        if (strcmp(variables[i][0], name) == 0) {
-            return variables[i][1];
-        }
-    }
-    return "unknown";
-}
-
-void init_variables() {
-    push_variable("orta_version", "1.0"); // TODO: Dont forgot to update
-    #ifdef _WIN32
-        push_variable("os", "windows");
-    #else
-        push_variable("os", "linux");
-    #endif
-}
-
-void toLowercase(char *str) {
-    while (*str) {
-        *str = tolower((unsigned char)*str);
-        str++;
-    }
-}
 
 RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "r");
@@ -1069,12 +1236,23 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         return RTS_ERROR;
     }
 
+    if (!ends_with(filename, ".pdd")) {
+        char *new_filename = strdup(filename);
+        new_filename[strlen(new_filename) - 4] = '\0';
+        vm->file_path = strdup(new_filename);
+    } else {
+        vm->file_path = strdup(filename);
+    }
+
     char line[O_DEFAULT_SIZE];
     size_t program_size = 0;
     Token tokens[O_DEFAULT_BUFFER_CAPACITY];
     int line_count = 0;
+    int token_count = 0;
+
     init_variables();
     while (fgets(line, sizeof(line), file)) {
+        line_count++;
         if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
 
         char instruction[32];
@@ -1089,58 +1267,65 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             return RTS_ERROR;
         }
 
-        toLowercase(instruction);
-        line_count++;
-
+        if (support_uppercase) toLowercase(instruction);
+        token_count++;
         Token token = {0};
         token.inst = -1;
-
-        if (strcmp(instruction, "push") == 0) {
-            token.inst = I_PUSH;
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: PUSH expects an integer: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+        token.word.as_str = malloc(O_DEFAULT_SIZE);
+        token.pos = line_count;
+        if (strcmp(instruction, "stack::push") == 0) {
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str)] = '\0';
+            if (strcmp(token.word.as_str, "No text provided") != 0) {
+                token.inst = I_PUSH_STR;
+            } else {
+                token.inst = I_PUSH;
+                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                    fprintf(stderr, "ERROR: push expects an integer or string: %s\n", line);
+                    fclose(file);
+                    return RTS_ERROR;
+                }
             }
-        }  else if (strcmp(instruction, "add") == 0) {
+        } else if (strcmp(instruction, "math::add") == 0) {
             token.inst = I_ADD;
-        } else if (strcmp(instruction, "sub") == 0) {
+        } else if (strcmp(instruction, "math::sub") == 0) {
             token.inst = I_SUB;
-        } else if (strcmp(instruction, "div") == 0) {
+        } else if (strcmp(instruction, "math::div") == 0) {
             token.inst = I_DIV;
-        } else if (strcmp(instruction, "mul") == 0) {
+        } else if (strcmp(instruction, "math::mul") == 0) {
             token.inst = I_MUL;
-        } else if (strcmp(instruction, "print") == 0) {
-            token.inst = I_PRINT;
-        } else if (strcmp(instruction, "print_str") == 0) {
-             token.inst = I_PRINT_STR;
-
-             strcpy(token.str_value, extract_content(line));
-             token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "dup") == 0) {
+        } else if (strcmp(instruction, "io::print") == 0) {
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str)] = '\0';
+            if (strcmp(token.word.as_str, "No text provided") != 0) {
+                token.inst = I_PRINT_STR;
+            } else {
+                token.inst = I_PRINT;
+            }
+        } else if (strcmp(instruction, "stack::dup") == 0) {
             token.inst = I_DUP;
-        } else if (strcmp(instruction, "jmp") == 0) {
+        } else if (strcmp(instruction, "inst::jmp") == 0) {
             token.inst = I_JMP;
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: JMP expects a line number: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: jmp expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "jmp_ifn") == 0) {
+        } else if (strcmp(instruction, "inst::jmp_ifn") == 0) {
             token.inst = I_JMP_IFN;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
-                fprintf(stderr, "ERROR: JMP_IFN expects a line number: %s", line);
+                fprintf(stderr, "ERROR: jmp_ifn expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "jmp_if") == 0) {
+        } else if (strcmp(instruction, "inst::jmp_if") == 0) {
             token.inst = I_JMP_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
-                fprintf(stderr, "ERROR: JMP_IF expects a line number: %s", line);
+                fprintf(stderr, "ERROR: jmp_if expects a line number: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "drop") == 0) {
+        } else if (strcmp(instruction, "stack::drop") == 0) {
             token.inst = I_DROP;
         }
         else if (strcmp(instruction, "nop") == 0) {
@@ -1149,129 +1334,127 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         else if (strcmp(instruction, "exit") == 0) {
             token.inst = I_EXIT;
 
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: EXIT expects an exit code: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: exit expects an exit code: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
         }
-        else if (strcmp(instruction, "input") == 0) {
+        else if (strcmp(instruction, "io::input") == 0) {
             token.inst = I_INPUT;
         }
-        else if (strcmp(instruction, "file_open") == 0) {
+        else if (strcmp(instruction, "file::open") == 0) {
             token.inst = I_FILE_OPEN;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
         }
-        else if (strcmp(instruction, "file_write") == 0) {
+        else if (strcmp(instruction, "file::write") == 0) {
             token.inst = I_FILE_WRITE;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
         }
-        else if (strcmp(instruction, "file_read") == 0) {
+        else if (strcmp(instruction, "file::read") == 0) {
             token.inst = I_FILE_READ;
-        } else if (strcmp(instruction, "cast_and_print") == 0) {
+        } else if (strcmp(instruction, "io::cprint") == 0) {
             token.inst = I_CAST_AND_PRINT;
-            insecure_function(line_count, "CAST_AND_PRINT", "The latest stack element is casting to char *");
-        } else if (strcmp(instruction, "swap") == 0) {
+            insecure_function(line_count, "cast_and_print", "The latest stack element is casting to char *");
+        } else if (strcmp(instruction, "stack::swap") == 0) {
             token.inst = I_SWAP;
-        } else if (strcmp(instruction, "eq") == 0) {
+        } else if (strcmp(instruction, "stack::eq") == 0) {
             token.inst = I_EQ;
-        } else if (strcmp(instruction, "random_int") == 0) {
+        } else if (strcmp(instruction, "math::random_int") == 0) {
             token.inst = I_RANDOM_INT;
             if (matched < 3 || sscanf(args[0], "%ld", &token.random_int.min) != 1 || sscanf(args[1], "%ld", &token.random_int.max) != 1) {
-                fprintf(stderr, "ERROR: RANDOM_INT expects two integers: %s", line);
+                fprintf(stderr, "ERROR: random_int expects two integers: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "color") == 0) {
+        } else if (strcmp(instruction, "io::color") == 0) {
             token.inst = I_COLOR;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "CLEAR") == 0) {
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
+        } else if (strcmp(instruction, "io::clear") == 0) {
             token.inst = I_CLEAR;
         }
-        else if (strcmp(instruction, "sleep") == 0) {
+        else if (strcmp(instruction, "io::sleep") == 0) {
             token.inst = I_SLEEP;
 
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: Sleep expects ms: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: sleep expects ms: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "clear_stack") == 0) {
+        } else if (strcmp(instruction, "stack::clear") == 0) {
             token.inst = I_CLEAR_STACK;
-        } else if (strcmp(instruction, "gt") == 0) {
+        } else if (strcmp(instruction, "stack::gt") == 0) {
             token.inst = I_GT; // Greater than
-        } else if (strcmp(instruction, "lt") == 0) {
+        } else if (strcmp(instruction, "stack::lt") == 0) {
             token.inst = I_LT; // Less then
-        } else if (strcmp(instruction, "push_str") == 0) {
-            token.inst = I_PUSH_STR;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
         } else if (strcmp(instruction, "exit_if") == 0) {
             token.inst = I_EXIT_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.exit_if.exit_code) != 1 || sscanf(args[1], "%ld", &token.exit_if.cond) != 1) {
-                fprintf(stderr, "ERROR: EXIT_IF expects an exit code and condition: %s", line);
+                fprintf(stderr, "ERROR: exit_if expects an exit code and condition: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "strlen") == 0) {
-            insecure_function(line_count, "STRLEN", "if the latest element is not a char * it will throw an segfault");
+        } else if (strcmp(instruction, "stack::strlen") == 0) {
+            insecure_function(line_count, "strlen", "if the latest element is not a char * it will throw an segfault");
             token.inst = I_STR_LEN;
-        } else if (strcmp(instruction, "input_str") == 0) {
+        } else if (strcmp(instruction, "io::input_str") == 0) {
             token.inst = I_INPUT_STR;
-        } else if (strcmp(instruction, "execute_cmd") == 0) {
+        } else if (strcmp(instruction, "io::execute") == 0) {
             token.inst = I_EXECUTE_CMD;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "ignore") == 0) {
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
+        } else if (strcmp(instruction, "inst::ignore") == 0) {
             token.inst = I_IGNORE;
-        } else if (strcmp(instruction, "ignore_if") == 0) {
+        } else if (strcmp(instruction, "inst::ignore_if") == 0) {
             token.inst = I_IGNORE_IF;
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: IGNORE_IF expects cond: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: ignore_if expects cond: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "get") == 0) {
+        } else if (strcmp(instruction, "stack::get") == 0) {
             token.inst = I_GET;
 
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: GET expects a stack index: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: get expects a stack index: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "strcmp") == 0) {
+        } else if (strcmp(instruction, "stack::strcmp") == 0) {
             token.inst = I_STR_CMP;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
-        } else if (strcmp(instruction, "push_current") == 0) {
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
+        } else if (strcmp(instruction, "inst::current") == 0) {
             token.inst = I_PUSH_CURRENT_INST;
-        } else if (strcmp(instruction, "jmp_fs") == 0) {
+        } else if (strcmp(instruction, "inst::jmp_fs") == 0) {
             token.inst = I_JMP_FS;
-        } else if (strcmp(instruction, "var") == 0) {
+        } else if (strcmp(instruction, "orta::var") == 0) {
             token.inst = I_PUSH_STR;
             char variable[O_DEFAULT_BUFFER_CAPACITY];
             strcpy(variable, extract_content(line));
             variable[strlen(variable) + 1] = '\0';
-            strcpy(token.str_value, get_variable(variable));
-        } else if (strcmp(instruction, "bfunc") == 0) {
+            strcpy(token.word.as_str, get_variable(variable));
+        } else if (strcmp(instruction, "c::bfunc") == 0) {
             token.inst = I_BFUNC;
 
-            if (matched < 2 || sscanf(args[0], "%ld", &token.int_value) != 1) {
-                fprintf(stderr, "ERROR: BFUNC expects a function: %s", line);
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: bfunc expects a function: %s", line);
                 fclose(file);
                 return RTS_ERROR;
             }
-        } else if (strcmp(instruction, "cast") == 0) {
+        } else if (strcmp(instruction, "stack::cast") == 0) {
             token.inst = I_CAST;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
         } else if (strcmp(instruction, "net::send") == 0) {
             token.inst = I_SEND;
-            strcpy(token.str_value, extract_content(line));
-            token.str_value[strlen(token.str_value) + 1] = '\0';
+            strcpy(token.word.as_str, extract_content(line));
+            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
+        } else if (strcmp(instruction, "time::today") == 0) {
+            token.inst = I_GET_DATE;
         }
 
         if (token.inst == -1) {
@@ -1295,49 +1478,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     return RTS_OK;
 }
 
-
-bool ends_with(const char *string, const char *suffix) {
-    size_t string_len = strlen(string);
-    size_t suffix_len = strlen(suffix);
-
-    if (suffix_len > string_len) return false;
-
-    return strncmp(string + string_len - suffix_len, suffix, suffix_len) == 0;
-}
-
-void expand_tilde(const char *path, char *expanded_path, size_t max_length) {
-    if (path[0] == '~') {
-        #ifdef _WIN32
-            const char *home = getenv("USERPROFILE");
-        #else
-            const char *home = getenv("HOME");
-        #endif
-        if (home) {
-            snprintf(expanded_path, max_length, "%s%s", home, path + 1);
-        } else {
-            fprintf(stderr, "ERROR: HOME environment variable is not set\n");
-            strncpy(expanded_path, path, max_length);
-        }
-    } else {
-        strncpy(expanded_path, path, max_length);
-    }
-}
-
 // DONE: Make it os independent
-static char include_paths[10][O_DEFAULT_SIZE] = {".", "~/.orta"};
-static size_t include_paths_count = 2;
-static char macros[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
-static size_t macros_count = 0;
-
-static int is_preprocessor_defined(char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE], size_t preprocessors_count,const char *name) {
-    for (size_t i = 0; i < preprocessors_count; i++) {
-        if (strcmp(preprocessors[i][0], name) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], int target) {
     char preprocessed_filename[O_DEFAULT_SIZE];
     static char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
@@ -1397,7 +1538,12 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                 char name[O_DEFAULT_SIZE], value[O_DEFAULT_SIZE];
                 if (sscanf(line + 7, "%s %s", name, value) == 2) {
                     strncpy(preprocessors[preprocessors_count][0], name, O_DEFAULT_SIZE);
-                    strncpy(preprocessors[preprocessors_count][1], value, O_DEFAULT_SIZE);
+                    char *strext = extract_content(line+8);
+                    if (strcmp(strext, "No text provided") == 0) {
+                        strncpy(preprocessors[preprocessors_count][1], value, O_DEFAULT_SIZE);
+                    } else {
+                        strncpy(preprocessors[preprocessors_count][1], strext, O_DEFAULT_SIZE);
+                    }
                     preprocessors_count++;
                 } else if (sscanf(line + 7, "%s", name) == 1) {
                     strncpy(preprocessors[preprocessors_count][0], name, O_DEFAULT_SIZE);
@@ -1408,7 +1554,6 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     fprintf(stderr, "WARNING: Malformed #define in line: %s\n", line);
                 }
             }
-
             if (strncmp(line + 1, "ifdef", 5) == 0) {
                 char name[O_DEFAULT_SIZE];
                 if (sscanf(line + 6, "%s", name) == 1) {
@@ -1418,7 +1563,6 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     fprintf(stderr, "WARNING: Malformed #ifdef in line: %s\n", line);
                 }
             }
-
             if (strncmp(line + 1, "ifndef", 6) == 0) {
                 char name[O_DEFAULT_SIZE];
                 if (sscanf(line + 7, "%s", name) == 1) {
@@ -1440,9 +1584,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                 skip_section = 0;
                 continue;
             }
-
             // REMOVED #var because it dont works if you run the program as .ovm
-
             if (strncmp(line + 1, "macro", 5) == 0) {
                 char name[O_DEFAULT_SIZE];
                 char value[O_DEFAULT_BUFFER_CAPACITY] = "";
@@ -1591,15 +1733,6 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
     fclose(output_file);
 
     return RTS_OK;
-}
-
-void OrtaVM_add_include_path(const char *path) {
-    if (include_paths_count < 10) {
-        strncpy(include_paths[include_paths_count], path, O_DEFAULT_SIZE);
-        include_paths_count++;
-    } else {
-        fprintf(stderr, "ERROR: Maximum number of include paths reached\n");
-    }
 }
 
 
