@@ -9,8 +9,12 @@
 # INPUT_STR
 # CAST_AND_PRINT
 
+stack::push 100
+stack::push 2
+stack::push "Hello, World!"
 
-PRINT_STR "Hello, World!\n"
-
+# time::today
+# io::cprint
+# stack::drop
 # by using a build script you cannot use exit functions, otherwise the build script dont will work
 # sys::success()

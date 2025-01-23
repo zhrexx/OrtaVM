@@ -1,41 +1,41 @@
 #ifdef OS_WINDOWS
-COLOR "red"
-PRINT_STR "ERROR: inet.horta is currently not supported for Windows!"
-COLOR "reset"
-EXIT 1
+io::color "red"
+io::print "ERROR: inet.horta is currently not supported for Windows!"
+io::color "reset"
+exit 1
 #endif
 
 #macro net::socket() {
-    BFUNC 0
+    c::bfunc 0
 }
 
 #macro net::bind() {
-    BFUNC 1
+    c::bfunc 1
 }
 
 #macro net::listen() {
-    BFUNC 2
+    c::bfunc 2
 }
 
 #macro net::accept() {
-    BFUNC 3
+    c::bfunc 3
 }
 
 #macro net::connect() {
-    BFUNC 4
+    c::bfunc 4
 }
 
 #macro net::send() {
-    BFUNC 5
+    c::bfunc 5
 }
 #macro net::recv() {
-    BFUNC 6
+    c::bfunc 6
 }
 
 #macro net::close() {
-    BFUNC 7
+    c::bfunc 7
 }
 
 #macro net::set_opt() {
-    BFUNC 8
+    c::bfunc 8
 }

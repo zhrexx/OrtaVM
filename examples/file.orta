@@ -1,7 +1,7 @@
-FILE_OPEN "FILE PATH"
+file::open "test.txt"
 
-FILE_WRITE "SOME TEXT"
+file::write "SOME TEXT"
 
 # !Call all write function before it otherway it will erase the FILE pointer and you will to reopen it
-FILE_READ
-CAST_AND_PRINT
+file::read
+io::cprint

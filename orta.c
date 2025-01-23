@@ -1,5 +1,20 @@
 #include "orta.h"
 
+void usage(char *program_name) {
+    fprintf(stderr, "| OrtaVM\n", program_name);
+    fprintf(stderr, "| Usage: %s <orta_code_file.orta/orta_vm_file.ovm> <ovm_output.ovm/deovm_output.orta> [flags]\n", program_name);
+    fprintf(stderr, "|> Flags:\n");
+    fprintf(stderr, "|    --build-only          Build only without execution.\n");
+    fprintf(stderr, "|    --show-warnings       Show warnings (sets warning level to 1).\n");
+    fprintf(stderr, "|    --dump                Dumps the stack\n");
+    fprintf(stderr, "|    -l <limit>            Set limit value. (Default: 1000)\n");
+    fprintf(stderr, "|    -i <path>             Add a include path (U can use ~ for home)\n");
+    fprintf(stderr, "|    --target <target>     Set an compilation target (windows|posix)\n");
+    fprintf(stderr, "|    --support=<feature>   Enables a feature\n");
+    fprintf(stderr, "|> Features:");
+    fprintf(stderr, "|    uppercase             Enables uppercase Instructions\n");
+}
+
 int main(int argc, char **argv) {
     OrtaVM vm = {0};
     int build_only = 0;
@@ -7,15 +22,10 @@ int main(int argc, char **argv) {
     int orta_argc = 0;
     int is_orta_args = 0;
     int dump = 0;
+    int test = 0;
     int target = 0;
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <orta_code_file.orta/orta_vm_file.ovm> [ovm_output.ovm]\n", argv[0]);
-        fprintf(stderr, "  --build-only      Build only without execution.\n");
-        fprintf(stderr, "  --show-warnings   Show warnings (sets warning level to 1).\n");
-        fprintf(stderr, "  -l <limit>        Set limit value. (Default: 1000)\n");
-        fprintf(stderr, "  --dump            Dumps the stack\n");
-        fprintf(stderr, "  -i <path>         Add a include path (U can use ~ for home)\n");
-        fprintf(stderr, "  --target <target> Set an compilation target (1=Windows|2=Posix)\n");
+        usage(argv[0]);
         fprintf(stderr, "ERROR: No input file provided.\n");
         return 1;
     }
@@ -41,6 +51,16 @@ int main(int argc, char **argv) {
              }
          } else if (strcmp(argv[i], "--dump") == 0) {
             dump = 1;
+         } else if (strcmp(argv[i], "--test") == 0) {
+            test = 1;
+         } else if (strncmp(argv[i], "--support=", 10) == 0) {
+            char *word = strchr(argv[i], '=') + 1;
+            if (strcmp(word, "uppercase") == 0) {
+                support_uppercase = 1;
+            } else {
+                fprintf(stderr, "ERROR: Invalid value for -support option.\n");
+                return 1;
+            }
          } else if (strcmp(argv[i], "-i") == 0) {
             char *path;
             if (i + 1 < argc) {
@@ -116,6 +136,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Execution Error: %s\n", error_to_string(status));
         return 1;
     }
+
+    // if (test) ;
 
     if (dump) OrtaVM_dump(&vm);
 

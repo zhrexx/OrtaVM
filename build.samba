@@ -8,8 +8,21 @@ default:
     compile("orta.c", "vm");
     compile("deovm.c", "deovm");
     s_command("cp std/* ~/.orta/");
+    # convert_to_make();
 
 windows:
     s_command("x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
     s_command("x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
     s_command("wine build.cmd");
+
+examples:
+    s_command("./build/vm examples/fib.orta test.ovm");
+    s_command("./build/vm examples/file.orta test.ovm");
+    s_command("./build/vm examples/for.orta test.ovm");
+    s_command("./build/vm examples/functions.orta test.ovm");
+    s_command("./build/vm examples/lt_gt.orta test.ovm");
+    s_command("./build/vm examples/math.orta test.ovm");
+    s_command("./build/vm examples/os.orta test.ovm");
+    s_command("./build/vm examples/password_game.orta test.ovm");
+    s_command("./build/vm examples/stack.orta test.ovm");
+    s_command("./build/vm examples/terminal.orta test.ovm");

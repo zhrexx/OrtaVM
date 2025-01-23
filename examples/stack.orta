@@ -1,21 +1,18 @@
-PUSH 10
-PUSH 100
+stack::push 10
+stack::push 100
 # Expected Output: 100
-PRINT
-SWAP
+io::print
+stack::swap
 # Expected Output: 10
-PRINT
-DROP
+io::print
+stack::drop
 # Expected Output: 100
-PRINT
-
+io::print
 # Dont should jump when jumped error occurred
-JMP_IFN 0 100
-
-
-DUP
+inst::jmp_ifn 0 100
+stack::dup
 # Expected Output: 100
-PRINT
-DROP
+io::print
+stack::drop
 # Expected Output: 100
-PRINT
+io::print

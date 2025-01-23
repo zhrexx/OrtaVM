@@ -1,8 +1,8 @@
-INPUT
+io::input
 # Expected Output: input value
-PRINT
-DROP
+io::print
+stack::drop
 
 # CAST_AND_PRINT example in file.orta (due unusability in this example)
 
-PRINT_STR "Test String"
+io::print "Test String"

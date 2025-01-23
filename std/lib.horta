@@ -4,12 +4,12 @@
 
 # Macros
 #macro sys::success() {
-    EXIT EXIT_SUCCESS
+    exit EXIT_SUCCESS
 }
 
 # NOTE: () does nothing, its here because its stylish and the prefix also :)
 #macro sys::failure() {
-    EXIT EXIT_FAILURE
+    exit EXIT_FAILURE
 }
 
 #ifdef OS_WINDOWS

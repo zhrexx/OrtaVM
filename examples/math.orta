@@ -1,23 +1,23 @@
 # Plus
-PUSH 1
-PUSH 1
-ADD
+stack::push 1
+stack::push 1
+math::add
 # Output: 2
-PRINT
+io::print
 # Minus
-PUSH 2
-SUB
+stack::push 2
+math::sub
 # Output: 0
-PRINT
-DROP
+io::print
+stack::drop
 # 10*3
-PUSH 10
-PUSH 3
-MUL
+stack::push 10
+stack::push 3
+math::mul
 # Output: 30
-PRINT
+io::print
 # Division
-PUSH 10
-DIV
+stack::push 10
+math::div
 # Output: 3
-PRINT
+io::print

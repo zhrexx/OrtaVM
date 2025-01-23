@@ -13,6 +13,7 @@
 
 // GLOBAL TODOS:
 // TODO: Add more functions
+// TODO: Add support for push value evaluation (stack::push 1+1-1)
 
 // SOMETIME TODO:
 // TODO: Add Graphics and Audio libraries
@@ -34,9 +35,7 @@
 //---------------------------------------------------------------------------------------------------------------------------------
 
 // Changelog:
-// Combined push and push_str (use push)
-// Combined print and print_str (use print)
-// print allows to get items from stack using $1=stack top or $2=second item on stack top
+
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -650,6 +649,12 @@ void init_bfuncs(OrtaVM *vm) {
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
+#define CHECK_STACK(vm, count, token, op, reason) \
+        if (vm->stack_size < count) { \
+            error_occurred(vm->file_path, token.pos, op, reason); \
+            return RTS_ERROR; \
+        }
+
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     init_bfuncs(vm);
     Program program = vm->program;
@@ -680,9 +685,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
                 break;
             case I_MUL:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"mul", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "mul", "Stack Underflow");
+
                 Word a = pop(vm);
                 Word b = pop(vm);
                 if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
@@ -690,9 +694,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
                 break;
             case I_DIV:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"div", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "div", "Stack Underflow");
                 Word c = pop(vm);
                 Word d = pop(vm);
                 if (d.as_i64 == 0) {
@@ -821,17 +823,15 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
 
             case I_SWAP:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"swap", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "swap", "Stack Underflow");
+
                 Word temp = vm->stack[vm->stack_size - 1];
                 vm->stack[vm->stack_size - 1] = vm->stack[vm->stack_size - 2];
                 vm->stack[vm->stack_size - 2] = temp;
                 break;
             case I_EQ:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"eq", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "eq", "Stack Underflow");
+
                 Word a1 = vm->stack[vm->stack_size - 1];
                 Word b1 = vm->stack[vm->stack_size - 2];
                 Word result;
@@ -924,9 +924,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 vm->stack_size = 0;
                 break;
             case I_LT:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"lt", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "lt", "Stack Underflow");
+
                 Word a2 = vm->stack[vm->stack_size - 1];
                 Word b2 = vm->stack[vm->stack_size - 2];
                 Word result2;
@@ -936,9 +935,8 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
                 break;
             case I_GT:
-                if (vm->stack_size < 2) {
-                    error_occurred(vm->file_path, token.pos,"gt", "Stack Underflow");
-                }
+                CHECK_STACK(vm, 2, token, "gt", "Stack Underflow");
+
                 Word a3 = vm->stack[vm->stack_size - 1];
                 Word b3 = vm->stack[vm->stack_size - 2];
                 Word result3;

@@ -1,11 +1,11 @@
 # for loop
-PUSH 0
-NOP
-PUSH 1
-ADD
-PRINT
+stack::push 0
+nop
+stack::push 1
+math::add
+io::print
 # While latest element != 10 Jump to token 1 (NOP)
-JMP_IFN 1 10
+inst::jmp_ifn 1 10
 # Drop 10 if not needed
-DROP
+stack::drop
 

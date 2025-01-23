@@ -1,16 +1,16 @@
 #macro fib_() {
-JMP 1
-NOP
-NOP
-NOP
-PUSH 0
-PUSH 1
-NOP
-DUP
-DUP
-ADD
-PRINT
-JMP_IFN 6 0
+    inst::jmp 1
+    nop
+    nop
+    nop
+    stack::push 0
+    stack::push 1
+    nop
+    stack::dup
+    stack::dup
+    math::add
+    io::print
+    inst::jmp_ifn 6 0
 }
 
 fib_()
