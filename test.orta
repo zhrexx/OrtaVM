@@ -10,8 +10,7 @@
 # CAST_AND_PRINT
 
 stack::push 100
-stack::push 2
-stack::push "Hello, World!"
+io::print
 
 # time::today
 # io::cprint

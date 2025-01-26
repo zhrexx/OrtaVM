@@ -5,9 +5,10 @@
 
 // Goals of OrtaVM:
 // - High Performance             | Fast execution speed                                                      | DONE
-// - Small Size                   | We wanna make the binaries very small                                     | Expected to be fixed in 1.4
+// - Small Size                   | We wanna make the binaries very small                                     | DONE
 // - Cross Platform               | You can run the code on MacOS, Linux, Windows and others                  | DONE
 // - Good Error Handling          | Informative Error messages                                                | DONE
+// - Compiled                     | Allows to compile to a static executable                                  | DONE
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -81,65 +82,51 @@ typedef enum {
 } RTStatus;
 
 typedef enum {
-    I_NOP,            // Used to jmp
-    I_IGNORE,         // Skips next instruction
-    I_IGNORE_IF,      // Skips next instruction if cond ==
-
-    // Stack
-    I_PUSH,           // Push an number to stack
-    I_PUSH_STR,       // Push a string to stack
-    I_DROP,           // Drops last item
-    I_JMP,            // JMPs to given index
-    I_JMP_IF,         // JMP to given index while == cond
-    I_JMP_IFN,         // JMP to given index while != cond
-    I_DUP,            // Duplicates last item
-    I_SWAP,           // Swaps last 2 elements
-    I_EQ,             // returns 1 if the latest and second item equals
-    I_LT,             // Less than (returns 1 if less else 0)
-    I_GT,             // Greater that (returns 1 if greater else 0)
-    I_GET,            // Gets an item at given index
-
-    I_CLEAR_STACK,    // Clears stack
-
-    // Math
-    I_ADD,            // +
-    I_SUB,            // -
-    I_MUL,            // *
-    I_DIV,            // /
-
-    // Syscall
-    I_EXIT,           // Exit with given code
-    I_EXIT_IF,        // Exit with given code if == cond
-
-    // Functions
-    I_STR_LEN,        // Pushes the len of string out of stack to the stack
-    I_STR_CMP,         // Compare 2 strings (one out stack, one out stack)
-
-    // Terminal
-    I_INPUT,          // Read input from stdin (ld)
-    I_INPUT_STR,      // Read input from stdin (char *)
-    I_PRINT,          // For Ints
-    I_CAST_AND_PRINT, // Casting Ptr to char * and print
-    I_PRINT_STR,      // Print string
-    I_COLOR,          // Change Output Color
-    I_CLEAR,          // Clear Terminal
-    I_SLEEP,          // Sleep for x ms
-    I_EXECUTE_CMD,    // Allows to execute an command
-
-    // File
-    I_FILE_OPEN,      // Pushes FILE * to the stack
-    I_FILE_WRITE,     // Writes a given text to file (appends)
-    I_FILE_READ,      // Reads a file and pushes it to the stack
-
-    // Some functions
-    I_RANDOM_INT,     // Pushes an random int to stack
+    I_NOP,
+    I_IGNORE,
+    I_IGNORE_IF,
+    I_PUSH,
+    I_PUSH_STR,
+    I_DROP,
+    I_JMP,
+    I_JMP_IF,
+    I_JMP_IFN,
+    I_DUP,
+    I_SWAP,
+    I_EQ,
+    I_LT,
+    I_GT,
+    I_GET,
+    I_CLEAR_STACK,
+    I_ADD,
+    I_SUB,
+    I_MUL,
+    I_DIV,
+    I_EXIT,
+    I_EXIT_IF,
+    I_STR_LEN,
+    I_STR_CMP,
+    I_INPUT,
+    I_INPUT_STR,
+    I_PRINT,
+    I_CAST_AND_PRINT,
+    I_PRINT_STR,
+    I_COLOR,
+    I_CLEAR,
+    I_SLEEP,
+    I_EXECUTE_CMD,
+    I_FILE_OPEN,
+    I_FILE_WRITE,
+    I_FILE_READ,
+    I_RANDOM_INT,
     I_PUSH_CURRENT_INST,
-    I_JMP_FS,          // JMP to given index from the stack
-    I_BFUNC,           // Builtin Functions (C functions)
+    I_JMP_FS,
+    I_BFUNC,
     I_CAST,
-    I_SEND,            // Send a message to a socket
+    I_SEND,
+    I_GET_DATE,
 
-    I_GET_DATE,        // Pushes current date to stack (%d:%m:%y)
+    INSTRUCTION_COUNT
 } Instruction;
 
 typedef enum {
@@ -252,7 +239,6 @@ void OrtaVM_dump(OrtaVM *vm) {
         printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
     }
 }
-
 
 void no_win_support() {
     #ifdef _WIN32
@@ -663,6 +649,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
         iterations++;
         Token token = program.tokens[i];
         vm->program.current_token = i;
+        assert(INSTRUCTION_COUNT == 43);
         switch (token.inst) {
             case I_PUSH:
                 if (push(vm, token.word) != RTS_OK) {
@@ -1510,6 +1497,11 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
     } else {
         fprintf(stderr, "ERROR: Invalid target\n");
         return RTS_ERROR;
+    }
+    if (support_uppercase == 1) {
+        strncpy(preprocessors[preprocessors_count][0], "FEATURE_UPPERCASE", O_DEFAULT_SIZE);
+        strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
+        preprocessors_count++;
     }
 
     snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%s.ppd", filename);

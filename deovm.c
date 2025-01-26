@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
     }
     char *output = argv[2];
     FILE *f = fopen(output, "w");
+    assert(INSTRUCTION_COUNT == 43);
     for (size_t i = 0; i < vm.program.size; i++) {
         Token token = vm.program.tokens[i];
         switch (token.inst) {
