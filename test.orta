@@ -8,11 +8,15 @@
 # PRINT
 # INPUT_STR
 # CAST_AND_PRINT
-main:
+
+test:
+io::print "Hillo"
+ret
+
+_entry:
 io::print "Hello, World!\n"
-stack::push main
-
-
+stack::push 0
+call test
 
 
 

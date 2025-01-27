@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
     }
     char *output = argv[2];
     FILE *f = fopen(output, "w");
-    assert(INSTRUCTION_COUNT == 43);
+    assert(INSTRUCTION_COUNT == 45);
     for (size_t i = 0; i < vm.program.size; i++) {
         Token token = vm.program.tokens[i];
         switch (token.inst) {
@@ -147,6 +147,10 @@ int main(int argc, char **argv) {
            case I_GET_DATE:
                 fprintf(f, "time::today\n");
                 break;
+           case I_CALL:
+                fprintf(f, "call %d\n", token.word.as_i64);
+           case I_RET:
+                fprintf(f, "ret\n");
         }
     }
     fclose(f);

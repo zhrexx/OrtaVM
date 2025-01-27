@@ -16,7 +16,6 @@
 // TODO: Add more functions                                                 | Currently No Ideas
 // TODO: Add Memory | Allow to alloc memory free and realloc                | also add pointers & and allow casting
 // TODO: Add support for push value evaluation                              | stack::push 1+1-1*2/2
-// TODO: Add Entry Point (_entry)                                           | Cool name yeah? :)
 
 // SOMETIME TODOS:
 // TODO: Add Graphics and Audio libraries                                   | miniaudio is good
@@ -34,7 +33,7 @@
 // DONE: Optimize the OVM files                                             | Writing not all bytes(it were 1024 before and all were written to file also if they contained 0) to file and allocating memory at runtime
 // DONE: Second or Three pass compiler                                      | First Pass = Label Resolving Second pass actual parsing
 // DONE: Fix Labels                                                         | Fixed
-
+// DONE: Add Entry Point (_entry)                                           | Cool name yeah? :)
 
 // IDEAS:
 // IDEA: I think it were be cool to add support to open .so or .a files and call a function
@@ -130,7 +129,8 @@ typedef enum {
     I_CAST,
     I_SEND,
     I_GET_DATE,
-
+    I_CALL,
+    I_RET,
     INSTRUCTION_COUNT
 } Instruction;
 
@@ -231,7 +231,7 @@ void insecure_function(int line_count, char *func, char *reason) {
     }
 }
 void error_occurred(char *file, int line_count, char *token, char *reason) {
-    fprintf(stderr, "\033[31m%s:%d: Token <%s>: %s\033[0m\n", file, line_count, token, reason);
+    fprintf(stderr, "\033[31m%s:%d: <%s>: %s\033[0m\n", file, line_count, token, reason);
     exit(0);
 }
 
@@ -463,6 +463,14 @@ bool check_label(OrtaVM *vm, char *label_name) {
         }
     }
     return false;
+}
+int64_t get_label_addr(OrtaVM *vm, char *label_name) {
+    for (int i = 0; i < vm->labels_size; i++) {
+        if (strcmp(vm->labels[i].name, label_name) == 0) {
+            return vm->labels[i].addr;
+        }
+    }
+    return -1;
 }
 
 RTStatus push(OrtaVM *vm, Word value) {
@@ -715,7 +723,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
         iterations++;
         Token token = program.tokens[i];
         vm->program.current_token = i;
-        assert(INSTRUCTION_COUNT == 43);
+        assert(INSTRUCTION_COUNT == 45);
         switch (token.inst) {
             case I_PUSH:
                 if (push(vm, token.word) != RTS_OK) {
@@ -1151,6 +1159,23 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
                 push_str(vm, date);
                 break;
+            case I_CALL:
+                Word current_instruction;
+                current_instruction.as_i64 = i;
+                vm->orta_stack[vm->orta_stack_size++] = current_instruction;
+
+                if (token.word.as_i64 < 0 || token.word.as_i64 > program.size) {
+                    error_occurred(vm->file_path, token.pos,"call", "Stack Underflow");
+                }
+                i = token.word.as_i64;
+                continue;
+            case I_RET:
+                if (vm->orta_stack_size == 0) {
+                    error_occurred(vm->file_path, token.pos, "ret", "Stack Underflow");
+                }
+                i = vm->orta_stack[--vm->orta_stack_size].as_i64;
+                break;
+
             default:
                 error_occurred(vm->file_path, token.pos,"InstError", "Unknown Instruction");
         }
@@ -1313,16 +1338,26 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         }
         token_count++;
     }
-    // TODO: Add proper _entry: if(!check_label(vm, "_entry")) {
-    // TODO: Add proper _entry:     error_occurred(vm->file_path, 0, "Checking Entry Label", "No _entry label found\n");
-    // TODO: Add proper _entry:     fclose(file);
-    // TODO: Add proper _entry:     return RTS_ERROR;
-    // TODO: Add proper _entry: }
+
+    // DONE: _entry
+    if(!check_label(vm, "_entry")) {
+        error_occurred(vm->file_path, 0, "Checking Entry Label", "No _entry label found\n");
+        fclose(file);
+        return RTS_ERROR;
+    }
+
+    Token _entry_label = {0};
+    _entry_label.inst = I_JMP;
+    _entry_label.word.as_i64 = get_label_addr(vm, "_entry");
+    _entry_label.pos = 0;
+    tokens[program_size++] = _entry_label;
+
 
     rewind(file);
     init_variables();
     token_count = 0;
     line_count = 0;
+
     // Second pass
     while (fgets(line, sizeof(line), file)) {
         line_count++;
@@ -1532,6 +1567,15 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
         } else if (strcmp(instruction, "time::today") == 0) {
             token.inst = I_GET_DATE;
+        } else if (strcmp(instruction, "call") == 0) {
+            token.inst = I_CALL;
+            if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
+                fprintf(stderr, "ERROR: call expects a label or line number: %s", line);
+                fclose(file);
+                return RTS_ERROR;
+            }
+        } else if (strcmp(instruction, "ret") == 0) {
+            token.inst = I_RET;
         }
 
         if (token.inst == -1) {
