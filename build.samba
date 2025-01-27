@@ -22,17 +22,9 @@ windows:
 # Compile all examples
 examples:
     s_command("./build/vm examples/fib.orta test.ovm");
-    s_command("./build/vm examples/file.orta test.ovm");
-    s_command("./build/vm examples/for.orta test.ovm");
-    s_command("./build/vm examples/functions.orta test.ovm");
-    s_command("./build/vm examples/lt_gt.orta test.ovm");
-    s_command("./build/vm examples/math.orta test.ovm");
-    s_command("./build/vm examples/os.orta test.ovm");
     s_command("./build/vm examples/password_game.orta test.ovm");
-    s_command("./build/vm examples/stack.orta test.ovm");
-    s_command("./build/vm examples/terminal.orta test.ovm");
-
-
+    s_command("./build/vm examples/funny_example.orta test.ovm -l 20");
+    s_command("rm examples/*.ppd");
 test_asm:
     s_command("samba");                                         # Update all (vm, deovm, oto64)
     s_command("./build/vm test.orta test.ovm --build-only");    # Updating the orta file

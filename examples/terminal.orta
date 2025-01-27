@@ -1,8 +1,0 @@
-io::input
-# Expected Output: input value
-io::print
-stack::drop
-
-# CAST_AND_PRINT example in file.orta (due unusability in this example)
-
-io::print "Test String"

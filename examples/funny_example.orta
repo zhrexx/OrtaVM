@@ -1,0 +1,7 @@
+_entry:
+    stack::push 2
+    stack::push 3
+.loop:
+    stack::swap
+    io::print
+    inst::jmp .loop

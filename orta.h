@@ -14,10 +14,9 @@
 
 // GLOBAL TODOS:
 // TODO: Add more functions                                                 | Currently No Ideas
-// TODO: Add Memory | Allow to alloc memory free and realloc                | also add pointers & and allow casting
-// TODO: Add support for push value evaluation                              | stack::push 1+1-1*2/2
 
 // SOMETIME TODOS:
+// TODO: Add Memory | Allow to alloc memory free and realloc                | also add pointers & and allow casting
 // TODO: Add Graphics and Audio libraries                                   | miniaudio is good
 // TODO: Renew deovm                                                        | Some instructions are in old form
 // TODO: Add a syscall inst                                                 | abstraction layer: int syscall(int syscall, int arg1, int arg2);
@@ -37,6 +36,7 @@
 
 // IDEAS:
 // IDEA: I think it were be cool to add support to open .so or .a files and call a function
+// IDEA: Add support for push value evaluation | stack::push 1+1-1*2/2
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -51,6 +51,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
@@ -68,6 +69,8 @@
 #define O_DEFAULT_BUFFER_CAPACITY 1024
 #define O_DEFAULT_SIZE 256
 #define O_COMMENT_SYMBOL '#'
+#define O_ENTRY "_entry"
+
 //---
 #define OVM_MAGIC_NUMBER "OVM1"
 #define OVM_VERSION 1
@@ -134,12 +137,6 @@ typedef enum {
     INSTRUCTION_COUNT
 } Instruction;
 
-typedef enum {
-    T_INT,
-    T_STR,
-    T_PTR,
-} Type;
-
 typedef union {
     int64_t as_i64;
     char *as_str;
@@ -169,7 +166,6 @@ typedef struct {
     };
     int pos;
 } Token;
-
 typedef struct {
     Token tokens[O_DEFAULT_BUFFER_CAPACITY];
     size_t current_token;
@@ -181,25 +177,30 @@ typedef struct {
     int64_t addr;
 } Label;
 
+// Use char * with static memory | for saving ovm file | it will write address if not static array
+typedef struct {
+    char magic[4];
+    int version;
+} OrtaMeta;
+
 typedef struct OrtaVM OrtaVM;
 typedef void (*BFunc)(OrtaVM*);
-
+// GOTO structs
 struct OrtaVM {
-    Word stack[O_STACK_CAPACITY];
-    size_t stack_size;
+    char *file_path;                         // Orta File Path used in error_occurred
+    OrtaMeta meta;                           // Binary Metadata                                     | TODO: Use somewhere
 
-    // TODO: Use it somewhere
-    Word orta_stack[8]; // stack of runtime values (only accessible by OrtaVM) (like registers)
-    size_t orta_stack_size;
+    Word stack[O_STACK_CAPACITY];            // Main Stack
+    size_t stack_size;                       // = count
+    Word orta_stack[8];                      // stack of runtime values (only accessible by OrtaVM) | TODO: Currently used only to store call pos for ret use in other places
+    size_t orta_stack_size;                  // = count
 
-    BFunc bfunctions[O_DEFAULT_SIZE];
-    size_t bfunctions_size;
+    BFunc bfunctions[O_DEFAULT_SIZE];        // C Functions
+    size_t bfunctions_size;                  // = count
+    Label labels[O_DEFAULT_SIZE];            // Labels
+    size_t labels_size;                      // = count
 
-    Label labels[O_DEFAULT_SIZE];
-    size_t labels_size;
-
-    Program program;
-    char *file_path;
+    Program program;                         // Tokens and some other info
 };
 
 //---------------------------------------------------------------------------------------------------------------------------------
@@ -218,6 +219,7 @@ static char macros[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
 static size_t macros_count = 0;
 
 //---------------------------------------------------------------------------------------------------------------------------------
+// GOTO HELPERS
 
 void push_bfunc(OrtaVM *vm, BFunc func) {
     if (vm->bfunctions_size >= O_DEFAULT_SIZE) {
@@ -230,11 +232,17 @@ void insecure_function(int line_count, char *func, char *reason) {
         printf("\033[33mWarning: Usage of insecure function at token %d (Reason: %s): %s\033[0m\n", line_count, reason, func);
     }
 }
-void error_occurred(char *file, int line_count, char *token, char *reason) {
-    fprintf(stderr, "\033[31m%s:%d: <%s>: %s\033[0m\n", file, line_count, token, reason);
+void error_occurred(char *file, int line_count, char *token, char *reason, ...) {
+    va_list args;
+    va_start(args, reason);
+
+    fprintf(stderr, "\033[31m%s:%d: <%s>: ", file, line_count, token);
+    vfprintf(stderr, reason, args);
+    fprintf(stderr, "\033[0m\n");
+
+    va_end(args);
     exit(0);
 }
-
 void OrtaVM_dump(OrtaVM *vm) {
     if (vm == NULL) {
         printf("Error: VM is NULL.\n");
@@ -252,7 +260,6 @@ void OrtaVM_dump(OrtaVM *vm) {
         printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
     }
 }
-
 void no_win_support() {
     #ifdef _WIN32
     printf("Sorry, but this Function is not supported on Windows.\n");
@@ -353,8 +360,7 @@ void expand_tilde(const char *path, char *expanded_path, size_t max_length) {
         if (home) {
             snprintf(expanded_path, max_length, "%s%s", home, path + 1);
         } else {
-            fprintf(stderr, "ERROR: HOME environment variable is not set\n");
-            strncpy(expanded_path, path, max_length);
+            error_occurred("OrtaVM", 0, "expand_tilde", "HOME environment variable not set\n");
         }
     } else {
         strncpy(expanded_path, path, max_length);
@@ -365,7 +371,7 @@ void OrtaVM_add_include_path(const char *path) {
         strncpy(include_paths[include_paths_count], path, O_DEFAULT_SIZE);
         include_paths_count++;
     } else {
-        fprintf(stderr, "ERROR: Maximum number of include paths reached\n");
+        error_occurred("OrtaVM", 0, "add_include_path", "Maximum number of include paths reached\n");
     }
 }
 char* trim_all(char* str) {
@@ -710,15 +716,18 @@ void init_bfuncs(OrtaVM *vm) {
 //---------------------------------------------------------------------------------------------------------------------------------
 
 #define CHECK_STACK(vm, count, token, op, reason) \
-        if (vm->stack_size < count) { \
-            error_occurred(vm->file_path, token.pos, op, reason); \
-            return RTS_ERROR; \
-        }
+    if (vm->stack_size < count) { \
+        error_occurred(vm->file_path, token.pos, op, reason); \
+        return RTS_ERROR; \
+    }
 
 RTStatus OrtaVM_execute(OrtaVM *vm) {
     init_bfuncs(vm);
     Program program = vm->program;
     size_t iterations = 0;
+    if ((program.size-1) == 0) { // -1 because of the jmp to entry
+        printf("INFO: This program does not contain any instructions.\n");
+    }
     for (size_t i = 0; i < program.size && iterations < limit*4; i++) {
         iterations++;
         Token token = program.tokens[i];
@@ -1197,23 +1206,11 @@ RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
 
     vm->file_path = strdup(filename);
 
-    char magic_number[5] = {0};
-    char meta[12] = {0};
-    int version = 0;
+    OrtaMeta meta = {0};
 
-    if (fread(magic_number, sizeof(char), 4, file) != 4 ||
-        strcmp(magic_number, OVM_MAGIC_NUMBER) != 0) {
-        fclose(file);
-        return RTS_ERROR;
-    }
-
-    if (fread(meta, sizeof(char), 12, file) != 12) {
-        fclose(file);
-        return RTS_ERROR;
-    }
-
-    memcpy(&version, meta, sizeof(int));
-    if (version != OVM_VERSION) {
+    if (fread(&meta, sizeof(OrtaMeta), 1, file) != 1 ||
+        strcmp(meta.magic, OVM_MAGIC_NUMBER) != 0 ||
+        meta.version != OVM_VERSION) {
         fclose(file);
         return RTS_ERROR;
     }
@@ -1253,10 +1250,10 @@ RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
     }
 
     vm->program.size = program_size;
+    vm->meta = meta;
     fclose(file);
     return RTS_OK;
 }
-
 
 RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "wb");
@@ -1264,16 +1261,13 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
         return RTS_ERROR;
     }
 
-    const char magic_number[] = OVM_MAGIC_NUMBER;
-    if (fwrite(magic_number, sizeof(char), 4, file) != 4) {
-        fclose(file);
-        return RTS_ERROR;
-    }
+    // TODO: Dont forget to update if adding new field
+    OrtaMeta meta = {
+        .magic = OVM_MAGIC_NUMBER,
+        .version = OVM_VERSION
+    };
 
-    char meta[12] = {0};
-    int version = OVM_VERSION;
-    memcpy(meta, &version, sizeof(int));
-    if (fwrite(meta, sizeof(char), 12, file) != 12) {
+    if (fwrite(&meta, sizeof(OrtaMeta), 1, file) != 1) {
         fclose(file);
         return RTS_ERROR;
     }
@@ -1304,19 +1298,19 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     return RTS_OK;
 }
 
+// GOTO parsing
 RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        fprintf(stderr, "ERROR: Failed to open file %s\n", filename);
-        return RTS_ERROR;
-    }
-
     if (!ends_with(filename, ".pdd")) {
         char *new_filename = strdup(filename);
         new_filename[strlen(new_filename) - 4] = '\0';
         vm->file_path = strdup(new_filename);
     } else {
         vm->file_path = strdup(filename);
+    }
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        error_occurred(vm->file_path, 0, "SECURITY_CHECK", "Failed to open file: %s", filename);
+        return RTS_ERROR;
     }
 
     char line[O_DEFAULT_SIZE];
@@ -1328,6 +1322,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     // First Pass
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
+
         size_t len = strlen(line);
         if (len > 2 && line[len - 2] == ':') {
             line[len - 2] = '\0';
@@ -1335,22 +1330,29 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             vm->labels[vm->labels_size].addr = token_count;
             vm->labels_size++;
             continue;
+        } else if (len > 1 && line[len - 1] == ':') {
+            line[len - 1] = '\0';
+            vm->labels[vm->labels_size].name = strdup(line);
+            vm->labels[vm->labels_size].addr = token_count;
+            vm->labels_size++;
+            continue;
         }
+
         token_count++;
     }
 
     // DONE: _entry
-    if(!check_label(vm, "_entry")) {
-        error_occurred(vm->file_path, 0, "Checking Entry Label", "No _entry label found\n");
+    if(!check_label(vm, O_ENTRY)) {
+        error_occurred(vm->file_path, 0, "SECURITY_CHECK", "No %s label found \n", O_ENTRY);
         fclose(file);
         return RTS_ERROR;
     }
 
-    Token _entry_label = {0};
-    _entry_label.inst = I_JMP;
-    _entry_label.word.as_i64 = get_label_addr(vm, "_entry");
-    _entry_label.pos = 0;
-    tokens[program_size++] = _entry_label;
+    Token entry_label = {0};
+    entry_label.inst = I_JMP;
+    entry_label.word.as_i64 = get_label_addr(vm, O_ENTRY);
+    entry_label.pos = 0;
+    tokens[program_size++] = entry_label;
 
 
     rewind(file);
@@ -1361,8 +1363,9 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     // Second pass
     while (fgets(line, sizeof(line), file)) {
         line_count++;
-        if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
-
+        char *mline = strdup(line);
+        mline = trim_left(mline);
+        if (mline[0] == '\n' || mline[0] == O_COMMENT_SYMBOL) continue;
         char instruction[32];
         char args[4][128] = {{0}};
         int matched_args = 0;
@@ -1371,13 +1374,11 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         int matched = sscanf(line, "%31s %127s %127s %127s %127s",
                              instruction, args[0], args[1], args[2], args[3]);
         if (matched < 1) {
-            fprintf(stderr, "ERROR: Invalid syntax: %s", line);
-            fclose(file);
-            return RTS_ERROR;
+            error_occurred(vm->file_path, line_count, "PARSING", "Invalid instruction: %s", line);
         }
 
         if (support_uppercase) toLowercase(instruction);
-        if (line[strlen(line)-2] == ':') {
+        if (line[strlen(line)-2] == ':' || line[strlen(line)-1] == ':') {
            continue;
         }
         token_count++;
@@ -1393,9 +1394,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             } else {
                 token.inst = I_PUSH;
                 if (sscanf(args[0], "%ld", &token.word) != 1) {
-                    fprintf(stderr, "ERROR: push expects an integer or string: %s\n", line);
-                    fclose(file);
-                    return RTS_ERROR;
+                    error_occurred(vm->file_path, line_count, "PARSING", "push expects an integer or string: %s", line);
                 }
             }
         } else if (strcmp(instruction, "math::add") == 0) {
@@ -1419,23 +1418,17 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         } else if (strcmp(instruction, "inst::jmp") == 0) {
             token.inst = I_JMP;
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: jmp expects a line number: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "jmp expects a line number: %s", line);
             }
         } else if (strcmp(instruction, "inst::jmp_ifn") == 0) {
             token.inst = I_JMP_IFN;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
-                fprintf(stderr, "ERROR: jmp_ifn expects a line number: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "jmp_ifn expects a line number and condition: %s", line);
             }
         } else if (strcmp(instruction, "inst::jmp_if") == 0) {
             token.inst = I_JMP_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.jump_if_args.dest) != 1 || sscanf(args[1], "%ld", &token.jump_if_args.cond) != 1) {
-                fprintf(stderr, "ERROR: jmp_if expects a line number: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "jmp_if expects a line number and condition: %s", line);
             }
         } else if (strcmp(instruction, "stack::drop") == 0) {
             token.inst = I_DROP;
@@ -1447,9 +1440,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_EXIT;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: exit expects an exit code: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "exit expects an exit code: %s", line);
             }
         }
         else if (strcmp(instruction, "io::input") == 0) {
@@ -1477,9 +1468,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         } else if (strcmp(instruction, "math::random_int") == 0) {
             token.inst = I_RANDOM_INT;
             if (matched < 3 || sscanf(args[0], "%ld", &token.random_int.min) != 1 || sscanf(args[1], "%ld", &token.random_int.max) != 1) {
-                fprintf(stderr, "ERROR: random_int expects two integers: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "random_int expects two integers: %s", line);
             }
         } else if (strcmp(instruction, "io::color") == 0) {
             token.inst = I_COLOR;
@@ -1492,9 +1481,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_SLEEP;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: sleep expects ms: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "sleep expects ms: %s", line);
             }
         } else if (strcmp(instruction, "stack::clear") == 0) {
             token.inst = I_CLEAR_STACK;
@@ -1505,9 +1492,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         } else if (strcmp(instruction, "exit_if") == 0) {
             token.inst = I_EXIT_IF;
             if (matched < 3 || sscanf(args[0], "%ld", &token.exit_if.exit_code) != 1 || sscanf(args[1], "%ld", &token.exit_if.cond) != 1) {
-                fprintf(stderr, "ERROR: exit_if expects an exit code and condition: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "exit_if expects an exit code and condition: %s", line);
             }
         } else if (strcmp(instruction, "stack::strlen") == 0) {
             insecure_function(line_count, "strlen", "if the latest element is not a char * it will throw an segfault");
@@ -1523,17 +1508,12 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         } else if (strcmp(instruction, "inst::ignore_if") == 0) {
             token.inst = I_IGNORE_IF;
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: ignore_if expects cond: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "ignore_if expects cond: %s", line);
             }
         } else if (strcmp(instruction, "stack::get") == 0) {
             token.inst = I_GET;
-
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: get expects a stack index: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "get expects a stack index: %s", line);
             }
         } else if (strcmp(instruction, "stack::strcmp") == 0) {
             token.inst = I_STR_CMP;
@@ -1553,9 +1533,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_BFUNC;
 
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: bfunc expects a function: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "bfunc expects a function: %s", line);
             }
         } else if (strcmp(instruction, "stack::cast") == 0) {
             token.inst = I_CAST;
@@ -1570,24 +1548,18 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         } else if (strcmp(instruction, "call") == 0) {
             token.inst = I_CALL;
             if (matched < 2 || sscanf(args[0], "%ld", &token.word) != 1) {
-                fprintf(stderr, "ERROR: call expects a label or line number: %s", line);
-                fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, line_count, "PARSING", "call expects a label or line number: %s", line);
             }
         } else if (strcmp(instruction, "ret") == 0) {
             token.inst = I_RET;
         }
 
         if (token.inst == -1) {
-            fprintf(stderr, "ERROR: Unknown instruction: %s\n", instruction);
-            fclose(file);
-            return RTS_ERROR;
+            error_occurred(vm->file_path, line_count, "PARSING", "Unknown instruction: %s", line);
         }
 
         if (program_size >= O_DEFAULT_BUFFER_CAPACITY) {
-            fprintf(stderr, "ERROR: Program too large.\n");
-            fclose(file);
-            return RTS_ERROR;
+            error_occurred(vm->file_path, line_count, "PARSING", "Program too large");
         }
         tokens[program_size++] = token;
     }
@@ -1600,6 +1572,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
 }
 
 // DONE: Make it os independent
+// GOTO preproc
 RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], int target) {
     char preprocessed_filename[O_DEFAULT_SIZE];
     static char preprocessors[O_DEFAULT_SIZE][2][O_DEFAULT_SIZE];
@@ -1631,8 +1604,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
         strncpy(preprocessors[preprocessors_count][1], "1", O_DEFAULT_SIZE);
         preprocessors_count++;
     } else {
-        fprintf(stderr, "ERROR: Invalid target\n");
-        return RTS_ERROR;
+        error_occurred(filename, 0, "PREPROCESSING", "Invalid target: %d", target);
     }
     if (support_uppercase == 1) {
         strncpy(preprocessors[preprocessors_count][0], "FEATURE_UPPERCASE", O_DEFAULT_SIZE);
@@ -1644,18 +1616,13 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
 
     FILE *input_file = fopen(filename, "r");
     if (input_file == NULL) {
-        fprintf(stderr, "ERROR: Failed to open file %s\n", filename);
-        return RTS_ERROR;
+        error_occurred(filename, 0, "PREPROCESSING", "Failed to open file: %s", filename);
     }
 
     FILE *output_file = fopen(preprocessed_filename, "w");
     if (output_file == NULL) {
-        fprintf(stderr, "ERROR: Failed to open file %s\n", preprocessed_filename);
-        fclose(input_file);
-        return RTS_ERROR;
+        error_occurred(filename, 0, "PREPROCESSING", "Failed to open file: %s", preprocessed_filename);
     }
-
-    // TODO: Add proper _entry: fprintf(output_file, "inst::jmp _entry\n");
 
     char line[O_DEFAULT_BUFFER_CAPACITY];
     int skip_section = 0;
@@ -1679,7 +1646,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     preprocessors[preprocessors_count][1][1] = '\0';
                     preprocessors_count++;
                 } else {
-                    fprintf(stderr, "WARNING: Malformed #define in line: %s\n", line);
+                    error_occurred(filename, 0, "PREPROCESSING", "Malformed #define in line: %s", line);
                 }
             }
             if (strncmp(line + 1, "ifdef", 5) == 0) {
@@ -1688,7 +1655,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     skip_section = !is_preprocessor_defined(preprocessors, preprocessors_count, name);
                     in_else = 0;
                 } else {
-                    fprintf(stderr, "WARNING: Malformed #ifdef in line: %s\n", line);
+                    error_occurred(filename, 0, "PREPROCESSING", "Malformed #ifdef in line: %s", line);
                 }
             }
             if (strncmp(line + 1, "ifndef", 6) == 0) {
@@ -1697,7 +1664,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     skip_section = is_preprocessor_defined(preprocessors, preprocessors_count, name);
                     in_else = 0;
                 } else {
-                    fprintf(stderr, "WARNING: Malformed #ifndef in line: %s\n", line);
+                    error_occurred(filename, 0, "PREPROCESSING", "Malformed #ifndef in line: %s", line);
                 }
             }
             if (strncmp(line + 1, "else", 4) == 0) {
@@ -1743,7 +1710,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     strncpy(macros[macros_count][1], value, O_DEFAULT_SIZE);
                     macros_count++;
                 } else {
-                    fprintf(stderr, "WARNING: Malformed #macro in line: %s\n", line);
+                    error_occurred(filename, 0, "PREPROCESSING", "Malformed #macro in line: %s", line);
                 }
                 continue;
             }
@@ -1756,12 +1723,10 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                         memmove(include_file, include_file + 1, len - 1);
                     }
                     if (!ends_with(include_file, ".horta") && strcmp(filename, "build.orta") != 0) {
-                        fprintf(stderr, "ERROR: .orta files are not supported for including (Only .horta)\n");
-                        exit(1);
+                        error_occurred(filename, 0, "PREPROCESSING", "Only .horta files are supported for including (Only .horta)");
                     }
                     if (strcmp(include_file, filename) == 0) {
-                        fprintf(stderr, "WARNING: Circular include detected: %s\n", include_file);
-                        return RTS_ERROR;
+                        error_occurred(filename, 0, "PREPROCESSING", "Circular include detected: %s", include_file);
                     }
                     char include_path[O_DEFAULT_SIZE];
                     int found = 0;
@@ -1781,27 +1746,18 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     }
 
                     if (!found) {
-                        fprintf(stderr, "ERROR: Include file %s not found\n", include_file);
-                        fclose(input_file);
-                        fclose(output_file);
-                        return RTS_ERROR;
+                        error_occurred(filename, 0, "PREPROCESSING", "Include file not found: %s", include_file);
                     }
 
                     if (OrtaVM_preprocess_file(include_path, 0, NULL, target) != RTS_OK) {
-                        fprintf(stderr, "ERROR: Failed to preprocess include file %s\n", include_path);
-                        fclose(input_file);
-                        fclose(output_file);
-                        return RTS_ERROR;
+                        error_occurred(filename, 0, "PREPROCESSING", "Failed to preprocess include file: %s", include_path);
                     }
 
                     char include_preprocessed[O_DEFAULT_SIZE];
                     snprintf(include_preprocessed, sizeof(include_preprocessed), "%s.ppd", include_path);
                     FILE *include_processed_file = fopen(include_preprocessed, "r");
                     if (include_processed_file == NULL) {
-                        fprintf(stderr, "ERROR: Failed to open preprocessed include file %s\n", include_preprocessed);
-                        fclose(input_file);
-                        fclose(output_file);
-                        return RTS_ERROR;
+                        error_occurred(filename, 0, "PREPROCESSING", "Failed to open preprocessed include file: %s", include_preprocessed);
                     }
 
                     char include_line[O_DEFAULT_BUFFER_CAPACITY];
@@ -1812,7 +1768,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                     fclose(include_processed_file);
                     continue;
                 } else {
-                    fprintf(stderr, "WARNING: Malformed #include in line: %s\n", line);
+                    error_occurred(filename, 0, "PREPROCESSING", "Malformed #include in line: %s", line);
                 }
             }
             continue;

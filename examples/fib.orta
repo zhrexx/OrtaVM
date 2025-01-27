@@ -1,4 +1,4 @@
-#macro fib_() {
+fib:
     inst::jmp 1
     nop
     nop
@@ -11,6 +11,7 @@
     math::add
     io::print
     inst::jmp_ifn 6 0
-}
+    ret
 
-fib_()
+_entry:
+    call fib

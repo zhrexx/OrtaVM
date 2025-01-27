@@ -1,7 +1,0 @@
-file::open "test.txt"
-
-file::write "SOME TEXT"
-
-# !Call all write function before it otherway it will erase the FILE pointer and you will to reopen it
-file::read
-io::cprint
