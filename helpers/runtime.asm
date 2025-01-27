@@ -84,7 +84,7 @@
 %define SYS_TIMER_CREATE      64
 %define SYS_TIMER_SETTIME     65
 %define SYS_TIMER_GETTIME     66
-%define SYS_TIMER_GETOVERRUN 67
+%define SYS_TIMER_GETOVERRUN  67
 %define SYS_TIMER_DELETE      68
 %define SYS_CLOCK_SETTIME     113
 %define SYS_CLOCK_GETTIME     114
@@ -108,6 +108,7 @@ section .bss
 
 section .text
 extern ifc_orta_print_int
+extern ifc_orta_input
 
 ovm_get:
     mov rbx, rsp

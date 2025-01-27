@@ -24,6 +24,7 @@ int main(int argc, char **argv) {
                    ";; OVM START\n"
                    //"global _start\n" // Uncomment to use ld | where using gcc as the linker
                    "global main\n"
+                   "global _entry\n"
                    "_start: ;; Does nothing only jumps to entry point | Because of elf shit convention with _start\n"
                    "\tjmp _entry\n"
                    "main:\n"
@@ -166,6 +167,7 @@ int main(int argc, char **argv) {
 				break;
             case I_INPUT: // TODO: Implement
 				fprintf(output, "\t;; TODO: io::input\n");
+                fprintf(output, "\tcall ifc_orta_input\n");
 				break;
             case I_INPUT_STR: // TODO: Implement
                 fprintf(output, "\t;; TODO: io::input_str\n");

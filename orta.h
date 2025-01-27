@@ -13,22 +13,28 @@
 //---------------------------------------------------------------------------------------------------------------------------------
 
 // GLOBAL TODOS:
-// TODO: Add more functions
-// TODO: Add support for push value evaluation (stack::push 1+1-1)
+// TODO: Add more functions                                                 | Currently No Ideas
+// TODO: Add Memory | Allow to alloc memory free and realloc                | also add pointers & and allow casting
+// TODO: Add support for push value evaluation                              | stack::push 1+1-1*2/2
+// TODO: Add Entry Point (_entry)                                           | Cool name yeah? :)
 
-// SOMETIME TODO:
-// TODO: Add Graphics and Audio libraries
-// TODO: Renew deovm
-// TODO: Add a syscall inst, there for i need a abstraction layer: int syscall(int syscall, int arg1, int arg2);
-// TODO: Implement STR support for dump
+// SOMETIME TODOS:
+// TODO: Add Graphics and Audio libraries                                   | miniaudio is good
+// TODO: Renew deovm                                                        | Some instructions are in old form
+// TODO: Add a syscall inst                                                 | abstraction layer: int syscall(int syscall, int arg1, int arg2);
+// TODO: Implement STR support for dump                                     | IDK
+// TODO: Implement more instructions to oto64                               | Only a few implemented
 
 // DONE:
 // DONE: Add magic code to the binaries(.ovm)                               | OVM1 (OVM_MAGIC_CODE)
-// DONE: Escape strings (PUSH_STR, PRINT_STR etc)                           | Currently only \n
+// DONE: Escape strings (PUSH_STR, PRINT_STR etc)                           | Currently only \n | TODO: Add more
 // DONE: Separate buffers for int64_t and char *                            | I decided to make a Word union and use it as seperate buffers (Word)
 // DONE: Make the instructions look prettier (like "push" or other style)   | I decided to allow both Uppercase(add flag --support=uppercase) and lowercase
-// DONE: Add some time functions
-// DONE: Optimize the OVM files (some compression or other idk i tried every thing (compression not)) | Read code
+// DONE: Add some time functions                                            | getdate | TODO: Add more
+// DONE: Optimize the OVM files                                             | Writing not all bytes(it were 1024 before and all were written to file also if they contained 0) to file and allocating memory at runtime
+// DONE: Second or Three pass compiler                                      | First Pass = Label Resolving Second pass actual parsing
+// DONE: Fix Labels                                                         | Fixed
+
 
 // IDEAS:
 // IDEA: I think it were be cool to add support to open .so or .a files and call a function
@@ -36,7 +42,6 @@
 //---------------------------------------------------------------------------------------------------------------------------------
 
 // Changelog:
-
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -171,6 +176,11 @@ typedef struct {
     size_t size;
 } Program;
 
+typedef struct {
+    char *name;
+    int64_t addr;
+} Label;
+
 typedef struct OrtaVM OrtaVM;
 typedef void (*BFunc)(OrtaVM*);
 
@@ -184,6 +194,9 @@ struct OrtaVM {
 
     BFunc bfunctions[O_DEFAULT_SIZE];
     size_t bfunctions_size;
+
+    Label labels[O_DEFAULT_SIZE];
+    size_t labels_size;
 
     Program program;
     char *file_path;
@@ -397,6 +410,59 @@ char *error_to_string(RTStatus status) {
     default:
         return "Unknown Error";
     }
+}
+bool is_within_quotes(const char *line, size_t pos) {
+    int quote_count = 0;
+    for (size_t i = 0; i < pos; i++) {
+        if (line[i] == '"' && (i == 0 || line[i - 1] != '\\')) {
+            quote_count++;
+        }
+    }
+    return quote_count % 2 == 1;
+}
+void replace_labels(OrtaVM *vm, char *line) {
+    for (int i = 0; i < vm->labels_size; i++) {
+        const char *label = vm->labels[i].name;
+        size_t label_len = strlen(label);
+
+        char *label_pos = strstr(line, label);
+        while (label_pos) {
+            if (is_within_quotes(line, label_pos - line)) {
+                label_pos = strstr(label_pos + 1, label);
+                continue;
+            }
+
+            char before = (label_pos == line) ? ' ' : label_pos[-1];
+            char after = label_pos[label_len];
+            if ((before == ' ' || before == '\t' || before == '\n') &&
+                (after == ' ' || after == '\t' || after == '\n' || after == '\0')) {
+
+                char addr_str[16];
+                snprintf(addr_str, sizeof(addr_str), "%ld", vm->labels[i].addr);
+
+                size_t addr_len = strlen(addr_str);
+                memmove(label_pos + addr_len, label_pos + label_len, strlen(label_pos) - label_len + 1);
+                memcpy(label_pos, addr_str, addr_len);
+                label_pos = strstr(label_pos + addr_len, label);
+            } else {
+                label_pos = strstr(label_pos + 1, label);
+            }
+        }
+    }
+}
+void trim_whitespace(char *line) {
+    size_t len = strlen(line);
+    while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' || line[len - 1] == ' ' || line[len - 1] == '\t')) {
+        line[--len] = '\0';
+    }
+}
+bool check_label(OrtaVM *vm, char *label_name) {
+    for (int i = 0; i < vm->labels_size; i++) {
+        if (strcmp(vm->labels[i].name, label_name) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 RTStatus push(OrtaVM *vm, Word value) {
@@ -1213,7 +1279,6 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     return RTS_OK;
 }
 
-
 RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -1235,7 +1300,30 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     int line_count = 0;
     int token_count = 0;
 
+    // First Pass
+    while (fgets(line, sizeof(line), file)) {
+        if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
+        size_t len = strlen(line);
+        if (len > 2 && line[len - 2] == ':') {
+            line[len - 2] = '\0';
+            vm->labels[vm->labels_size].name = strdup(line);
+            vm->labels[vm->labels_size].addr = token_count;
+            vm->labels_size++;
+            continue;
+        }
+        token_count++;
+    }
+    // TODO: Add proper _entry: if(!check_label(vm, "_entry")) {
+    // TODO: Add proper _entry:     error_occurred(vm->file_path, 0, "Checking Entry Label", "No _entry label found\n");
+    // TODO: Add proper _entry:     fclose(file);
+    // TODO: Add proper _entry:     return RTS_ERROR;
+    // TODO: Add proper _entry: }
+
+    rewind(file);
     init_variables();
+    token_count = 0;
+    line_count = 0;
+    // Second pass
     while (fgets(line, sizeof(line), file)) {
         line_count++;
         if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
@@ -1244,6 +1332,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         char args[4][128] = {{0}};
         int matched_args = 0;
 
+        replace_labels(vm, line);
         int matched = sscanf(line, "%31s %127s %127s %127s %127s",
                              instruction, args[0], args[1], args[2], args[3]);
         if (matched < 1) {
@@ -1253,6 +1342,9 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         }
 
         if (support_uppercase) toLowercase(instruction);
+        if (line[strlen(line)-2] == ':') {
+           continue;
+        }
         token_count++;
         Token token = {0};
         token.inst = -1;
@@ -1518,6 +1610,8 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
         fclose(input_file);
         return RTS_ERROR;
     }
+
+    // TODO: Add proper _entry: fprintf(output_file, "inst::jmp _entry\n");
 
     char line[O_DEFAULT_BUFFER_CAPACITY];
     int skip_section = 0;
