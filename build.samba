@@ -7,6 +7,7 @@ default:
     enable_verbose();
     # add_flag("-Wswitch-enum");
     # add_flag("-O3");
+    # add_flag("-DNO_PREPROC=1");
     compile("orta.c", "vm");
     compile("deovm.c", "deovm");
     compile("oto64.c", "oto64"); # ovmtoasm64
@@ -21,9 +22,11 @@ windows:
 
 # Compile all examples
 examples:
+    s_command("samba");
     s_command("./build/vm examples/fib.orta test.ovm");
-    s_command("./build/vm examples/password_game.orta test.ovm");
+    s_command("./build/vm examples/password_game.orta test.ovm --build-only"); # --build-only Because the it requests input
     s_command("./build/vm examples/funny_example.orta test.ovm -l 20");
+    s_command("./build/vm examples/for.orta test.ovm");
     s_command("rm examples/*.ppd");
 test_asm:
     s_command("samba");                                         # Update all (vm, deovm, oto64)

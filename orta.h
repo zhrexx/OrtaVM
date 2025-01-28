@@ -5,8 +5,8 @@
 
 // Goals of OrtaVM:
 // - High Performance             | Fast execution speed                                                      | DONE
-// - Small Size                   | We wanna make the binaries very small                                     | DONE
-// - Cross Platform               | You can run the code on MacOS, Linux, Windows and others                  | DONE
+// - Small Size                   | Small Bytecode                                                            | DONE
+// - Cross Platform               | Runs on MacOS, Linux, Windows and others                                  | DONE
 // - Good Error Handling          | Informative Error messages                                                | DONE
 // - Compiled                     | Allows to compile to a static executable                                  | DONE
 
@@ -14,14 +14,18 @@
 
 // GLOBAL TODOS:
 // TODO: Add more functions                                                 | Currently No Ideas
+// TODO: Visit First Pass
+
+// NEXT RELEASE TODO:
+// TODO: Deprecate "nop" due call instruction and ret
 
 // SOMETIME TODOS:
-// TODO: Add Memory | Allow to alloc memory free and realloc                | also add pointers & and allow casting
 // TODO: Add Graphics and Audio libraries                                   | miniaudio is good
 // TODO: Renew deovm                                                        | Some instructions are in old form
 // TODO: Add a syscall inst                                                 | abstraction layer: int syscall(int syscall, int arg1, int arg2);
 // TODO: Implement STR support for dump                                     | IDK
-// TODO: Implement more instructions to oto64                               | Only a few implemented
+// TODO: Implement more instructions to oto64                               | Only a few implemented + _entry
+// TODO: More Memory releated functions
 
 // DONE:
 // DONE: Add magic code to the binaries(.ovm)                               | OVM1 (OVM_MAGIC_CODE)
@@ -33,14 +37,18 @@
 // DONE: Second or Three pass compiler                                      | First Pass = Label Resolving Second pass actual parsing
 // DONE: Fix Labels                                                         | Fixed
 // DONE: Add Entry Point (_entry)                                           | Cool name yeah? :)
+// DONE: Add Memory | Allow to alloc memory free and realloc                | I added memory but not only with pointer with Byte {void *ptr, int8_t byte}
+// DONE: evaluating values for push                                         | 1-2+111-1
 
 // IDEAS:
 // IDEA: I think it were be cool to add support to open .so or .a files and call a function
-// IDEA: Add support for push value evaluation | stack::push 1+1-1*2/2
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
 // Changelog:
+// Added option to use all math instructions like this: math::<add/sub/mul/div> <num>
+// Added Memory
+// Added evaluating values for push: 1-2+111-1
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -71,6 +79,7 @@
 #define O_COMMENT_SYMBOL '#'
 #define O_ENTRY "_entry"
 
+#define O_MEMORY_CAPACITY 1000
 //---
 #define OVM_MAGIC_NUMBER "OVM1"
 #define OVM_VERSION 1
@@ -177,10 +186,23 @@ typedef struct {
     int64_t addr;
 } Label;
 
-// Use char * with static memory | for saving ovm file | it will write address if not static array
+typedef struct {
+    void *ptr;
+    int8_t byte;
+} Byte;
+
+typedef struct {
+    size_t size;
+    Byte bytes[O_MEMORY_CAPACITY];
+} OrtaMemory;
+
+
+// Use char with static memory (char ...[bytes]) | for saving ovm file | it will write address if not static array
+// TODO: Dont forget to update if adding new field | at save program
 typedef struct {
     char magic[4];
     int version;
+    char padding[27]; // space left for other meta
 } OrtaMeta;
 
 typedef struct OrtaVM OrtaVM;
@@ -194,6 +216,7 @@ struct OrtaVM {
     size_t stack_size;                       // = count
     Word orta_stack[8];                      // stack of runtime values (only accessible by OrtaVM) | TODO: Currently used only to store call pos for ret use in other places
     size_t orta_stack_size;                  // = count
+    OrtaMemory memory;                       // Memory                                              | TODO: Use somewhere
 
     BFunc bfunctions[O_DEFAULT_SIZE];        // C Functions
     size_t bfunctions_size;                  // = count
@@ -249,15 +272,29 @@ void OrtaVM_dump(OrtaVM *vm) {
         return;
     }
     if (vm->stack_size == 0) {
-        printf("Stack is empty.\n");
-        return;
+        printf("INFO: Stack is empty.\n");
     }
-
-    printf("| STACK DUMP |\n");
-    printf("| INT64      | PTR         |\n");
-    for (size_t i = vm->stack_size; i > 0; i--) {
-        Word word = vm->stack[i - 1];
-        printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
+    else {
+        printf("| STACK DUMP |\n");
+        printf("| INT64      | PTR         |\n");
+        for (size_t i = vm->stack_size; i > 0; i--) {
+            Word word = vm->stack[i - 1];
+            printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
+        }
+    }
+    if (vm->memory.size == 0) {
+        printf("INFO: Memory is empty.\n");
+    }
+    else {
+        printf("| Memory Dump |\n");
+        printf("| INFO: Only first 30 bytes |\n");
+        for (size_t i = 0; i < vm->memory.size; i++) {
+            printf("| %p | %d |\n", vm->memory.bytes[i].ptr, vm->memory.bytes[i].byte);
+            if (i == 30) {
+                printf("| ... |\n");
+                break;
+            }
+        }
     }
 }
 void no_win_support() {
@@ -404,9 +441,9 @@ char *error_to_string(RTStatus status) {
     case RTS_OK:
         return "OK";
     case RTS_STACK_OVERFLOW:
-        return "Stack Overflow";
+        return "You pushed to many values | Stack Overflow";
     case RTS_STACK_UNDERFLOW:
-        return "Stack Underflow";
+        return "Proboably you forgot to push something | Stack Underflow";
     case RTS_ERROR:
         return "Error";
     case RTS_UNDEFINED_INSTRUCTION:
@@ -478,6 +515,82 @@ int64_t get_label_addr(OrtaVM *vm, char *label_name) {
     }
     return -1;
 }
+Byte byte_new(int8_t value) {
+    Byte tmp;
+    tmp.ptr = malloc(1);
+    tmp.byte = value;
+}
+void byte_modify(OrtaVM *vm, size_t pos, int8_t value) {
+    // Pop byte at index and push with new value
+    if (pos >= vm->memory.size) {
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "byte_modify", "Index out of bounds");
+    }
+    Byte old = vm->memory.bytes[pos];
+    old.byte = value;
+    return;
+}
+int64_t parse_number(char **p) {
+    int64_t num = 0;
+    while (**p && isdigit(**p)) {
+        num = num * 10 + (**p - '0');
+        (*p)++;
+    }
+    return num;
+}
+int64_t parse_expression(char **p, OrtaVM *vm);
+int64_t parse_term(char **p, OrtaVM *vm);
+int64_t parse_factor(char **p, OrtaVM *vm);
+int64_t parse_expression(char **p, OrtaVM *vm) {
+    int64_t result = parse_term(p, vm);
+    while (**p) {
+        if (**p == '+') {
+            (*p)++;
+            result += parse_term(p, vm);
+        } else if (**p == '-') {
+            (*p)++;
+            result -= parse_term(p, vm);
+        } else {
+            break;
+        }
+    }
+    return result;
+}
+int64_t parse_term(char **p, OrtaVM *vm) {
+    int64_t result = parse_factor(p, vm);
+    while (**p) {
+        if (**p == '*') {
+            (*p)++;
+            result *= parse_factor(p, vm);
+        } else if (**p == '/') {
+            (*p)++;
+            int64_t divisor = parse_factor(p, vm);
+            if (divisor == 0) {
+                error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "parse_term", "Division by zero\n");
+            }
+            result /= divisor;
+        } else {
+            break;
+        }
+    }
+    return result;
+}
+int64_t parse_factor(char **p, OrtaVM *vm) {
+    if (**p == '(') {
+        (*p)++;
+        int64_t result = parse_expression(p, vm);
+        if (**p == ')') {
+            (*p)++;
+        } else {
+            error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "parse_factor", "Mismatched parentheses\n");
+        }
+        return result;
+    }
+    return parse_number(p);
+}
+int64_t evaluate_expression(OrtaVM *vm, char *expr) {
+    char *p = expr;
+    return parse_expression(&p, vm);
+}
 
 RTStatus push(OrtaVM *vm, Word value) {
     if (vm->stack_size >= O_STACK_CAPACITY) {
@@ -521,7 +634,7 @@ RTStatus sub(OrtaVM *vm) {
 }
 RTStatus print(OrtaVM *vm) {
     if (vm->stack_size == 0) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"print", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"print", "Proboably you forgot to push something | Stack Underflow");
     }
     printf("%ld\n", vm->stack[vm->stack_size - 1].as_i64);
     return RTS_OK;
@@ -540,13 +653,13 @@ void asocket(OrtaVM *vm) {
     Word result;
     result.as_i64= socket(AF_INET, SOCK_STREAM, 0);
     if (push(vm, result) != RTS_OK) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"asocket", "Stack Overflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"asocket", "You pushed to many values | Stack Overflow");
     }
 }
 void abind(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"bind", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"bind", "Proboably you forgot to push something | Stack Underflow");
     }
     Word sockfd = vm->stack[vm->stack_size - 1];
     if (sockfd.as_i64 == -1) {
@@ -570,7 +683,7 @@ void abind(OrtaVM *vm) {
 void alisten(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"listen", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"listen", "Proboably you forgot to push something | Stack Underflow");
     }
     Word sockfd = vm->stack[--vm->stack_size];
     Word backlog = vm->stack[--vm->stack_size];
@@ -581,20 +694,20 @@ void alisten(OrtaVM *vm) {
 void aaccept(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"accept", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"accept", "Proboably you forgot to push something | Stack Underflow");
     }
     Word sockfd = vm->stack[vm->stack_size - 1];
 
     Word result;
     result.as_i64 = accept(sockfd.as_i64, NULL, NULL);
     if (push(vm, result) != RTS_OK) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"aaccept", "Stack Overflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"aaccept", "You pushed to many values | Stack Overflow");
     }
 }
 void aconnect(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"connect", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"connect", "Proboably you forgot to push something | Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -615,7 +728,7 @@ void asend(OrtaVM *vm) {
     no_win_support();
 
     if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Proboably you forgot to push something | Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -623,7 +736,7 @@ void asend(OrtaVM *vm) {
     char *data = vm->stack[vm->stack_size - 2].as_str;
 
     if (data == NULL) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Invalid String data");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "The stack dont contains a valid string | Invalid String Data");
     }
 
     if (sockfd.as_i64 < 0) {
@@ -642,7 +755,7 @@ void asend(OrtaVM *vm) {
 void arecv(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"recv", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"recv", "Proboably you forgot to push something | Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -660,7 +773,7 @@ void arecv(OrtaVM *vm) {
 void aclose(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"close", "Stack Underflow");
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"close", "Proboably you forgot to push something | Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -672,7 +785,7 @@ void aclose(OrtaVM *vm) {
 void aset_opt(OrtaVM *vm) {
     no_win_support();
     if (vm->stack_size < 3) {
-        error_occurred(vm->file_path,vm->program.tokens[vm->program.current_token].pos,"set_opt", "Stack Underflow");
+        error_occurred(vm->file_path,vm->program.tokens[vm->program.current_token].pos,"set_opt", "Proboably you forgot to push something | Stack Underflow");
     }
 
     Word sockfd = vm->stack[vm->stack_size - 1];
@@ -707,10 +820,28 @@ void init_socket_bfuncs(OrtaVM *vm) {
     push_bfunc(vm, setoptt);
 }
 #endif
+
+// Write to byte
+void byte_write(OrtaVM *vm) {
+    if (vm->stack_size < 1) {
+        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "write_byte", "Proboably you forgot to push something | Stack Underflow");
+    }
+    Byte tmp = byte_new(pop(vm).as_i64);
+    vm->memory.bytes[vm->memory.size++] = tmp;
+}
+void byte_modify_b(OrtaVM *vm) {
+    byte_modify(vm, pop(vm).as_i64, pop(vm).as_i64);
+}
+
 void init_bfuncs(OrtaVM *vm) {
     #ifndef _WIN32
-    init_socket_bfuncs(vm);
+    init_socket_bfuncs(vm); // 8 index
     #endif
+    BFunc byte_writee = byte_write;
+    push_bfunc(vm, byte_writee);
+    BFunc byte_modifyy = byte_modify_b;
+    push_bfunc(vm, byte_modifyy);
+
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------
@@ -736,42 +867,78 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
         switch (token.inst) {
             case I_PUSH:
                 if (push(vm, token.word) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"push", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"push", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_ADD:
-                if (add(vm) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"add", "Stack Underflow");
+                if (token.word.as_i64 != -1) {
+                    Word a = pop(vm);
+                    Word b = token.word;
+                    if (push(vm, (Word)(a.as_i64 + b.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos, "add", "You pushed to big values | Stack Overflow");
+                    }
+                } else {
+                    if (add(vm) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos,"add", "Proboably you forgot to push something | Stack Underflow");
+                    }
                 }
                 break;
             case I_SUB:
-                if (sub(vm) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"sub", "Stack Underflow");
+                if (token.word.as_i64 != -1) {
+                    Word a = pop(vm);
+                    Word b = token.word;
+                    if (push(vm, (Word)(a.as_i64 - b.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos, "sub", "You pushed to big values | Stack Overflow");
+                    }
+                } else {
+                    if (sub(vm) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos,"sub", "Proboably you forgot to push something | Stack Underflow");
+                    }
                 }
                 break;
             case I_PRINT:
                 if (print(vm) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"print", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"print", "Proboably you forgot to push something | Stack Underflow");
                 }
                 break;
             case I_MUL:
-                CHECK_STACK(vm, 2, token, "mul", "Stack Underflow");
+                if (token.word.as_i64 != -1) {
+                    Word a = pop(vm);
+                    Word b = token.word;
+                    if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos, "mul", "You pushed to many values | Stack Overflow");
+                    }
+                } else {
+                    CHECK_STACK(vm, 2, token, "mul", "Proboably you forgot to push something | Stack Underflow");
 
-                Word a = pop(vm);
-                Word b = pop(vm);
-                if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"mul", "Stack Overflow");
+                    Word a = pop(vm);
+                    Word b = pop(vm);
+                    if (push(vm, (Word)(a.as_i64 * b.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos,"mul", "You pushed to many values | Stack Overflow");
+                    }
                 }
                 break;
             case I_DIV:
-                CHECK_STACK(vm, 2, token, "div", "Stack Underflow");
-                Word c = pop(vm);
-                Word d = pop(vm);
-                if (d.as_i64 == 0) {
-                    return RTS_ERROR;
-                }
-                if (push(vm, (Word)(c.as_i64 / d.as_i64)) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"div", "Stack Overflow");
+                CHECK_STACK(vm, 2, token, "div", "Proboably you forgot to push something | Stack Underflow");
+                if (token.word.as_i64 != -1) {
+                    Word c = pop(vm);
+                    Word d = token.word;
+                    if (d.as_i64 == 0) {
+                        return RTS_ERROR;
+                    }
+                    if (push(vm, (Word)(c.as_i64 / d.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos, "div", "You pushed to many values | Stack Overflow");
+                    }
+                    break;
+                } else {
+                    Word c = pop(vm);
+                    Word d = pop(vm);
+                    if (d.as_i64 == 0) {
+                        return RTS_ERROR;
+                    }
+                    if (push(vm, (Word)(c.as_i64 / d.as_i64)) != RTS_OK) {
+                        error_occurred(vm->file_path, token.pos,"div", "You pushed to many values | Stack Overflow");
+                    }
                 }
                 break;
             case I_PRINT_STR:
@@ -788,23 +955,23 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_DROP:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"drop", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"drop", "Proboably you forgot to push something | Stack Underflow");
                 }
                 vm->stack_size--;
                 break;
             case I_JMP:
                  if (token.word.as_i64 < 0 || token.word.as_i64 > program.size) {
-                     error_occurred(vm->file_path, token.pos,"jmp", "Stack Underflow");
+                     error_occurred(vm->file_path, token.pos,"jmp", "Proboably you forgot to push something | Stack Underflow");
                  }
                  i = token.word.as_i64;
                  continue;
             case I_JMP_IFN: // JMP_IFB DEST COND | JMP_IFN 0 10 | JMP_IFN 0 (!= 10)
                  if (vm->stack_size == 0) {
-                     error_occurred(vm->file_path, token.pos,"jmp_ifn", "Stack Underflow");
+                     error_occurred(vm->file_path, token.pos,"jmp_ifn", "Proboably you forgot to push something | Stack Underflow");
                  }
                  if (vm->stack[vm->stack_size - 1].as_i64 != token.jump_if_args.cond.as_i64) {
                      if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
-                         error_occurred(vm->file_path, token.pos,"jmp_ifn", "Stack Underflow");
+                         error_occurred(vm->file_path, token.pos,"jmp_ifn", "Proboably you forgot to push something | Stack Underflow");
                      }
                      i = token.jump_if_args.dest.as_i64;
                      continue;
@@ -812,11 +979,11 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                  break;
             case I_JMP_IF: // JMP_IF DEST COND | JMP_IF 0 10 | JMP_IF 0 (== 10)
                  if (vm->stack_size == 0) {
-                     error_occurred(vm->file_path, token.pos,"jmp_if", "Stack Underflow");
+                     error_occurred(vm->file_path, token.pos,"jmp_if", "Proboably you forgot to push something | Stack Underflow");
                  }
                  if (vm->stack[vm->stack_size - 1].as_i64 == token.jump_if_args.cond.as_i64) {
                      if (token.jump_if_args.dest.as_i64 < 0 || token.jump_if_args.dest.as_i64 > program.size) {
-                         error_occurred(vm->file_path, token.pos,"jmp_if", "Stack Underflow");
+                         error_occurred(vm->file_path, token.pos,"jmp_if", "Proboably you forgot to push something | Stack Underflow");
                      }
                      i = token.jump_if_args.dest.as_i64;
                      continue;
@@ -824,10 +991,10 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                  break;
             case I_DUP:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"dup", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"dup", "Proboably you forgot to push something | Stack Underflow");
                 }
                 if (vm->stack_size >= O_STACK_CAPACITY) {
-                    error_occurred(vm->file_path, token.pos,"dup", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"dup", "You pushed to many values | Stack Overflow");
                 }
                 vm->stack[vm->stack_size].as_i64 = vm->stack[vm->stack_size - 1].as_i64;
                 vm->stack_size++;
@@ -840,7 +1007,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 Word input;
                 scanf("%ld", &input);
                  if (push(vm, input) != RTS_OK) {
-                     error_occurred(vm->file_path, token.pos,"input", "Stack Overflow");
+                     error_occurred(vm->file_path, token.pos,"input", "You pushed to many values | Stack Overflow");
                  }
                  break;
             case I_FILE_OPEN:
@@ -852,7 +1019,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 fd.as_i64 = (int64_t)file;
                 if (push(vm, fd) != RTS_OK) {
                     fclose(file);
-                    error_occurred(vm->file_path, token.pos,"file_open", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"file_open", "You pushed to many values | Stack Overflow");
                 }
                 break;
 
@@ -878,7 +1045,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     buffer[strlen(buffer)] = '\0';
 
                     if (push(vm, (Word)buffer) != RTS_OK) {
-                        error_occurred(vm->file_path, token.pos,"file_read", "Stack Overflow");
+                        error_occurred(vm->file_path, token.pos,"file_read", "You pushed to many values | Stack Overflow");
                     }
                     break;
                 }
@@ -893,21 +1060,21 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
 
             case I_SWAP:
-                CHECK_STACK(vm, 2, token, "swap", "Stack Underflow");
+                CHECK_STACK(vm, 2, token, "swap", "Proboably you forgot to push something | Stack Underflow");
 
                 Word temp = vm->stack[vm->stack_size - 1];
                 vm->stack[vm->stack_size - 1] = vm->stack[vm->stack_size - 2];
                 vm->stack[vm->stack_size - 2] = temp;
                 break;
             case I_EQ:
-                CHECK_STACK(vm, 2, token, "eq", "Stack Underflow");
+                CHECK_STACK(vm, 2, token, "eq", "Proboably you forgot to push something | Stack Underflow");
 
                 Word a1 = vm->stack[vm->stack_size - 1];
                 Word b1 = vm->stack[vm->stack_size - 2];
                 Word result;
                 result.as_i64 = (a1.as_i64 == b1.as_i64) ? 1 : 0;
                 if (push(vm, result) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"eq", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"eq", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_RANDOM_INT:
@@ -918,7 +1085,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                     Word random;
                     random.as_i64 = min + rand() % (max - min + 1);
                     if (push(vm, random) != RTS_OK) {
-                        error_occurred(vm->file_path, token.pos,"random_int", "Stack Overflow");
+                        error_occurred(vm->file_path, token.pos,"random_int", "You pushed to many values | Stack Overflow");
                     }
                     break;
                 }
@@ -994,35 +1161,35 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 vm->stack_size = 0;
                 break;
             case I_LT:
-                CHECK_STACK(vm, 2, token, "lt", "Stack Underflow");
+                CHECK_STACK(vm, 2, token, "lt", "Proboably you forgot to push something | Stack Underflow");
 
                 Word a2 = vm->stack[vm->stack_size - 1];
                 Word b2 = vm->stack[vm->stack_size - 2];
                 Word result2;
                 result2.as_i64 = (b2.as_i64 < a2.as_i64) ? 1 : 0;
                 if (push(vm, result2) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"lt", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"lt", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_GT:
-                CHECK_STACK(vm, 2, token, "gt", "Stack Underflow");
+                CHECK_STACK(vm, 2, token, "gt", "Proboably you forgot to push something | Stack Underflow");
 
                 Word a3 = vm->stack[vm->stack_size - 1];
                 Word b3 = vm->stack[vm->stack_size - 2];
                 Word result3;
                 result3.as_i64 = (b3.as_i64 > a3.as_i64) ? 1 : 0;
                 if (push(vm, result3) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"gt", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"gt", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_PUSH_STR:
                 if (push_str(vm, token.word.as_str) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"push", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"push", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_EXIT_IF:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"exit_if", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"exit_if", "Proboably you forgot to push something | Stack Underflow");
                 }
                 Word cond = token.exit_if.cond;
                 Word exit_code = token.exit_if.exit_code;
@@ -1033,21 +1200,21 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
 
             case I_STR_LEN:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"strlen", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"strlen", "Proboably you forgot to push something | Stack Underflow");
                 }
                 char *str = vm->stack[vm->stack_size - 1].as_str;
                 Word len;
                 len.as_i64 = strlen(str);
 
                 if (push(vm, len) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"strlen", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"strlen", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_INPUT_STR:
                 char buffer[O_DEFAULT_BUFFER_CAPACITY] = {0};
                 scanf("%1023s", buffer);
                 if (push_str(vm, buffer) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"input_str", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"input_str", "You pushed to many values | Stack Overflow");
                 }
                 break;
 
@@ -1059,7 +1226,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_IGNORE_IF:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"ignore_if", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"ignore_if", "Proboably you forgot to push something | Stack Underflow");
                 }
                 Word cond1 = token.word;
                 if (vm->stack[vm->stack_size - 1].as_i64 == cond1.as_i64) {
@@ -1068,19 +1235,19 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_GET:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"get", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"get", "Proboably you forgot to push something | Stack Underflow");
                 } else if (token.word.as_i64 > vm->stack_size) {
-                    error_occurred(vm->file_path, token.pos,"get", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"get", "You pushed to many values | Stack Overflow");
                 }
                 Word index;
                 index.as_i64 = token.word.as_i64;
                 if (push(vm, vm->stack[index.as_i64]) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"get", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"get", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_STR_CMP:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"strcmp", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"strcmp", "Proboably you forgot to push something | Stack Underflow");
                 }
 
                 char *str1 = vm->stack[vm->stack_size - 1].as_str;
@@ -1092,7 +1259,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 result4.as_i64 = 0;
                 if (strcmpres.as_str == 0) result4.as_i64 = 1;
                 if (push(vm, result4) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"strcmp", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"strcmp", "You pushed to many values | Stack Overflow");
                 }
                 break;
 
@@ -1100,12 +1267,12 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 Word itp;
                 itp.as_i64 = i;
                 if (push(vm, itp) != RTS_OK) {
-                    error_occurred(vm->file_path, token.pos,"push_current", "Stack Overflow");
+                    error_occurred(vm->file_path, token.pos,"push_current", "You pushed to many values | Stack Overflow");
                 }
                 break;
             case I_JMP_FS:
                 if (vm->stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos,"jmp_fs", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"jmp_fs", "Proboably you forgot to push something | Stack Underflow");
                 }
                 i = vm->stack[vm->stack_size].as_i64;
                 continue;
@@ -1118,17 +1285,17 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 break;
             case I_CAST:
                if (vm->stack_size == 0) {
-                   error_occurred(vm->file_path, token.pos,"cast", "Stack Underflow");
+                   error_occurred(vm->file_path, token.pos,"cast", "Proboably you forgot to push something | Stack Underflow");
                }
                Word value = pop(vm);
                if (strcmp(token.word.as_str, "int") == 0) {
                    if (push(vm, value) != RTS_OK) {
-                       error_occurred(vm->file_path, token.pos,"cast", "Stack Overflow");
+                       error_occurred(vm->file_path, token.pos,"cast", "You pushed to many values | Stack Overflow");
                    }
                } else if (strcmp(token.word.as_str, "str") == 0) {
                    char *str = value.as_str;
                    if (push_str(vm, str) != RTS_OK) {
-                       error_occurred(vm->file_path, token.pos,"cast", "Stack Overflow");
+                       error_occurred(vm->file_path, token.pos,"cast", "You pushed to many values | Stack Overflow");
                    }
                } else {
                    error_occurred(vm->file_path, token.pos,"cast", "Invalid Type");
@@ -1139,12 +1306,12 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 no_win_support();
                 #else
                 if (vm->stack_size < 1) {
-                   error_occurred(vm->file_path, token.pos,"send", "Stack Underflow");
+                   error_occurred(vm->file_path, token.pos,"send", "Proboably you forgot to push something | Stack Underflow");
                 }
                 Word sockfd = vm->stack[vm->stack_size - 1];
                 char *data = token.word.as_str;
                 if (data == NULL) {
-                    error_occurred(vm->file_path, token.pos,"send", "Invalid String Data");
+                    error_occurred(vm->file_path, token.pos,"send", "The stack dont contains a valid string | The stack dont contains a valid string | Invalid String Data");
                 }
                 if (sockfd.as_i64 < 0) {
                     error_occurred(vm->file_path, token.pos,"send", "Invalid Socket Descriptor");
@@ -1174,13 +1341,13 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 vm->orta_stack[vm->orta_stack_size++] = current_instruction;
 
                 if (token.word.as_i64 < 0 || token.word.as_i64 > program.size) {
-                    error_occurred(vm->file_path, token.pos,"call", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos,"call", "Proboably you forgot to push something | Stack Underflow");
                 }
                 i = token.word.as_i64;
                 continue;
             case I_RET:
                 if (vm->orta_stack_size == 0) {
-                    error_occurred(vm->file_path, token.pos, "ret", "Stack Underflow");
+                    error_occurred(vm->file_path, token.pos, "ret", "Proboably you forgot to push something | Stack Underflow");
                 }
                 i = vm->orta_stack[--vm->orta_stack_size].as_i64;
                 break;
@@ -1310,7 +1477,6 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         error_occurred(vm->file_path, 0, "SECURITY_CHECK", "Failed to open file: %s", filename);
-        return RTS_ERROR;
     }
 
     char line[O_DEFAULT_SIZE];
@@ -1322,7 +1488,8 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     // First Pass
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
-
+        // TODO: Make labels can have spaces before: "   some_label:"
+        // and it would be saved not as "   some_label" rather "some_label"
         size_t len = strlen(line);
         if (len > 2 && line[len - 2] == ':') {
             line[len - 2] = '\0';
@@ -1393,18 +1560,48 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
                 token.inst = I_PUSH_STR;
             } else {
                 token.inst = I_PUSH;
-                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                char expr[256];
+                if (sscanf(args[0], "%255s", expr) != 1) {
                     error_occurred(vm->file_path, line_count, "PARSING", "push expects an integer or string: %s", line);
                 }
+                token.word.as_i64  = evaluate_expression(vm, expr);
             }
         } else if (strcmp(instruction, "math::add") == 0) {
             token.inst = I_ADD;
+            if (matched == 2) {
+                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                    error_occurred(vm->file_path, line_count, "math::add", "Failed to get integer: %s", line);
+                }
+            } else {
+                token.word.as_i64 = -1;
+            }
         } else if (strcmp(instruction, "math::sub") == 0) {
             token.inst = I_SUB;
+            if (matched == 2) {
+                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                    error_occurred(vm->file_path, line_count, "math::sub", "Failed to get integer: %s", line);
+                }
+            } else {
+                token.word.as_i64 = -1;
+            }
         } else if (strcmp(instruction, "math::div") == 0) {
             token.inst = I_DIV;
+            if (matched == 2) {
+                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                    error_occurred(vm->file_path, line_count, "math::div", "Failed to get integer: %s", line);
+                }
+            } else {
+                token.word.as_i64 = -1;
+            }
         } else if (strcmp(instruction, "math::mul") == 0) {
             token.inst = I_MUL;
+            if (matched == 2) {
+                if (sscanf(args[0], "%ld", &token.word) != 1) {
+                    error_occurred(vm->file_path, line_count, "math::div", "Failed to get integer: %s", line);
+                }
+            } else {
+                token.word.as_i64 = -1;
+            }
         } else if (strcmp(instruction, "io::print") == 0) {
             strcpy(token.word.as_str, extract_content(line));
             token.word.as_str[strlen(token.word.as_str)] = '\0';

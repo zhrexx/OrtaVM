@@ -1,18 +1,14 @@
-#include <lib.horta>
-#include <inet.horta>
-#define TAPL 1   # to add per loop
-#define N 100    # Iterations / TAPL
+#define N 10   # Iterations
+#define TAPL 1 # to add per loop
 
 _entry:
     io::print "Hello, World! Here is a simple for loop in orta\n"
-    stack::push -TAPL
+    stack::push 0
 .loop:
     stack::push TAPL
     math::add
     io::print
     inst::jmp_ifn .loop N
-
-
 
 
 

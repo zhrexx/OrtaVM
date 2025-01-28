@@ -1,5 +1,9 @@
 #include "orta.h"
 
+#ifndef NO_PREPROC
+#define NO_PREPROC 0
+#endif
+
 void usage(char *program_name) {
     fprintf(stderr, "| OrtaVM\n", program_name);
     fprintf(stderr, "| Usage: %s <orta_code_file.orta/orta_vm_file.ovm> <ovm_output.ovm/deovm_output.orta> [flags]\n", program_name);
@@ -7,11 +11,14 @@ void usage(char *program_name) {
     fprintf(stderr, "|    --build-only          Build only without execution.\n");
     fprintf(stderr, "|    --show-warnings       Show warnings (sets warning level to 1).\n");
     fprintf(stderr, "|    --dump                Dumps the stack\n");
+    #if NO_PREPROC
+        fprintf(stderr, "|    --no-preprocessing    Disables preprocessing.\n");
+    #endif
     fprintf(stderr, "|    -l <limit>            Set limit value. (Default: 1000)\n");
     fprintf(stderr, "|    -i <path>             Add a include path (U can use ~ for home)\n");
     fprintf(stderr, "|    --target <target>     Set an compilation target (windows|posix)\n");
     fprintf(stderr, "|    --support=<feature>   Enables a feature\n");
-    fprintf(stderr, "|> Features:");
+    fprintf(stderr, "|> Features:\n");
     fprintf(stderr, "|    uppercase             Enables uppercase Instructions\n");
 }
 
@@ -24,6 +31,8 @@ int main(int argc, char **argv) {
     int dump = 0;
     int test = 0;
     int target = 0;
+    int preprocess = 0;
+
     if (argc < 2) {
         usage(argv[0]);
         fprintf(stderr, "ERROR: No input file provided.\n");
@@ -81,7 +90,15 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "ERROR: Missing target for --target option.\n");
                 return 1;
             }
-         } else {
+         }
+
+         #if NO_PREPROC == 1
+         else if (strcmp(argv[i], "--no-preprocessing") == 0) {
+                      preprocess = 1;
+         }
+         #endif
+
+         else {
              fprintf(stderr, "ERROR: Unknown option '%s'.\n", argv[i]);
              return 1;
          }
@@ -97,13 +114,17 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: Missing output file for .orta input.\n");
             return 1;
         }
-        if (OrtaVM_preprocess_file(argv[1], orta_argc, orta_args, target) != RTS_OK) {
-            fprintf(stderr, "ERROR: Failed to preprocess file: %s", argv[1]);
-            return 1;
-        }
-
         char filename[256];
-        snprintf(filename, sizeof(filename), "%s.ppd", argv[1]);
+        if (!preprocess) {
+            if (OrtaVM_preprocess_file(argv[1], orta_argc, orta_args, target) != RTS_OK) {
+                fprintf(stderr, "ERROR: Failed to preprocess file: %s", argv[1]);
+                return 1;
+            }
+            snprintf(filename, sizeof(filename), "%s.ppd", argv[1]);
+        } else {
+            fprintf(stderr, "NOTE: Preprocessing is disabled. Error may happen.\n");
+            snprintf(filename, sizeof(filename), "%s", argv[1]);
+        }
 
         if (OrtaVM_parse_program(&vm, filename) != RTS_OK) {
             fprintf(stderr, "ERROR: Failed to parse .orta file: %s\n", argv[1]);
