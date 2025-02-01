@@ -12,6 +12,8 @@
     exit EXIT_FAILURE
 }
 
+
+# OS Specific stuff
 #ifdef OS_WINDOWS
 #define $OS "windows"
 #else

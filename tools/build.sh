@@ -19,5 +19,6 @@ FLAGS="-O3 -static"
 
 $CC $FLAGS -o build/orta orta.c
 $CC $FLAGS -o build/deovm deovm.c
+$CC $FLAGS -o build/fcfo fcfo.c
 
 cp std/* ~/.orta/

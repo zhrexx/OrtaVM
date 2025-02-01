@@ -7,10 +7,11 @@ default:
     enable_verbose();
     # add_flag("-Wswitch-enum");
     # add_flag("-O3");
-    # add_flag("-DNO_PREPROC=1");
+    # add_flag("-DPREPROC_STR_INSERT=0"); | To disanable insertion of " at start and end
     compile("orta.c", "vm");
     compile("deovm.c", "deovm");
     compile("oto64.c", "oto64"); # ovmtoasm64
+    compile("fcfo.c", "fcfo");
     s_command("cp std/* ~/.orta/");
     # convert_to_make();
 
@@ -18,6 +19,7 @@ default:
 windows:
     s_command("x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
     s_command("x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("x86_64-w64-mingw32-gcc -o build/fcfo.exe fcfo.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
     s_command("wine tools/build.cmd");
 
 # Compile all examples

@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
     }
     char *output = argv[2];
     FILE *f = fopen(output, "w");
-    assert(INSTRUCTION_COUNT == 45);
+    assert(INSTRUCTION_COUNT == 44);
     for (size_t i = 0; i < vm.program.size; i++) {
         Token token = vm.program.tokens[i];
         switch (token.inst) {
@@ -140,9 +140,6 @@ int main(int argc, char **argv) {
                 break;
            case I_CAST:
                 fprintf(f, "stack::cast %s\n", token.word.as_str);
-                break;
-           case I_SEND:
-                fprintf(f, "net::send \"%s\"\n", token.word.as_str);
                 break;
            case I_GET_DATE:
                 fprintf(f, "time::today\n");

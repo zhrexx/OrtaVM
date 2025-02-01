@@ -14,6 +14,7 @@ if not exist "%USERPROFILE%\.orta" mkdir "%USERPROFILE%\.orta"
 if /I "%COMPILER%"=="cl" (
     cl /Fe:%OUTPUT_DIR%\orta.exe orta.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
     cl /Fe:%OUTPUT_DIR%\deovm.exe deovm.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
+    cl /Fe:%OUTPUT_DIR%\fcfo.exe fcfo.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
     copy std\* %USERPROFILE%\.orta\
 ) else if /I "%COMPILER%"=="gcc" (
     set FLAGS=-Wl,--stack,%STACK_SIZE% -static-libgcc -static-libstdc++ --static -O3

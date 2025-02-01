@@ -207,8 +207,7 @@ int main(int argc, char **argv) {
 				break;
             case I_CAST: // TODO: Implement
 				break;
-            case I_SEND:
-				break;
+
             case I_GET_DATE: // TODO: Implement
 				break;
         }

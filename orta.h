@@ -1,6 +1,6 @@
 // OrtaVM | Informations:
 // Current Version: 1.0
-// Next Version Release Date: February 20 2025
+// Next Version Release Date: March 15 2025
 // License: NovaLicense(https://github.com/zhrxxgroup/files/blob/main/NovaLicense.md)
 
 // Goals of OrtaVM:
@@ -14,18 +14,39 @@
 
 // GLOBAL TODOS:
 // TODO: Add more functions                                                 | Currently No Ideas
-// TODO: Visit First Pass
 
 // NEXT RELEASE TODO:
-// TODO: Deprecate "nop" due call instruction and ret
+// TODO: Deprecate "nop" due new "call" and "ret" instruction               |
+// TODO: Write Documentation                                                | docs.c
+
+// PLANED TO BE IN 2.0
+// - IF-ELSE
+// - floating point numbers
+// - hexidecimal numbers
+// - local labels
+// - better memory access
+
+// PLANED TO BE IN 3.0 ~2026
+// - Functions
+// - FOR and WHILE
+// - Types
+// - TypeSavety
+// - More
+
+// PLANED TO BE IN 4.0 ~2026
+// - Compile C to Orta supported format and use the functions
+// - finished oto64 for all instructions
+// - Complete oto64 independent executables                                     | current runtime uses libc
 
 // SOMETIME TODOS:
+// TODO: Add memory releated functions !Usable @info at Structs i maked a TODO
 // TODO: Add Graphics and Audio libraries                                   | miniaudio is good
 // TODO: Renew deovm                                                        | Some instructions are in old form
 // TODO: Add a syscall inst                                                 | abstraction layer: int syscall(int syscall, int arg1, int arg2);
-// TODO: Implement STR support for dump                                     | IDK
+// TODO: Implement STR support for dump                                     | NO_INFO
 // TODO: Implement more instructions to oto64                               | Only a few implemented + _entry
-// TODO: More Memory releated functions
+// TODO: Socket functions                                                   | Add normal and crossplatform functions
+
 
 // DONE:
 // DONE: Add magic code to the binaries(.ovm)                               | OVM1 (OVM_MAGIC_CODE)
@@ -37,8 +58,8 @@
 // DONE: Second or Three pass compiler                                      | First Pass = Label Resolving Second pass actual parsing
 // DONE: Fix Labels                                                         | Fixed
 // DONE: Add Entry Point (_entry)                                           | Cool name yeah? :)
-// DONE: Add Memory | Allow to alloc memory free and realloc                | I added memory but not only with pointer with Byte {void *ptr, int8_t byte}
 // DONE: evaluating values for push                                         | 1-2+111-1
+// DONE: Binary contains flags                                              | flags are indicators what a program need | Memory Access, Network, File Access
 
 // IDEAS:
 // IDEA: I think it were be cool to add support to open .so or .a files and call a function
@@ -46,9 +67,8 @@
 //---------------------------------------------------------------------------------------------------------------------------------
 
 // Changelog:
-// Added option to use all math instructions like this: math::<add/sub/mul/div> <num>
-// Added Memory
-// Added evaluating values for push: 1-2+111-1
+// fcfo - Check a program which flags it has and write it to a file
+// flags for all binaries
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -79,15 +99,21 @@
 #define O_COMMENT_SYMBOL '#'
 #define O_ENTRY "_entry"
 
+#define O_MAX_FLAGS 4
 #define O_MEMORY_CAPACITY 1000
 //---
 #define OVM_MAGIC_NUMBER "OVM1"
 #define OVM_VERSION 1
 //---
 #define PREPROC_SYMBOL '#'
+#ifndef PREPROC_STR_INSERT
+#define PREPROC_STR_INSERT 1 // Insertion of " at start and end of string | Default: on
+#endif
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
+// Migth you have the question: what means RTS?
+// RTS means "Runtime Status"
 typedef enum {
     RTS_OK,
     RTS_STACK_OVERFLOW,
@@ -98,15 +124,20 @@ typedef enum {
 } RTStatus;
 
 typedef enum {
-    I_NOP,
+    I_NOP, // @deprecated
+
     I_IGNORE,
     I_IGNORE_IF,
-    I_PUSH,
-    I_PUSH_STR,
-    I_DROP,
     I_JMP,
     I_JMP_IF,
     I_JMP_IFN,
+    I_JMP_FS,
+    I_CALL,
+    I_RET,
+
+    I_PUSH,
+    I_PUSH_STR,
+    I_DROP,
     I_DUP,
     I_SWAP,
     I_EQ,
@@ -114,37 +145,42 @@ typedef enum {
     I_GT,
     I_GET,
     I_CLEAR_STACK,
+    I_STR_LEN,
+    I_STR_CMP,
+    I_CAST_AND_PRINT,
+    I_PUSH_CURRENT_INST, // @deprecated
+
     I_ADD,
     I_SUB,
     I_MUL,
     I_DIV,
+    I_RANDOM_INT,
+
     I_EXIT,
     I_EXIT_IF,
-    I_STR_LEN,
-    I_STR_CMP,
+
     I_INPUT,
     I_INPUT_STR,
     I_PRINT,
-    I_CAST_AND_PRINT,
     I_PRINT_STR,
     I_COLOR,
     I_CLEAR,
     I_SLEEP,
     I_EXECUTE_CMD,
+
     I_FILE_OPEN,
     I_FILE_WRITE,
     I_FILE_READ,
-    I_RANDOM_INT,
-    I_PUSH_CURRENT_INST,
-    I_JMP_FS,
     I_BFUNC,
     I_CAST,
-    I_SEND,
     I_GET_DATE,
-    I_CALL,
-    I_RET,
+
     INSTRUCTION_COUNT
 } Instruction;
+
+typedef enum {
+    F_FILE_ACCESS = 6,
+} Flags;
 
 typedef union {
     int64_t as_i64;
@@ -186,37 +222,39 @@ typedef struct {
     int64_t addr;
 } Label;
 
-typedef struct {
-    void *ptr;
-    int8_t byte;
-} Byte;
-
-typedef struct {
-    size_t size;
-    Byte bytes[O_MEMORY_CAPACITY];
-} OrtaMemory;
-
-
 // Use char with static memory (char ...[bytes]) | for saving ovm file | it will write address if not static array
 // TODO: Dont forget to update if adding new field | at save program
+#ifdef _WIN32
+#pragma pack(push, 1)
 typedef struct {
     char magic[4];
     int version;
-    char padding[27]; // space left for other meta
+    int flags_size;
+    int flags[O_MAX_FLAGS];
 } OrtaMeta;
+#pragma pack(pop)
+#else
+typedef struct __attribute__((packed)){
+    char magic[4];
+    int version;
+    int flags_size;
+    int flags[O_MAX_FLAGS];
+} OrtaMeta;
+#endif
 
 typedef struct OrtaVM OrtaVM;
 typedef void (*BFunc)(OrtaVM*);
 // GOTO structs
+// IDEA: Make memory provides a pointer and you can write every thing you need to it | str, int and others
+// - and functions like write, free, alloc mb realloc
 struct OrtaVM {
     char *file_path;                         // Orta File Path used in error_occurred
     OrtaMeta meta;                           // Binary Metadata                                     | TODO: Use somewhere
 
     Word stack[O_STACK_CAPACITY];            // Main Stack
     size_t stack_size;                       // = count
-    Word orta_stack[8];                      // stack of runtime values (only accessible by OrtaVM) | TODO: Currently used only to store call pos for ret use in other places
+    Word orta_stack[16];                      // stack of runtime values (only accessible by OrtaVM)| TODO: Currently used only to store call pos for ret use in other places
     size_t orta_stack_size;                  // = count
-    OrtaMemory memory;                       // Memory                                              | TODO: Use somewhere
 
     BFunc bfunctions[O_DEFAULT_SIZE];        // C Functions
     size_t bfunctions_size;                  // = count
@@ -282,26 +320,6 @@ void OrtaVM_dump(OrtaVM *vm) {
             printf("| %ld | %p |\n", word.as_i64, word.as_ptr);
         }
     }
-    if (vm->memory.size == 0) {
-        printf("INFO: Memory is empty.\n");
-    }
-    else {
-        printf("| Memory Dump |\n");
-        printf("| INFO: Only first 30 bytes |\n");
-        for (size_t i = 0; i < vm->memory.size; i++) {
-            printf("| %p | %d |\n", vm->memory.bytes[i].ptr, vm->memory.bytes[i].byte);
-            if (i == 30) {
-                printf("| ... |\n");
-                break;
-            }
-        }
-    }
-}
-void no_win_support() {
-    #ifdef _WIN32
-    printf("Sorry, but this Function is not supported on Windows.\n");
-    exit(1);
-    #endif
 }
 char *extract_content(const char *line) {
     const char *start = strchr(line, '"');
@@ -515,20 +533,6 @@ int64_t get_label_addr(OrtaVM *vm, char *label_name) {
     }
     return -1;
 }
-Byte byte_new(int8_t value) {
-    Byte tmp;
-    tmp.ptr = malloc(1);
-    tmp.byte = value;
-}
-void byte_modify(OrtaVM *vm, size_t pos, int8_t value) {
-    // Pop byte at index and push with new value
-    if (pos >= vm->memory.size) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "byte_modify", "Index out of bounds");
-    }
-    Byte old = vm->memory.bytes[pos];
-    old.byte = value;
-    return;
-}
 int64_t parse_number(char **p) {
     int64_t num = 0;
     while (**p && isdigit(**p)) {
@@ -591,6 +595,25 @@ int64_t evaluate_expression(OrtaVM *vm, char *expr) {
     char *p = expr;
     return parse_expression(&p, vm);
 }
+void deprecated_instruction(char *filename, int line_count, char *instruction, char *reason) {
+    if (level == 1) {
+        printf("\033[33m%s:%d Warning: Usage of deprecated Instruction (%s): %s\033[0m\n", filename, line_count, instruction, reason);
+    }
+}
+RTStatus push_flag(OrtaVM *vm, int flag) {
+    for (size_t i = 0; i < vm->meta.flags_size; i++) {
+        if (vm->meta.flags[i] == flag) {
+            return RTS_OK;
+        }
+    }
+    if (vm->meta.flags_size >= O_MAX_FLAGS) {
+        error_occurred(vm->file_path, 0, "FLAGS", "Maximal amount of flags exceeded!");
+    }
+    vm->meta.flags[vm->meta.flags_size] = flag;
+    vm->meta.flags_size++;
+    return RTS_OK;
+}
+
 
 RTStatus push(OrtaVM *vm, Word value) {
     if (vm->stack_size >= O_STACK_CAPACITY) {
@@ -646,202 +669,10 @@ Word pop(OrtaVM *vm) {
     return vm->stack[--vm->stack_size];
 }
 
-#ifndef _WIN32
-// TODO: Make it os independent
-void asocket(OrtaVM *vm) {
-    no_win_support();
-    Word result;
-    result.as_i64= socket(AF_INET, SOCK_STREAM, 0);
-    if (push(vm, result) != RTS_OK) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"asocket", "You pushed to many values | Stack Overflow");
-    }
-}
-void abind(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"bind", "Proboably you forgot to push something | Stack Underflow");
-    }
-    Word sockfd = vm->stack[vm->stack_size - 1];
-    if (sockfd.as_i64 == -1) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in server_addr;
-    Word port = vm->stack[vm->stack_size - 2];
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(port.as_i64);
-
-    if (bind(sockfd.as_i64, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Bind failed");
-        close(sockfd.as_i64);
-        exit(EXIT_FAILURE);
-    }
-}
-void alisten(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"listen", "Proboably you forgot to push something | Stack Underflow");
-    }
-    Word sockfd = vm->stack[--vm->stack_size];
-    Word backlog = vm->stack[--vm->stack_size];
-
-    Word result;
-    result.as_i64 = listen(sockfd.as_i64, backlog.as_i64);
-}
-void aaccept(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"accept", "Proboably you forgot to push something | Stack Underflow");
-    }
-    Word sockfd = vm->stack[vm->stack_size - 1];
-
-    Word result;
-    result.as_i64 = accept(sockfd.as_i64, NULL, NULL);
-    if (push(vm, result) != RTS_OK) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"aaccept", "You pushed to many values | Stack Overflow");
-    }
-}
-void aconnect(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"connect", "Proboably you forgot to push something | Stack Underflow");
-    }
-
-    Word sockfd = vm->stack[vm->stack_size - 1];
-    Word port = vm->stack[vm->stack_size - 2];
-
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port.as_i64);
-
-    if (connect(sockfd.as_i64, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connect failed");
-        close(sockfd.as_i64);
-        exit(EXIT_FAILURE);
-    }
-}
-void asend(OrtaVM *vm) {
-    no_win_support();
-
-    if (vm->stack_size < 2) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Proboably you forgot to push something | Stack Underflow");
-    }
-
-    Word sockfd = vm->stack[vm->stack_size - 1];
-
-    char *data = vm->stack[vm->stack_size - 2].as_str;
-
-    if (data == NULL) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "The stack dont contains a valid string | Invalid String Data");
-    }
-
-    if (sockfd.as_i64 < 0) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"send", "Invalid Socket Descriptor");
-    }
-
-    ssize_t result = send(sockfd.as_i64, data, strlen(data), 0);
-    if (result < 0) {
-        perror("Send failed");
-        close(sockfd.as_i64);
-        exit(EXIT_FAILURE);
-    }
-
-    vm->stack_size -= 2;
-}
-void arecv(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"recv", "Proboably you forgot to push something | Stack Underflow");
-    }
-
-    Word sockfd = vm->stack[vm->stack_size - 1];
-    char buffer[O_DEFAULT_BUFFER_CAPACITY];
-    ssize_t result = recv(sockfd.as_i64, buffer, sizeof(buffer), 0);
-    if (result < 0) {
-        perror("Receive failed");
-        close(sockfd.as_i64);
-        exit(EXIT_FAILURE);
-    }
-
-    buffer[result] = '\0';
-    push_str(vm, buffer);
-}
-void aclose(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos,"close", "Proboably you forgot to push something | Stack Underflow");
-    }
-
-    Word sockfd = vm->stack[vm->stack_size - 1];
-    if (close(sockfd.as_i64) < 0) {
-        perror("Close failed");
-        exit(EXIT_FAILURE);
-    }
-}
-void aset_opt(OrtaVM *vm) {
-    no_win_support();
-    if (vm->stack_size < 3) {
-        error_occurred(vm->file_path,vm->program.tokens[vm->program.current_token].pos,"set_opt", "Proboably you forgot to push something | Stack Underflow");
-    }
-
-    Word sockfd = vm->stack[vm->stack_size - 1];
-    Word option_name = vm->stack[vm->stack_size - 2];
-    Word option_value = vm->stack[vm->stack_size - 3];
-
-    if (setsockopt(sockfd.as_i64, SOL_SOCKET, option_name.as_i64, &option_value, sizeof(option_value)) < 0) {
-        perror("Set socket option failed");
-        close(sockfd.as_i64);
-        exit(EXIT_FAILURE);
-    }
-}
-void init_socket_bfuncs(OrtaVM *vm) {
-    BFunc sockett = asocket;
-    BFunc bindd = abind;
-    BFunc listenn = alisten;
-    BFunc acceptt = aaccept;
-    BFunc connectt = aconnect;
-    BFunc sendt = asend;
-    BFunc recvt = arecv;
-    BFunc closet = aclose;
-    BFunc setoptt = aset_opt;
-
-    push_bfunc(vm, sockett);
-    push_bfunc(vm, bindd);
-    push_bfunc(vm, listenn);
-    push_bfunc(vm, acceptt);
-    push_bfunc(vm, connectt);
-    push_bfunc(vm, sendt);
-    push_bfunc(vm, recvt);
-    push_bfunc(vm, closet);
-    push_bfunc(vm, setoptt);
-}
-#endif
-
-// Write to byte
-void byte_write(OrtaVM *vm) {
-    if (vm->stack_size < 1) {
-        error_occurred(vm->file_path, vm->program.tokens[vm->program.current_token].pos, "write_byte", "Proboably you forgot to push something | Stack Underflow");
-    }
-    Byte tmp = byte_new(pop(vm).as_i64);
-    vm->memory.bytes[vm->memory.size++] = tmp;
-}
-void byte_modify_b(OrtaVM *vm) {
-    byte_modify(vm, pop(vm).as_i64, pop(vm).as_i64);
-}
-
 void init_bfuncs(OrtaVM *vm) {
-    #ifndef _WIN32
-    init_socket_bfuncs(vm); // 8 index
-    #endif
-    BFunc byte_writee = byte_write;
-    push_bfunc(vm, byte_writee);
-    BFunc byte_modifyy = byte_modify_b;
-    push_bfunc(vm, byte_modifyy);
-
+    // Usage:
+    // BFunc name = function;
+    // push_bfunc(vm, name);
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------
@@ -863,7 +694,7 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
         iterations++;
         Token token = program.tokens[i];
         vm->program.current_token = i;
-        assert(INSTRUCTION_COUNT == 45);
+        assert(INSTRUCTION_COUNT == 44);
         switch (token.inst) {
             case I_PUSH:
                 if (push(vm, token.word) != RTS_OK) {
@@ -1014,6 +845,9 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 FILE *file = fopen(token.word.as_str, "a+");
                 if (file == NULL) {
                     error_occurred(vm->file_path, token.pos,"file_open", "File allocation failed");
+                }
+                if (push_flag(vm, F_FILE_ACCESS) != RTS_OK) {
+                    error_occurred(vm->file_path, token.pos, "FLAG", "Failed to push flag!");
                 }
                 Word fd;
                 fd.as_i64 = (int64_t)file;
@@ -1301,38 +1135,11 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                    error_occurred(vm->file_path, token.pos,"cast", "Invalid Type");
                }
 
-            case I_SEND:
-                #ifdef _WIN32
-                no_win_support();
-                #else
-                if (vm->stack_size < 1) {
-                   error_occurred(vm->file_path, token.pos,"send", "Proboably you forgot to push something | Stack Underflow");
-                }
-                Word sockfd = vm->stack[vm->stack_size - 1];
-                char *data = token.word.as_str;
-                if (data == NULL) {
-                    error_occurred(vm->file_path, token.pos,"send", "The stack dont contains a valid string | The stack dont contains a valid string | Invalid String Data");
-                }
-                if (sockfd.as_i64 < 0) {
-                    error_occurred(vm->file_path, token.pos,"send", "Invalid Socket Descriptor");
-                }
-                ssize_t result6 = send(sockfd.as_i64, data, strlen(data), 0);
-                if (result6 < 0) {
-                    perror("Send failed");
-                    close(sockfd.as_i64);
-                    exit(EXIT_FAILURE);
-                }
-
-                vm->stack_size -= 1;
-                break;
-                #endif
             case I_GET_DATE:
                 char date[9];
                 time_t t = time(NULL);
                 struct tm tm = *localtime(&t);
-
                 strftime(date, sizeof(date), "%d:%m:%y", &tm);
-
                 push_str(vm, date);
                 break;
             case I_CALL:
@@ -1351,7 +1158,6 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
                 }
                 i = vm->orta_stack[--vm->orta_stack_size].as_i64;
                 break;
-
             default:
                 error_occurred(vm->file_path, token.pos,"InstError", "Unknown Instruction");
         }
@@ -1360,59 +1166,65 @@ RTStatus OrtaVM_execute(OrtaVM *vm) {
     return RTS_OK;
 }
 
-
-// Ovm File description
-// | 16 bytes | ...bytes |
-//    ^
-//    Magic Number(4byte), OvmFile metadata (12byte)
 RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "rb");
-    if (!file) {
-        return RTS_ERROR;
+    char *filepath_copy = strdup(filename);
+    if (!filepath_copy) {
+        fclose(file);
+        error_occurred(vm->file_path, 0, "LOADING", "Memory allocation failed");
     }
-
-    vm->file_path = strdup(filename);
+    if (!file) {
+        error_occurred(filepath_copy, 0, "LOADING", "Failed to open file: %s", filename);
+    }
+    vm->file_path = filepath_copy;
 
     OrtaMeta meta = {0};
-
     if (fread(&meta, sizeof(OrtaMeta), 1, file) != 1 ||
-        strcmp(meta.magic, OVM_MAGIC_NUMBER) != 0 ||
+        strncmp(meta.magic, OVM_MAGIC_NUMBER, sizeof(meta.magic)) != 0 ||
         meta.version != OVM_VERSION) {
         fclose(file);
-        return RTS_ERROR;
+        error_occurred(vm->file_path, 0, "LOADING", "Invalid file format or magic number mismatch: %s", filename);
     }
 
     size_t program_size = 0;
-    while (!feof(file)) {
+    while (1) {
         Token token = {0};
         if (fread(&token.inst, sizeof(token.inst), 1, file) != 1) {
-            break;
+            if (feof(file)) break;
+            fclose(file);
+            error_occurred(vm->file_path, 0, "LOADING", "Failed to read instruction from file: %s", filename);
         }
 
-        // TODO(#1): Add more instruction handlings (TOGO STRING_HANDLING)
         if (token.inst == I_PUSH_STR || token.inst == I_PRINT_STR) {
             size_t str_len;
             if (fread(&str_len, sizeof(size_t), 1, file) != 1) {
                 fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, 0, "LOADING", "Failed to read string length from file: %s", filename);
             }
+
             token.word.as_str = malloc(str_len);
+            if (!token.word.as_str) {
+                fclose(file);
+                error_occurred(vm->file_path, 0, "LOADING", "Memory allocation failed");
+            }
+
             if (fread(token.word.as_str, sizeof(char), str_len, file) != str_len) {
                 free(token.word.as_str);
                 fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, 0, "LOADING", "Failed to read string from file: %s", filename);
             }
         } else {
             if (fread(&token.word, sizeof(token.word), 1, file) != 1) {
                 fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, 0, "LOADING", "Failed to read operand from file: %s", filename);
             }
         }
 
         if (program_size >= O_DEFAULT_BUFFER_CAPACITY) {
             fclose(file);
-            return RTS_ERROR;
+            error_occurred(vm->file_path, 0, "LOADING", "Program too large");
         }
+
         vm->program.tokens[program_size++] = token;
     }
 
@@ -1425,38 +1237,39 @@ RTStatus OrtaVM_load_program_from_file(OrtaVM *vm, const char *filename) {
 RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     FILE *file = fopen(filename, "wb");
     if (!file) {
-        return RTS_ERROR;
+        error_occurred(vm->file_path, 0, "SAVING", "Failed to open file: %s", filename);
     }
 
-    // TODO: Dont forget to update if adding new field
-    OrtaMeta meta = {
-        .magic = OVM_MAGIC_NUMBER,
-        .version = OVM_VERSION
-    };
+    OrtaMeta meta;
+    memcpy(meta.magic, OVM_MAGIC_NUMBER, sizeof(meta.magic));
+    meta.version = OVM_VERSION;
+    meta.flags_size = vm->meta.flags_size;
+    memcpy(meta.flags, vm->meta.flags, sizeof(meta.flags));
 
     if (fwrite(&meta, sizeof(OrtaMeta), 1, file) != 1) {
         fclose(file);
-        return RTS_ERROR;
+        error_occurred(vm->file_path, 0, "SAVING", "Failed to write metadata to file: %s", filename);
     }
 
     for (size_t i = 0; i < vm->program.size; i++) {
         Token *token = &vm->program.tokens[i];
+
         if (fwrite(&token->inst, sizeof(token->inst), 1, file) != 1) {
             fclose(file);
-            return RTS_ERROR;
+            error_occurred(vm->file_path, 0, "SAVING", "Failed to write instruction to file: %s", filename);
         }
-        // TODO(#2): Add more instruction handlings (TOGO STRING_HANDLING)
+
         if (token->inst == I_PUSH_STR || token->inst == I_PRINT_STR) {
             size_t str_len = strlen(token->word.as_str) + 1;
             if (fwrite(&str_len, sizeof(size_t), 1, file) != 1 ||
                 fwrite(token->word.as_str, sizeof(char), str_len, file) != str_len) {
                 fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, 0, "SAVING", "Failed to write string to file: %s", filename);
             }
         } else {
             if (fwrite(&token->word, sizeof(token->word), 1, file) != 1) {
                 fclose(file);
-                return RTS_ERROR;
+                error_occurred(vm->file_path, 0, "SAVING", "Failed to write operand to file: %s", filename);
             }
         }
     }
@@ -1465,7 +1278,9 @@ RTStatus OrtaVM_save_program_to_file(OrtaVM *vm, const char *filename) {
     return RTS_OK;
 }
 
+
 // GOTO parsing
+// TODO: Remember to add flags here
 RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
     if (!ends_with(filename, ".pdd")) {
         char *new_filename = strdup(filename);
@@ -1487,18 +1302,25 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
 
     // First Pass
     while (fgets(line, sizeof(line), file)) {
+        line_count++;
         if (line[0] == '\n' || line[0] == O_COMMENT_SYMBOL) continue;
         // TODO: Make labels can have spaces before: "   some_label:"
         // and it would be saved not as "   some_label" rather "some_label"
         size_t len = strlen(line);
         if (len > 2 && line[len - 2] == ':') {
             line[len - 2] = '\0';
+            if (check_label(vm, line)) {
+                error_occurred(vm->file_path, line_count, "SECURITY_CHECK", "Duplicate label found: %s", line);
+            }
             vm->labels[vm->labels_size].name = strdup(line);
             vm->labels[vm->labels_size].addr = token_count;
             vm->labels_size++;
             continue;
         } else if (len > 1 && line[len - 1] == ':') {
             line[len - 1] = '\0';
+            if (check_label(vm, line)) {
+                error_occurred(vm->file_path, line_count, "SECURITY_CHECK", "Duplicate label found: %s", line);
+            }
             vm->labels[vm->labels_size].name = strdup(line);
             vm->labels[vm->labels_size].addr = token_count;
             vm->labels_size++;
@@ -1632,6 +1454,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
         }
         else if (strcmp(instruction, "nop") == 0) {
             token.inst = I_NOP;
+            deprecated_instruction(vm->file_path, line_count, "nop", "Use Labels, \"call\" and \"ret\"");
         }
         else if (strcmp(instruction, "exit") == 0) {
             token.inst = I_EXIT;
@@ -1647,6 +1470,7 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             token.inst = I_FILE_OPEN;
             strcpy(token.word.as_str, extract_content(line));
             token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
+            push_flag(vm, F_FILE_ACCESS);
         }
         else if (strcmp(instruction, "file::write") == 0) {
             token.inst = I_FILE_WRITE;
@@ -1734,10 +1558,6 @@ RTStatus OrtaVM_parse_program(OrtaVM *vm, const char *filename) {
             }
         } else if (strcmp(instruction, "stack::cast") == 0) {
             token.inst = I_CAST;
-            strcpy(token.word.as_str, extract_content(line));
-            token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
-        } else if (strcmp(instruction, "net::send") == 0) {
-            token.inst = I_SEND;
             strcpy(token.word.as_str, extract_content(line));
             token.word.as_str[strlen(token.word.as_str) + 1] = '\0';
         } else if (strcmp(instruction, "time::today") == 0) {
@@ -1831,10 +1651,16 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                 if (sscanf(line + 7, "%s %s", name, value) == 2) {
                     strncpy(preprocessors[preprocessors_count][0], name, O_DEFAULT_SIZE);
                     char *strext = extract_content(line+8);
+                    char tmp[O_DEFAULT_SIZE];
                     if (strcmp(strext, "No text provided") == 0) {
                         strncpy(preprocessors[preprocessors_count][1], value, O_DEFAULT_SIZE);
                     } else {
-                        strncpy(preprocessors[preprocessors_count][1], strext, O_DEFAULT_SIZE);
+                        if (!PREPROC_STR_INSERT) {
+                            snprintf(tmp, sizeof(tmp), "\"%s\"", strext);
+                           strncpy(preprocessors[preprocessors_count][1], tmp, O_DEFAULT_SIZE);
+                        } else {
+                            strncpy(preprocessors[preprocessors_count][1], strext, O_DEFAULT_SIZE);
+                        }
                     }
                     preprocessors_count++;
                 } else if (sscanf(line + 7, "%s", name) == 1) {
@@ -1898,7 +1724,7 @@ RTStatus OrtaVM_preprocess_file(char *filename, int argc, char argv[20][256], in
                             size_t before = pos - value;
                             snprintf(temp, before + 1, "%s", value);
                             snprintf(temp + before, sizeof(temp) - before, "%s%s",
-                                     preprocessors[i][1], pos + strlen(preprocessors[i][0]));
+                            preprocessors[i][1], pos + strlen(preprocessors[i][0]));
                             strncpy(value, temp, sizeof(value));
                         }
                     }
