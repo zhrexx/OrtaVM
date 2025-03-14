@@ -20,4 +20,10 @@
 #define $OS "linux"
 #endif
 
+#ifdef ENTRY_MAIN
+_entry:
+    inst::jmp main
+#endif
+
+
 

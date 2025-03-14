@@ -12,14 +12,14 @@ if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 if not exist "%USERPROFILE%\.orta" mkdir "%USERPROFILE%\.orta"
 
 if /I "%COMPILER%"=="cl" (
-    cl /Fe:%OUTPUT_DIR%\orta.exe orta.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
-    cl /Fe:%OUTPUT_DIR%\deovm.exe deovm.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
-    cl /Fe:%OUTPUT_DIR%\fcfo.exe fcfo.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
+    cl /Fe:%OUTPUT_DIR%\orta.exe src/orta.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
+    cl /Fe:%OUTPUT_DIR%\deovm.exe src/deovm.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
+    cl /Fe:%OUTPUT_DIR%\fcfo.exe src/fcfo.c /link /STACK:%STACK_SIZE% %OPTIMIZATION% %STATIC_LINKING%
     copy std\* %USERPROFILE%\.orta\
 ) else if /I "%COMPILER%"=="gcc" (
     set FLAGS=-Wl,--stack,%STACK_SIZE% -static-libgcc -static-libstdc++ --static -O3
-    x86_64-w64-mingw32-gcc -o %OUTPUT_DIR%\orta.exe orta.c %FLAGS%
-    x86_64-w64-mingw32-gcc -o %OUTPUT_DIR%\deovm.exe deovm.c %FLAGS%
+    x86_64-w64-mingw32-gcc -o %OUTPUT_DIR%\orta.exe src/orta.c %FLAGS%
+    x86_64-w64-mingw32-gcc -o %OUTPUT_DIR%\deovm.exe src/deovm.c %FLAGS%
     copy std\* %USERPROFILE%\.orta\
 ) else if /I "%COMPILER%"=="std" (
     copy std\* %USERPROFILE%\.orta\

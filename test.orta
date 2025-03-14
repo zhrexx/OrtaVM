@@ -1,9 +1,0 @@
-#include <lib.horta>
-#include <inet.horta>
-#define TAPL 1   # to add per loop
-#define N 10    # Iterations / TAPL
-
-_entry:
-file::open "test.txt"
-stack::push 10
-io::print

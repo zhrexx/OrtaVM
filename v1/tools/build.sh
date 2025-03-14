@@ -17,8 +17,8 @@ fi
 
 FLAGS="-O3 -static"
 
-$CC $FLAGS -o build/orta orta.c
-$CC $FLAGS -o build/deovm deovm.c
-$CC $FLAGS -o build/fcfo fcfo.c
+$CC $FLAGS -o build/orta src/orta.c
+$CC $FLAGS -o build/deovm src/deovm.c
+$CC $FLAGS -o build/fcfo src/fcfo.c
 
 cp std/* ~/.orta/

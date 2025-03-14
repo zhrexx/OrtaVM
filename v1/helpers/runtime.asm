@@ -104,11 +104,16 @@
 %define SYS_UMASK             60
 
 section .data
+    timeval:
+        tv_sec   dd 0
+        tv_nsec  dd 0
+    digit: db 0, 10
+
 section .bss
+    buffer resb 16
 
 section .text
 extern ifc_orta_print_int
-extern ifc_orta_input
 
 ovm_get:
     mov rbx, rsp
@@ -118,6 +123,40 @@ ovm_get:
     mov rax, [rbx]
     push rax
     ret
+
+; TODO: If between the call are not a pause the number will be not random
+; dx = min
+; cx = max
+ovm_random_int:
+.start:
+    mov ah, 00h     ; Interrupt to get system time
+    int 1ah
+
+    mov ax, dx
+    xor dx, dx   ; clear dx
+    div cx       ; contains the random number
+    push cx
+    ret
+
+orta_input: ; TODO: Implement
+    ret
+
+orta_error:
+    nop
+    mov rdi, -1
+    call ifc_orta_print_int
+    ret
+
+; edx = milliseconds
+orta_sleep:
+    mov dword [tv_sec], edx
+    mov dword [tv_nsec], dword 0
+    mov eax, 162
+    mov ebx, timeval
+    mov ecx, timeval
+    int 0x80 ; syscall
+    ret
+
 
 %macro ovm_exit 1
     mov rax, SYS_EXIT

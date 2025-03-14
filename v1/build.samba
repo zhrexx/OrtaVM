@@ -1,25 +1,27 @@
 # Samba Compiler
 # How to install?
-# run: https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/install_samba.sh
+# run: curl https://raw.githubusercontent.com/zhrxxgroup/files/refs/heads/main/install_samba.sh | sh
 
 # Compile for linux
 default:
     enable_verbose();
     # add_flag("-Wswitch-enum");
-    # add_flag("-O3");
-    # add_flag("-DPREPROC_STR_INSERT=0"); | To disanable insertion of " at start and end
-    compile("orta.c", "vm");
-    compile("deovm.c", "deovm");
-    compile("oto64.c", "oto64"); # ovmtoasm64
-    compile("fcfo.c", "fcfo");
+    add_flag("-O3");
+    # add_flag("-g");
+    add_flag("-static");
+    # add_flag("-DPREPROC_STR_INSERT=0"); | To disable insertion of " at start and end
+    compile("src/orta.c", "vm");
+    compile("src/deovm.c", "deovm");
+    compile("src/oto64.c", "oto64"); # ovmtoasm64
+    compile("src/fcfo.c", "fcfo");
     s_command("cp std/* ~/.orta/");
     # convert_to_make();
 
 # Compile for windows
 windows:
-    s_command("x86_64-w64-mingw32-gcc -o build/orta.exe orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
-    s_command("x86_64-w64-mingw32-gcc -o build/deovm.exe deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
-    s_command("x86_64-w64-mingw32-gcc -o build/fcfo.exe fcfo.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("x86_64-w64-mingw32-gcc -o build/orta.exe src/orta.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("x86_64-w64-mingw32-gcc -o build/deovm.exe src/deovm.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
+    s_command("x86_64-w64-mingw32-gcc -o build/fcfo.exe src/fcfo.c -Wl,--stack,8388608 -static-libgcc -static-libstdc++ --static -O3");
     s_command("wine tools/build.cmd");
 
 # Compile all examples
@@ -32,7 +34,7 @@ examples:
     s_command("rm examples/*.ppd");
 test_asm:
     s_command("samba");                                         # Update all (vm, deovm, oto64)
-    s_command("./build/vm test.orta test.ovm --build-only");    # Updating the orta file
+    s_command("./build/vm examples/funny_example.orta test.ovm --build-only");    # Updating the orta file
     s_command("./build/oto64 test.ovm");                        # Generates the ASM out of OVM
     s_command("nasm -g -felf64 output.asm -o test_asm.o");      # Compilation of the generated asm code (already contains the ASM part of Runtime)
     s_command("gcc -c helpers/runtime.c -o runtime.o");         # Compilation of the Runtime (C)
@@ -40,4 +42,6 @@ test_asm:
     s_command("gcc -static test_asm.o runtime.o -o test_asm");  # Linkage of the object files (C part of runtime and the ASM generated object file (it contains the asm part of runtime))
     s_command("rm test_asm.o runtime.o");                       # Removing all object files (trash because the executable was already compiled)
     s_command("chmod +x test_asm");                             # Allow the compiled file to run
+
+
 

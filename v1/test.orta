@@ -1,0 +1,14 @@
+#define ENTRY_MAIN
+#include <lib.horta>
+#include <inet.horta>
+stack::clear
+stack::push 100
+
+# Because ENTRY_MAIN enabled you cannot use _entry:
+# instead use 
+main:
+    stack::push 10
+    io::print
+    stack::push 20
+    io::print
+    stack::push "Gay"

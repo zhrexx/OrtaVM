@@ -17,3 +17,20 @@
 // Each token is 10 bytes  | NOTE: if a token contains a string it can be bigger than 10 bytes
 // ───────────────────────────────────────────────────────────────
 
+
+// ───────────────────────────────────────────────────────────────
+// IDEA how to make the memory
+// ───────────────────────────────────────────────────────────────
+// ! Need instruction push_memory
+// alloc <bytes>
+// assign <value>
+
+
+MemoryElement {
+    void* data;
+}
+
+
+
+
+
