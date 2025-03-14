@@ -196,7 +196,6 @@ Vector parse_pargs(int argc, char **argv) {
     return pargs_vector;
 }
 
-
 Vector split_to_vector(const char* src, const char* delimiter) {
     char* src_copy = strdup(src);
     if (!src_copy) {
@@ -224,8 +223,6 @@ Vector split_to_vector(const char* src, const char* delimiter) {
     free(src_copy);
     return result;
 }
-
-
 
 char *vector_get_str(Vector *vector, size_t index) {
     void *pointer = vector_get(vector, index);

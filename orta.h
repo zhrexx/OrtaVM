@@ -153,6 +153,8 @@ typedef enum {
     IALLOC,
     IFREE,
     IHALT,
+    IMERGE,
+    IXCALL,
 } Instruction;
 
 typedef struct {
@@ -270,6 +272,8 @@ Instruction parse_instruction(const char *instruction) {
     if (strcmp("alloc", instruction) == 0) return IALLOC;
     if (strcmp("free", instruction) == 0) return IFREE;
     if (strcmp("halt", instruction) == 0) return IHALT;
+    if (strcmp("merge", instruction) == 0) return IMERGE;
+    if (strcmp("xcall", instruction) == 0) return IXCALL;
     return -1;
 }
 
@@ -308,6 +312,8 @@ const char *instruction_to_string(Instruction instruction) {
         case IALLOC: return "alloc";
         case IFREE: return "free";
         case IHALT: return "halt";
+        case IMERGE: return "merge";
+        case IXCALL: return "xcall";
         default: return "unknown";
     }
 }
@@ -347,6 +353,8 @@ int instruction_expected_args(Instruction instruction) {
         case IALLOC: return 1;
         case IFREE: return 0;
         case IHALT: return 0;
+        case IMERGE: return 0;
+        case IXCALL: return 0;
         default: return -1;
     }
 }
@@ -523,10 +531,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     *value = atof(operand);
                     xstack_push(&xpu->stack, word_create(value, WFLOAT));
                 } else if (is_string(operand)) {
-                    size_t len = strlen(operand) - 2;
-                    char *value = malloc(len + 1);
-                    strncpy(value, operand + 1, len);
-                    value[len] = '\0';
+                    size_t len = strlen(operand);
+                    char *value = malloc(len - 1);
+                    strncpy(value, operand + 1, len-2);
+                    value[len-2] = '\0';
                     xstack_push(&xpu->stack, word_create(value, WCHARP));
                 } else if (is_register(operand)) {
                     XRegisters reg = register_name_to_enum(operand);
@@ -1100,7 +1108,37 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 free(w1.value);
             }
             break;
-            
+        case IMERGE: {
+            Word w1 = xstack_pop(&xpu->stack);
+            Word w2 = xstack_pop(&xpu->stack);
+    
+            if (w1.type == WCHARP && w2.type == WCHARP) {
+                char *str1 = (char *)w1.value;
+                char *str2 = (char *)w2.value;
+                size_t len1 = strlen(str1);
+                size_t len2 = strlen(str2);
+                char *merged = malloc(len1 + len2 + 2);
+                if (!merged) {
+                    fprintf(stderr, "Error: Memory allocation failed for IMERGE\n");
+                    free(str1);
+                    free(str2);
+                    break;
+                }
+                strcpy(merged, str2);
+                strcat(merged, " ");
+                strcat(merged, str1);
+                xstack_push(&xpu->stack, word_create(merged, WCHARP));
+                free(str1);
+                free(str2);
+            } else {
+                fprintf(stderr, "Error: IMERGE requires two string operands\n");
+                free(w1.value);
+                free(w2.value);
+            }
+            break;
+        }
+        case IXCALL: // TODO: logic like syscalls but for my asm
+            break;
         case IHALT:
             return;
     }
@@ -1169,5 +1207,301 @@ void print_registers(XPU *xpu) {
     }
 }
 
+int create_bytecode(Program *program, const char *output_filename) {
+    FILE *fp = fopen(output_filename, "wb");
+    if (!fp) {
+        fprintf(stderr, "Error: Could not create bytecode file '%s'\n", output_filename);
+        return 0;
+    }
+
+    size_t filename_len = strlen(program->filename);
+    if (fwrite(&filename_len, sizeof(size_t), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+    if (fwrite(program->filename, 1, filename_len, fp) != filename_len) {
+        fclose(fp);
+        return 0;
+    }
+
+    size_t instructions_count = program->instructions_count;
+    if (fwrite(&instructions_count, sizeof(size_t), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+
+    for (size_t i = 0; i < instructions_count; i++) {
+        InstructionData *instr = &program->instructions[i];
+        
+        if (fwrite(&instr->opcode, sizeof(Instruction), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+
+        size_t operands_count = instr->operands.size;
+        if (fwrite(&operands_count, sizeof(size_t), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+
+        for (size_t j = 0; j < operands_count; j++) {
+            char *operand = *(char **)vector_get(&instr->operands, j);
+            size_t operand_len = strlen(operand);
+            
+            if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1) {
+                fclose(fp);
+                return 0;
+            }
+            
+            if (fwrite(operand, 1, operand_len, fp) != operand_len) {
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+
+    size_t labels_count = program->labels_count;
+    if (fwrite(&labels_count, sizeof(size_t), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+
+    for (size_t i = 0; i < labels_count; i++) {
+        Label *label = &program->labels[i];
+        
+        size_t name_len = strlen(label->name);
+        if (fwrite(&name_len, sizeof(size_t), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+        
+        if (fwrite(label->name, 1, name_len, fp) != name_len) {
+            fclose(fp);
+            return 0;
+        }
+        
+        size_t address = label->address;
+        if (fwrite(&address, sizeof(size_t), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+    }
+
+    fclose(fp);
+    return 1;
+}
+
+int load_bytecode(Program *program, const char *input_filename) {
+    FILE *fp = fopen(input_filename, "rb");
+    if (!fp) {
+        fprintf(stderr, "Error: Could not open bytecode file '%s'\n", input_filename);
+        return 0;
+    }
+
+    program_free(program);
+
+    size_t filename_len;
+    if (fread(&filename_len, sizeof(size_t), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+    
+    char *filename = malloc(filename_len + 1);
+    if (!filename) {
+        fclose(fp);
+        return 0;
+    }
+    
+    if (fread(filename, 1, filename_len, fp) != filename_len) {
+        free(filename);
+        fclose(fp);
+        return 0;
+    }
+    filename[filename_len] = '\0';
+    program->filename = strdup(filename);
+    free(filename);
+
+    size_t instructions_count;
+    if (fread(&instructions_count, sizeof(size_t), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
+
+    program->instructions = malloc(sizeof(InstructionData) * instructions_count);
+    if (!program->instructions) {
+        fclose(fp);
+        return 0;
+    }
+    program->instructions_count = instructions_count;
+    program->instructions_capacity = instructions_count;
+
+    for (size_t i = 0; i < instructions_count; i++) {
+        Instruction opcode;
+        if (fread(&opcode, sizeof(Instruction), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+
+        size_t operands_count;
+        if (fread(&operands_count, sizeof(size_t), 1, fp) != 1) {
+            fclose(fp);
+            return 0;
+        }
+
+        Vector operands;
+        vector_init(&operands, 10, sizeof(char*));
+        
+        for (size_t j = 0; j < operands_count; j++) {
+            size_t operand_len;
+            if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
+                vector_free(&operands);
+                fclose(fp);
+                return 0;
+            }
+            
+            char *temp_operand = malloc(operand_len + 1);
+            if (!temp_operand) {
+                vector_free(&operands);
+                fclose(fp);
+                return 0;
+            }
+            
+            if (fread(temp_operand, 1, operand_len, fp) != operand_len) {
+                free(temp_operand);
+                vector_free(&operands);
+                fclose(fp);
+                return 0;
+            }
+            temp_operand[operand_len] = '\0';
+            
+            char *persistent_operand = strdup(temp_operand);
+            if (!persistent_operand) {
+                free(temp_operand);
+                vector_free(&operands);
+                fclose(fp);
+                return 0;
+            }
+            
+            vector_push(&operands, &persistent_operand);
+            free(temp_operand);
+        }
+
+        program->instructions[i].opcode = opcode;
+        program->instructions[i].operands = operands;
+    }
+
+    size_t labels_count;
+    if (fread(&labels_count, sizeof(size_t), 1, fp) != 1) {
+        for (size_t i = 0; i < program->instructions_count; i++) {
+            for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
+                char **operand_ptr = vector_get(&program->instructions[i].operands, j);
+                free(*operand_ptr);
+            }
+            vector_free(&program->instructions[i].operands);
+        }
+        free(program->instructions);
+        fclose(fp);
+        return 0;
+    }
+
+    program->labels = malloc(sizeof(Label) * labels_count);
+    if (!program->labels) {
+        for (size_t i = 0; i < program->instructions_count; i++) {
+            for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
+                char **operand_ptr = vector_get(&program->instructions[i].operands, j);
+                free(*operand_ptr);
+            }
+            vector_free(&program->instructions[i].operands);
+        }
+        free(program->instructions);
+        fclose(fp);
+        return 0;
+    }
+    program->labels_count = labels_count;
+    program->labels_capacity = labels_count;
+
+    for (size_t i = 0; i < labels_count; i++) {
+        size_t name_len;
+        if (fread(&name_len, sizeof(size_t), 1, fp) != 1) {
+            for (size_t j = 0; j < program->instructions_count; j++) {
+                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
+                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
+                    free(*operand_ptr);
+                }
+                vector_free(&program->instructions[j].operands);
+            }
+            free(program->instructions);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
+            free(program->labels);
+            fclose(fp);
+            return 0;
+        }
+        
+        char *name = malloc(name_len + 1);
+        if (!name) {
+            for (size_t j = 0; j < program->instructions_count; j++) {
+                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
+                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
+                    free(*operand_ptr);
+                }
+                vector_free(&program->instructions[j].operands);
+            }
+            free(program->instructions);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
+            free(program->labels);
+            fclose(fp);
+            return 0;
+        }
+        
+        if (fread(name, 1, name_len, fp) != name_len) {
+            free(name);
+            for (size_t j = 0; j < program->instructions_count; j++) {
+                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
+                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
+                    free(*operand_ptr);
+                }
+                vector_free(&program->instructions[j].operands);
+            }
+            free(program->instructions);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
+            free(program->labels);
+            fclose(fp);
+            return 0;
+        }
+        name[name_len] = '\0';
+
+        size_t address;
+        if (fread(&address, sizeof(size_t), 1, fp) != 1) {
+            free(name);
+            for (size_t j = 0; j < program->instructions_count; j++) {
+                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
+                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
+                    free(*operand_ptr);
+                }
+                vector_free(&program->instructions[j].operands);
+            }
+            free(program->instructions);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
+            free(program->labels);
+            fclose(fp);
+            return 0;
+        }
+
+        program->labels[i].name = strdup(name);
+        program->labels[i].address = address;
+        free(name);
+    }
+
+    fclose(fp);
+    return 1;
+}
 
 #endif
