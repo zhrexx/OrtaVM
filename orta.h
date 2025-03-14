@@ -1,3 +1,5 @@
+// TODO: add more registers
+
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -8,6 +10,7 @@
 #include "str.h"
 
 #define ODEFAULT_STACK_SIZE 16384
+#define OENTRY "__entry"
 
 typedef enum {
     WINT,
@@ -44,6 +47,7 @@ typedef enum {
     REG_RDI,
     REG_R8,
     REG_R9,
+    REG_RA, // Return Address
     REG_COUNT,
 } XRegisters;
 
@@ -312,7 +316,7 @@ int instruction_expected_args(Instruction instruction) {
     switch (instruction) {
         case IPUSH: return 1;
         case IMOV: return 2;
-        case IPOP: return 0;
+        case IPOP: return 1;
         case IADD: return 0;
         case ISUB: return 0;
         case IMUL: return 0;
@@ -392,6 +396,7 @@ XRegisters register_name_to_enum(const char *reg_name) {
     if (strcasecmp(reg_name, "rdi") == 0) return REG_RDI;
     if (strcasecmp(reg_name, "r8") == 0) return REG_R8;
     if (strcasecmp(reg_name, "r9") == 0) return REG_R9;
+    if (strcasecmp(reg_name, "ra") == 0) return REG_RA;
     return -1;
 }
 
@@ -583,7 +588,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 			break;
 
         case IPOP:
-            xstack_pop(&xpu->stack);
+            if (instr->operands.size >= 1) {
+				char *operand = vector_get_str(&instr->operands, 0);
+                if (is_register(operand)) {
+                    XRegisters target_reg = register_name_to_enum(operand);
+                    if (target_reg != -1) {
+                        xpu->registers[target_reg].reg_value = xstack_pop(&xpu->stack);
+                    }
+                }
+            }
             break;
             
         case IADD:
@@ -924,15 +937,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 
                 if (target < vm->program.instructions_count) {
                     int *return_address = malloc(sizeof(int));
-                    *return_address = xpu->ip;
-                    xstack_push(&xpu->stack, word_create(return_address, WINT));
+                    *return_address = xpu->ip + 1;
+                    xpu->registers[REG_RA].reg_value = word_create(return_address, WINT);
                     xpu->ip = target;
                     return;
                 }
             }
             break; 
         case IRET:
-            w1 = xstack_pop(&xpu->stack);
+            w1 = xpu->registers[REG_RA].reg_value;
             if (w1.type == WINT) {
                 xpu->ip = *(int*)w1.value;
                 free(w1.value);
@@ -1097,7 +1110,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
 void execute_program(OrtaVM *vm) {
     XPU *xpu = &vm->xpu;
-    xpu->ip = 0;
+    size_t f = 0;
+    if (!find_label(&vm->program, OENTRY, &f)) {
+        xpu->ip = 0;
+        printf("WARNING: No entry found running at 0");
+    } else {
+        xpu->ip = f;
+    }
     
     while (xpu->ip < vm->program.instructions_count) {
         execute_instruction(vm, &vm->program.instructions[xpu->ip]);
@@ -1126,7 +1145,7 @@ void print_stack(XPU *xpu) {
 
 void print_registers(XPU *xpu) {
     printf("Registers:\n");
-    const char *reg_names[] = {"RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "R8", "R9"};
+    const char *reg_names[] = {"RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "R8", "R9", "RA"};
     
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = xpu->registers[i].reg_value;
