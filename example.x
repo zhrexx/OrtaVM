@@ -12,9 +12,14 @@
 ;    jmpif exit_loop
 ;    jmp loop
 ;:exit_loop
-    push 65
-    mov "char" rbx
-    call cast
-    print
-    
+    alloc 4
+    pop rbx ; memory 
+    mov 0 rcx
+    mov 100 rax
+    write
+
+    mov 2 rax
+    mov 100 rcx
+    printmem 
+
     call cregs

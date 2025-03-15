@@ -249,7 +249,9 @@ void program_free(Program *program) {
         free(program->labels[i].name);
     }
     free(program->labels);
-    free(program->memory);
+    program->labels = NULL;
+    // auto freed free(program->memory);
+    program->memory = NULL;
 }
 
 OrtaVM ortavm_create(const char *filename) {
