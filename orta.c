@@ -57,9 +57,10 @@ void print_usage(const char *program_name) {
     printf("   %s %s<program.x|program.xbin>%s [options]\n", program_name, COLOR_BLUE, COLOR_RESET);
     
     printf("\n%s%s OPTIONS: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
-    printf("   %s-h, --help%s      Display this help message\n", COLOR_BLUE, COLOR_RESET);
-    printf("   %s--nopreproc%s     Disable source file preprocessing (enabled by default)\n", COLOR_BLUE, COLOR_RESET);
-    
+    printf("   %s-h, --help%s           Display this help message\n", COLOR_BLUE, COLOR_RESET);
+    printf("   %s--nopreproc%s          Disable source file preprocessing (enabled by default)\n", COLOR_BLUE, COLOR_RESET);
+    printf("   %s--disable-compile%s    Disable bytecode compiling (disabled by default)\n", COLOR_BLUE, COLOR_RESET);
+
     printf("\n%s%s DESCRIPTION: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
     printf("   Executes OrtaVM bytecode programs and displays the stack state\n");
     printf("   Supports both .x (source) and .xbin (compiled bytecode) formats\n");
@@ -81,12 +82,14 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
     
-    int orta_preprocess_flag = 1;
-    
+    int orta_preprocess_flag    = 1;
+    int orta_disable_compile    = 0;
+
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--nopreproc") == 0) {
             orta_preprocess_flag = 0;
-            break;
+        } else if (strcmp(argv[i], "--disable-compile") == 0) {
+            orta_disable_compile = 1; 
         }
     }
     
@@ -171,11 +174,12 @@ int main(int argc, char **argv) {
         
         print_progress("COMPILE", "Creating bytecode file");
         printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
-        
-        if (create_bytecode(&vm.program, bytecode_filename)) {
-            print_success("Bytecode created successfully");
-        } else {
-            print_error("Failed to create bytecode file");
+        if (!orta_disable_compile) { 
+            if (create_bytecode(&vm.program, bytecode_filename)) {
+                print_success("Bytecode created successfully");
+            } else {
+                print_error("Failed to create bytecode file");
+            }
         }
         ortavm_free(&vm);
     }

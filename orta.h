@@ -1,6 +1,5 @@
 // TODO: add more registers
 // TODO: add flags to xbin
-// TODO: fix preprocessing and rewrite it 
 
 #ifndef ORTA_H 
 #define ORTA_H
@@ -1236,6 +1235,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 }                    
         
                             } break;
+                    case 3: { // cast
+                                if (rbx.reg_value.type == WCHARP) {
+                                    Word w = xstack_pop(&xpu->stack);
+                                    w.type = get_type((char *)rbx.reg_value.value);
+                                    xstack_push(&xpu->stack, w);
+                                }
+                            } break;
                     default: {  
                                 printf("WARNING: Unknown opcode\n");
                              } break;
@@ -1343,6 +1349,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 fprintf(stderr, "Error: IPRINTMEM requires a pointer in RBX\n");
             }
                         } break;
+
         case IHALT:
             return;
     }
@@ -1365,51 +1372,78 @@ void execute_program(OrtaVM *vm) {
     }
 }
 
+#define RESET   "\033[0m"
+#define BOLD    "\033[1m"
+#define CYAN    "\033[36m"
+
+static void print_word(size_t index, Word w) {
+    printf("[%zu] ", index);
+    switch (w.type) {
+        case WINT:
+            printf("INT     : %d", *(int*)w.value);
+            break;
+        case WFLOAT:
+            printf("FLOAT   : %f", *(float*)w.value);
+            break;
+        case WCHARP:
+            printf("STRING  : %s", (char*)w.value);
+            break;
+        case WCHAR:
+            printf("CHAR    : %c", *(char*)w.value);
+            break;
+        case WPOINTER:
+            printf("POINTER : %p", w.value);
+            break;
+        case WBOOL:
+            printf("BOOL    : %s", (*(int*)w.value) ? "true" : "false");
+            break;
+        default:
+            printf("UNKNOWN");
+    }
+    printf("\n");
+}
+
 void print_stack(XPU *xpu) {
-    printf("Stack (%zu items):\n", xpu->stack.count);
+    printf(BOLD CYAN "Stack (%zu items):\n" RESET, xpu->stack.count);
     for (size_t i = 0; i < xpu->stack.count; i++) {
-        Word w = xpu->stack.stack[i];
-        if (w.type == WINT) {
-            printf("[%zu] INT: %d\n", i, *(int*)w.value);
-        } else if (w.type == WFLOAT) {
-            printf("[%zu] FLOAT: %f\n", i, *(float*)w.value);
-        } else if (w.type == WCHARP) {
-            printf("[%zu] STRING: %s\n", i, (char*)w.value);
-        } else if (w.type == WCHAR) {
-            printf("[%zu] CHAR: %c\n", i, *(char*)w.value);
-        } else if (w.type == WPOINTER) {
-            printf("[%zu] POINTER: %p\n", i, w.value);
-        } else if (w.type == WBOOL) {
-            printf("[%zu] BOOL: %s\n", i, (*(int*)w.value) ? "true" : "false");
-        }
+        print_word(i, xpu->stack.stack[i]);
     }
 }
 
 void print_registers(XPU *xpu) {
-    printf("Registers:\n");
+    printf(BOLD CYAN "Registers:\n" RESET);
     const char *reg_names[] = {"RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "R8", "R9", "RA"};
     
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = xpu->registers[i].reg_value;
-        printf("[%s] ", reg_names[i]);
+        printf("[%3s] ", reg_names[i]);
         
-        if (w.type == WINT) {
-            printf("INT: %d\n", *(int*)w.value);
-        } else if (w.type == WFLOAT) {
-            printf("FLOAT: %f\n", *(float*)w.value);
-        } else if (w.type == WCHARP) {
-            printf("STRING: %s\n", (char*)w.value);
-        } else if (w.type == WCHAR) {
-            printf("CHAR: %c\n", *(char*)w.value);
-        } else if (w.type == WPOINTER) {
-            printf("POINTER: %p\n", w.value);
-        } else if (w.type == WBOOL) {
-            printf("BOOL: %s\n", (*(int*)w.value) ? "true" : "false");
-        } else {
-            printf("EMPTY\n");
+        switch (w.type) {
+            case WINT:
+                printf("INT     : %d", *(int*)w.value);
+                break;
+            case WFLOAT:
+                printf("FLOAT   : %f", *(float*)w.value);
+                break;
+            case WCHARP:
+                printf("STRING  : %s", (char*)w.value);
+                break;
+            case WCHAR:
+                printf("CHAR    : %c", *(char*)w.value);
+                break;
+            case WPOINTER:
+                printf("POINTER : %p", w.value);
+                break;
+            case WBOOL:
+                printf("BOOL    : %s", (*(int*)w.value) ? "true" : "false");
+                break;
+            default:
+                printf("EMPTY");
         }
+        printf("\n");
     }
 }
+
 
 int create_bytecode(Program *program, const char *output_filename) {
     FILE *fp = fopen(output_filename, "wb");
@@ -1962,6 +1996,9 @@ int orta_preprocess(char *filename, char *output_file) {
     }
 
     char line[MAX_LINE_LENGTH];
+    char *SNULL = malloc(sizeof(void*));
+    sprintf(SNULL, "%p", NULL);
+    add_simple_define("NULL", SNULL);
 
     while (fgets(line, MAX_LINE_LENGTH, input)) {
         char trimmed_line[MAX_LINE_LENGTH] = {0};
