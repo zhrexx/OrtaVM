@@ -1214,7 +1214,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             break;
         }
-        case IXCALL: { // TODO: logic like syscalls but for my asm | xcall <rax = code>
+        case IXCALL: {
             XRegister *regs = vm->xpu.registers;
             XRegister rax = regs[REG_RAX];
             XRegister rbx = regs[REG_RBX];
@@ -1242,6 +1242,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                     xstack_push(&xpu->stack, w);
                                 }
                             } break;
+                    case 4: { // get null onto the stack 
+                            xstack_push(&xpu->stack, word_create(NULL, WPOINTER));
+                            } break; 
                     default: {  
                                 printf("WARNING: Unknown opcode\n");
                              } break;

@@ -53,20 +53,15 @@
 
         ; Clear Registers
 :cregs
-    mov rax 0
-    mov rbx 0
-    mov rcx 0
-    mov rdx 0
-    mov rsi 0
-    mov rdi 0
-    mov r8  0
-    mov r9  0
+    mov 0 rax 
+    mov 0 rbx
+    mov 0 rcx 
+    mov 0 rdx 
+    mov 0 rsi 
+    mov 0 rdi
+    mov 0 r8 
+    mov 0 r9
     ret
-
-
-
-
-
 
 
 
