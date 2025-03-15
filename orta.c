@@ -144,9 +144,8 @@ int main(int argc, char **argv) {
         } else {
             print_error("Failed to create bytecode file");
         }
+        ortavm_free(&vm);
     }
-    
-    ortavm_free(&vm);
     
     printf("\n%s%s%s%s\n", COLOR_BOLD, COLOR_GREEN, BOX_TOP, COLOR_RESET);
     printf("%s%s┃                  PROGRAM TERMINATED                    ┃%s\n", COLOR_BOLD, COLOR_GREEN, COLOR_RESET);

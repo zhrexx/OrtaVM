@@ -1,4 +1,6 @@
 // TODO: add more registers
+// TODO: add flags to xbin
+// TODO: fix preprocessing and rewrite it 
 
 #ifndef ORTA_H 
 #define ORTA_H
@@ -6,11 +8,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <errno.h>
+
 #include "vector.h"
 #include "str.h"
 
 #define ODEFAULT_STACK_SIZE 16384
-#define OENTRY "__entry"
+#define ODEFAULT_ENTRY "__entry"
+#define MEMORY_CAPACITY 1024
+
+static size_t OSTACK_SIZE = ODEFAULT_STACK_SIZE;
+static char *OENTRY = ODEFAULT_ENTRY;
 
 typedef enum {
     WINT,
@@ -47,7 +56,7 @@ typedef enum {
     REG_RDI,
     REG_R8,
     REG_R9,
-    REG_RA, // Return Address
+    REG_RA, // Return Address | Dont use!
     REG_COUNT,
 } XRegisters;
 
@@ -102,7 +111,7 @@ typedef struct {
 
 XPU xpu_init() {
     XPU xpu = {0};
-    xpu.stack = xstack_create(ODEFAULT_STACK_SIZE);
+    xpu.stack = xstack_create(OSTACK_SIZE);
     xpu.registers = malloc(sizeof(XRegister) * REG_COUNT);
     xpu.ip = 0;
     
@@ -151,10 +160,11 @@ typedef enum {
     IROTL,
     IROTR,
     IALLOC,
-    IFREE,
     IHALT,
     IMERGE,
     IXCALL,
+    IWRITE,
+    IPRINTMEM,
 } Instruction;
 
 typedef struct {
@@ -175,6 +185,11 @@ typedef struct {
     Label *labels;
     size_t labels_count;
     size_t labels_capacity;
+
+    // Memory 
+    void *memory; // UserSpaceMemory
+    size_t memory_used;
+    size_t memory_capacity;
 } Program;
 
 typedef struct {
@@ -190,6 +205,9 @@ void program_init(Program *program, const char *filename) {
     program->labels_capacity = 32;
     program->labels_count = 0;
     program->labels = malloc(sizeof(Label) * program->labels_capacity);
+    program->memory = malloc(MEMORY_CAPACITY);
+    program->memory_capacity = MEMORY_CAPACITY;
+    program->memory_used = 0;
 }
 
 void add_label(Program *program, const char *name, size_t address) {
@@ -224,6 +242,7 @@ void program_free(Program *program) {
         free(program->labels[i].name);
     }
     free(program->labels);
+    free(program->memory);
 }
 
 OrtaVM ortavm_create(const char *filename) {
@@ -270,10 +289,11 @@ Instruction parse_instruction(const char *instruction) {
     if (strcmp("rotl", instruction) == 0) return IROTL;
     if (strcmp("rotr", instruction) == 0) return IROTR;
     if (strcmp("alloc", instruction) == 0) return IALLOC;
-    if (strcmp("free", instruction) == 0) return IFREE;
     if (strcmp("halt", instruction) == 0) return IHALT;
     if (strcmp("merge", instruction) == 0) return IMERGE;
     if (strcmp("xcall", instruction) == 0) return IXCALL;
+    if (strcmp("write", instruction) == 0) return IWRITE;
+    if (strcmp("printmem", instruction) == 0) return IPRINTMEM;
     return -1;
 }
 
@@ -310,10 +330,11 @@ const char *instruction_to_string(Instruction instruction) {
         case IROTL: return "rotl";
         case IROTR: return "rotr";
         case IALLOC: return "alloc";
-        case IFREE: return "free";
         case IHALT: return "halt";
         case IMERGE: return "merge";
         case IXCALL: return "xcall";
+        case IWRITE: return "write";
+        case IPRINTMEM: return "printmem";
         default: return "unknown";
     }
 }
@@ -351,10 +372,11 @@ int instruction_expected_args(Instruction instruction) {
         case IROTL: return 1;
         case IROTR: return 1;
         case IALLOC: return 1;
-        case IFREE: return 0;
         case IHALT: return 0;
         case IMERGE: return 0;
         case IXCALL: return 0;
+        case IWRITE: return 0;
+        case IPRINTMEM: return 0;
         default: return -1;
     }
 }
@@ -511,6 +533,23 @@ int parse_program(OrtaVM *vm, const char *filename) {
     return 1;
 }
 
+WordType get_type(char *s) {
+    if (strcmp(s, "int") == 0) {
+        return WINT;
+    } else if (strcmp(s, "float") == 0) {
+        return WFLOAT;
+    } else if (strcmp(s, "charp") == 0) {
+        return WCHARP;
+    } else if (strcmp(s, "char") == 0) {
+        return WCHAR;
+    } else if (strcmp(s, "bool") == 0) {
+        return WBOOL;
+    } else if (strcmp(s, "pointer") == 0) {
+        return WPOINTER;
+    }
+    return -1;
+}
+
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
     Word w1, w2, result;
@@ -554,6 +593,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 					if (dst_reg != -1) {
 						if (xpu->registers[dst_reg].reg_value.value) {
 							free(xpu->registers[dst_reg].reg_value.value);
+                            xpu->registers[dst_reg].reg_value.value = NULL;
 						}
 						
 						if (is_register(src_operand)) {
@@ -1096,18 +1136,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 char *operand = vector_get_str(&instr->operands, 0);
                 if (is_number(operand)) {
                     size_t size = atoi(operand);
-                    void *memory = calloc(1, size);
+                    void *memory = (char *)vm->program.memory + vm->program.memory_used;
+                    vm->program.memory_used += size;
                     xstack_push(&xpu->stack, word_create(memory, WPOINTER));
                 }
             }
             break;
             
-        case IFREE:
-            w1 = xstack_pop(&xpu->stack);
-            if (w1.type == WPOINTER) {
-                free(w1.value);
-            }
-            break;
         case IMERGE: {
             Word w1 = xstack_pop(&xpu->stack);
             Word w2 = xstack_pop(&xpu->stack);
@@ -1137,8 +1172,120 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             break;
         }
-        case IXCALL: // TODO: logic like syscalls but for my asm
-            break;
+        case IXCALL: { // TODO: logic like syscalls but for my asm | xcall <rax = code>
+            XRegister *regs = vm->xpu.registers;
+            XRegister rax = regs[REG_RAX];
+            XRegister rbx = regs[REG_RBX];
+            XRegister rcx = regs[REG_RCX];
+            XRegister rsi = regs[REG_RSI];
+            XRegister rdx = regs[REG_RDX];
+            if (rax.reg_value.type == WINT) {
+                switch (*(int *)rax.reg_value.value) {
+    
+                }
+            } else {
+                fprintf(stderr, "ERROR: invalid code (Invalid type)\n");
+            }
+
+
+                     } break;
+        case IWRITE: {
+                XRegister *rax = &xpu->registers[REG_RAX];
+                XRegister *rbx = &xpu->registers[REG_RBX];
+                XRegister *rcx = &xpu->registers[REG_RCX];
+    
+                if (rbx->reg_value.type == WPOINTER) {
+                    void *address = rbx->reg_value.value;
+        
+                    if (rcx->reg_value.type == WINT) {
+                        int offset = *(int*)rcx->reg_value.value;
+                        address = (char*)address + offset;
+                    }
+        
+                    if (rax->reg_value.type == WINT) {
+                        *(int*)address = *(int*)rax->reg_value.value;
+                    } else if (rax->reg_value.type == WFLOAT) {
+                        *(float*)address = *(float*)rax->reg_value.value;
+                    } else if (rax->reg_value.type == WCHARP) {
+                        size_t len = strlen((char*)rax->reg_value.value) + 1;
+                        memcpy(address, rax->reg_value.value, len);
+                    } else if (rax->reg_value.type == WCHAR) {
+                        *(char*)address = *(char*)rax->reg_value.value;
+                    } else {
+                        fprintf(stderr, "Error: Unsupported type in RAX for IWRITE\n");
+                    }
+                } else {
+                    fprintf(stderr, "Error: IWRITE requires a pointer in RBX\n");
+                }
+                     } break;
+        case IPRINTMEM: {
+            XRegister *rbx = &xpu->registers[REG_RBX]; // pointer
+            XRegister *rcx = &xpu->registers[REG_RCX]; // amount
+            XRegister *rax = &xpu->registers[REG_RAX]; // type
+    
+            if (rbx->reg_value.type == WPOINTER) {
+                void *address = rbx->reg_value.value;
+        
+                int format = 0; // 0=bytes, 1=chars, 2=ints, 3=floats, 4=string
+                if (rax->reg_value.type == WINT) {
+                    format = *(int*)rax->reg_value.value;
+                }
+        
+                if (rcx->reg_value.type == WINT) {
+                    int size = *(int*)rcx->reg_value.value;
+            
+                    printf("Memory at %p (size %d):\n", address, size);
+            
+                    switch (format) {
+                        case 0:
+                            for (int i = 0; i < size; i++) {
+                                if (i > 0 && i % 16 == 0) printf("\n");
+                                printf("%02x ", ((unsigned char*)address)[i]);
+                            }
+                            printf("\n");
+                            break;
+                    
+                        case 1:
+                            for (int i = 0; i < size; i++) {
+                                if (i > 0 && i % 64 == 0) printf("\n");
+                                char c = ((char*)address)[i];
+                                printf("%c", (c >= 32 && c <= 126) ? c : '.');
+                            }
+                            printf("\n");
+                            break;
+                    
+                        case 2:
+                            for (int i = 0; i < size / sizeof(int); i++) {
+                                if (i > 0 && i % 8 == 0) printf("\n");
+                                printf("%d ", ((int*)address)[i]);
+                            }
+                            printf("\n");
+                            break;
+                    
+                        case 3:
+                            for (int i = 0; i < size / sizeof(float); i++) {
+                                if (i > 0 && i % 8 == 0) printf("\n");
+                                printf("%f ", ((float*)address)[i]);
+                            }
+                            printf("\n");
+                            break;
+                    
+                        case 4:
+                            if (size > 0) {
+                                printf("%s\n", (char*)address);
+                            }
+                            break;
+                
+                        default:
+                            fprintf(stderr, "Error: Unknown format %d for IPRINTMEM\n", format);
+                    }
+                } else {
+                    fprintf(stderr, "Error: IPRINTMEM requires an integer size in RCX\n");
+                }
+            } else {
+                fprintf(stderr, "Error: IPRINTMEM requires a pointer in RBX\n");
+            }
+                        } break;
         case IHALT:
             return;
     }
@@ -1504,4 +1651,143 @@ int load_bytecode(Program *program, const char *input_filename) {
     return 1;
 }
 
+static char *trim_whitespace(char *str) {
+    while (isspace((unsigned char)*str)) str++;
+    if (*str == '\0') return str;
+
+    char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    end[1] = '\0';
+    return str;
+}
+
+static char *orta_preprocess_file(const char *filename, char *output_file) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Cannot open file '%s': %s\n", filename, strerror(errno));
+        return NULL;
+    }
+
+    char *output = malloc(1);
+    if (!output) {
+        fclose(fp);
+        return NULL;
+    }
+    output[0] = '\0';
+    size_t output_size = 1;
+
+    char line[8192];
+    while (fgets(line, sizeof(line), fp)) {
+        char *trimmed = trim_whitespace(line);
+        if (trimmed[0] == '#') {
+            if (strncmp(trimmed, "#include", 8) == 0) {
+                char *start = strchr(trimmed, '<');
+                if (!start) {
+                    fprintf(stderr, "Error: Invalid #include directive in '%s'\n", filename);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+                start++;
+                char *end = strchr(start, '>');
+                if (!end) {
+                    fprintf(stderr, "Error: Unterminated #include in '%s'\n", filename);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+                *end = '\0';
+                char *include_file = strdup(start);
+                if (!include_file) {
+                    fprintf(stderr, "Error: Memory allocation failed\n");
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+
+                char *included_content = orta_preprocess_file(include_file, NULL);
+                free(include_file);
+                if (!included_content) {
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+
+                size_t included_len = strlen(included_content);
+                char *new_output = realloc(output, output_size + included_len);
+                if (!new_output) {
+                    fprintf(stderr, "Error: Memory allocation failed\n");
+                    free(included_content);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+                output = new_output;
+                strcat(output, included_content);
+                output_size += included_len;
+                free(included_content);
+                continue;
+            } else if (strncmp(trimmed, "#stack", 6) == 0) {
+                char *size_str = trimmed + 6;
+                while (*size_str && isspace((unsigned char)*size_str)) size_str++;
+                if (*size_str == '\0') {
+                    fprintf(stderr, "Error: Missing stack size in '%s'\n", filename);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+
+                char *endptr;
+                long new_size = strtol(size_str, &endptr, 10);
+                if (*endptr != '\0' || new_size <= 0) {
+                    fprintf(stderr, "Error: Invalid stack size '%s' in '%s'\n", size_str, filename);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+                OSTACK_SIZE = (size_t)new_size;
+                continue;
+            } else if (strncmp(trimmed, "#entry", 6) == 0) {
+                char *entry_str = trimmed + 6;
+                while (*entry_str && isspace((unsigned char)*entry_str)) entry_str++;
+                if (*entry_str == '\0') {
+                    fprintf(stderr, "Error: Missing entry in '%s'\n", filename);
+                    free(output);
+                    fclose(fp);
+                    return NULL;
+                }
+
+                OENTRY = strdup(entry_str);
+                continue;
+            }
+        }
+
+        size_t line_len = strlen(line);
+        char *new_output = realloc(output, output_size + line_len);
+        if (!new_output) {
+            fprintf(stderr, "Error: Memory allocation failed\n");
+            free(output);
+            fclose(fp);
+            return NULL;
+        }
+        output = new_output;
+        strcat(output, line);
+        output_size += line_len;
+    }
+
+    fclose(fp);
+    
+    if (output_file) {
+        FILE *out_fp = fopen(output_file, "w");
+        if (!out_fp) {
+            fprintf(stderr, "rror: Cannot open output file '%s': %s\n", output_file, strerror(errno));
+            free(output);
+            return NULL;
+        }
+        fputs(output, out_fp);
+        fclose(out_fp);
+    }
+    
+    return output;
+}
 #endif
