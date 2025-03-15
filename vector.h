@@ -198,28 +198,34 @@ Vector parse_pargs(int argc, char **argv) {
 
 Vector split_to_vector(const char* src, const char* delimiter) {
     char* src_copy = strdup(src);
-    if (!src_copy) {
-        fprintf(stderr, "Failed to duplicate source string\n");
-        exit(EXIT_FAILURE);
-    }
-
-    char* token;
     Vector result;
     vector_init(&result, 10, sizeof(char *));
-
-    token = strtok(src_copy, delimiter);
-    while (token != NULL) {
-        char *token_copy = strdup(token);
-        if (!token_copy) {
-            fprintf(stderr, "Failed to duplicate token\n");
-            free(src_copy);
-            vector_free(&result);
-            exit(EXIT_FAILURE);
+    
+    int in_quote = 0;
+    char* start = src_copy;
+    char* current = src_copy;
+    int delimiter_len = strlen(delimiter);
+    
+    while (*current) {
+        if (*current == '"') {
+            in_quote = !in_quote;
+        } else if (!in_quote && strncmp(current, delimiter, delimiter_len) == 0) {
+            *current = '\0';
+            if (start != current) {
+                char* token_copy = strdup(start);
+                vector_push(&result, &token_copy);
+            }
+            start = current + delimiter_len;
+            current += delimiter_len - 1;
         }
-        vector_push(&result, &token_copy);
-        token = strtok(NULL, delimiter);
+        current++;
     }
-
+    
+    if (start != current) {
+        char* token_copy = strdup(start);
+        vector_push(&result, &token_copy);
+    }
+    
     free(src_copy);
     return result;
 }

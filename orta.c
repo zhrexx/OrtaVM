@@ -54,18 +54,20 @@ void print_usage(const char *program_name) {
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_CYAN, BOX_BOTTOM, COLOR_RESET);
     
     printf("\n%s%s USAGE: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
-    printf("   %s %s<program.x|program.xbin>%s\n", program_name, COLOR_BLUE, COLOR_RESET);
+    printf("   %s %s<program.x|program.xbin>%s [options]\n", program_name, COLOR_BLUE, COLOR_RESET);
     
     printf("\n%s%s OPTIONS: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
-    printf("   %s-h, --help%s    Display this help message\n", COLOR_BLUE, COLOR_RESET);
+    printf("   %s-h, --help%s      Display this help message\n", COLOR_BLUE, COLOR_RESET);
+    printf("   %s--nopreproc%s     Disable source file preprocessing (enabled by default)\n", COLOR_BLUE, COLOR_RESET);
     
     printf("\n%s%s DESCRIPTION: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
     printf("   Executes OrtaVM bytecode programs and displays the stack state\n");
     printf("   Supports both .x (source) and .xbin (compiled bytecode) formats\n");
     
     printf("\n%s%s EXAMPLES: %s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
-    printf("   %s example.x      %s# Execute source program and create bytecode\n", program_name, COLOR_GREEN);
-    printf("   %s example.xbin   %s# Execute pre-compiled bytecode\n\n", program_name, COLOR_GREEN);
+    printf("   %s example.x          %s# Execute source program with preprocessing and create bytecode\n", program_name, COLOR_GREEN);
+    printf("   %s example.x --nopreproc %s# Execute source program without preprocessing\n", program_name, COLOR_GREEN);
+    printf("   %s example.xbin       %s# Execute pre-compiled bytecode\n\n", program_name, COLOR_GREEN);
 }
 
 int main(int argc, char **argv) {
@@ -79,6 +81,16 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
     
+    int orta_preprocess_flag = 1;
+    
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--nopreproc") == 0) {
+            orta_preprocess_flag = 0;
+            break;
+        }
+    }
+    
+    time_t start = time(NULL);
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET);
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_CYAN, BOX_TOP, COLOR_RESET);
     printf("%s%s┃                     EXECUTION STARTED                  ┃%s\n", COLOR_BOLD, COLOR_CYAN, COLOR_RESET);
@@ -102,12 +114,33 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
     } else if (len > 2 && strcmp(filename + len - 2, ".x") == 0) {
-        print_progress("PARSE", "Parsing source program");
-        
-        if (!parse_program(&vm, filename)) {
-            print_error("Failed to parse source program");
-            ortavm_free(&vm);
-            return EXIT_FAILURE;
+        if (orta_preprocess_flag) {
+            print_progress("PREPROC", "Preprocessing source file");
+            
+            char preprocessed_filename[256];
+            snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%.*s.pre.x", (int)(len - 2), filename);
+            
+            if (!orta_preprocess((char*)filename, preprocessed_filename)) {
+                print_error("Preprocessing failed");
+                ortavm_free(&vm);
+                return EXIT_FAILURE;
+            }
+            
+            print_progress("PARSE", "Parsing preprocessed source");
+            
+            if (!parse_program(&vm, preprocessed_filename)) {
+                print_error("Failed to parse preprocessed source");
+                ortavm_free(&vm);
+                return EXIT_FAILURE;
+            }
+        } else {
+            print_progress("PARSE", "Parsing source program (preprocessing disabled)");
+            
+            if (!parse_program(&vm, filename)) {
+                print_error("Failed to parse source program");
+                ortavm_free(&vm);
+                return EXIT_FAILURE;
+            }
         }
     } else {
         print_error("Unsupported file format. Please use .x or .xbin files");
@@ -117,9 +150,9 @@ int main(int argc, char **argv) {
     
     print_progress("EXEC", "Executing program instructions");
     execute_program(&vm);
-    
+    time_t end = time(NULL); 
     printf("\n%s%s%s%s\n", COLOR_BOLD, COLOR_GREEN, BOX_TOP, COLOR_RESET);
-    printf("%s%s┃                   EXECUTION COMPLETED                  ┃%s\n", COLOR_BOLD, COLOR_GREEN, COLOR_RESET);
+    printf("%s%s┃            EXECUTION COMPLETED IN %03ds                 ┃%s\n", COLOR_BOLD, COLOR_GREEN, end - start, COLOR_RESET);
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_GREEN, SEPARATOR, COLOR_RESET);
     printf("%s%s┃                      STACK STATE                       ┃%s\n", COLOR_BOLD, COLOR_GREEN, COLOR_RESET);
     printf("%s%s%s%s\n\n", COLOR_BOLD, COLOR_GREEN, BOX_BOTTOM, COLOR_RESET);
