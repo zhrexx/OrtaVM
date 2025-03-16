@@ -17,8 +17,8 @@
 #endif
 
 
-#include "vector.h"
-#include "str.h"
+#include "libs/vector.h"
+#include "libs/str.h"
 
 #define ODEFAULT_STACK_SIZE 16384
 #define ODEFAULT_ENTRY "__entry"

@@ -1,4 +1,4 @@
-#include "std.x"
+;#include "std.x"
 
 :__entry
 ;    push 1000
@@ -22,4 +22,4 @@
     mov 100 rcx
     printmem 
 
-    call cregs
+    ;call cregs
