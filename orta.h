@@ -67,6 +67,51 @@ typedef enum {
     REG_COUNT,
 } XRegisters;
 
+typedef enum {
+    REGSIZE_8BIT = 1,
+    REGSIZE_16BIT,
+    REGSIZE_32BIT = 4,
+    REGSIZE_64BIT = 8,
+} XRegisterSize;
+
+typedef struct {
+    char *name;
+    XRegisters id;
+    XRegisterSize size;
+} XRegisterInfo;
+
+XRegisterInfo register_table[REG_COUNT] = {
+    {"RAX", REG_RAX, REGSIZE_64BIT},
+    {"RBX", REG_RBX, REGSIZE_64BIT},
+    {"RCX", REG_RCX, REGSIZE_64BIT},
+    {"RDX", REG_RDX, REGSIZE_64BIT},
+    {"RSI", REG_RSI, REGSIZE_64BIT},
+    {"RDI", REG_RDI, REGSIZE_64BIT},
+    {"R8",  REG_R8,  REGSIZE_64BIT},
+    {"R9",  REG_R9,  REGSIZE_64BIT},
+    {"RA",  REG_RA,  REGSIZE_64BIT} // Return Address | Don't use!
+};
+
+int is_register(const char *str) {
+    if (str[0] != 'r' && str[0] != 'R') return 0;
+    
+    for (int i = 0; i < REG_COUNT; i++) {
+        if (strcasecmp(str, register_table[i].name) == 0) return 1;
+    }
+    
+    return 0;
+}
+
+XRegisters register_name_to_enum(const char *reg_name) {
+    for (int i = 0; i < REG_COUNT; i++) {
+        if (strcasecmp(reg_name, register_table[i].name) == 0) {
+            return register_table[i].id;
+        }
+    }
+    return -1;
+}
+
+
 typedef struct {
     Word *stack;
     size_t count;
@@ -123,12 +168,13 @@ XPU xpu_init() {
     xpu.ip = 0;
     
     for (int i = 0; i < REG_COUNT; i++) {
-        xpu.registers[i].reg_size = sizeof(void *);
+        xpu.registers[i].reg_size = register_table[i].size;
         xpu.registers[i].reg_value = word_create(NULL, WPOINTER);
     }
     
     return xpu;
 }
+
 
 void xpu_free(XPU *xpu) {
     xstack_free(&xpu->stack);
@@ -335,36 +381,12 @@ int is_string(const char *str) {
     return len >= 2 && str[0] == '"' && str[len - 1] == '"';
 }
 
-int is_register(const char *str) {
-    if (str[0] != 'r' && str[0] != 'R') return 0;
-    
-    const char *reg_names[] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9"};
-    for (int i = 0; i < REG_COUNT; i++) {
-        if (strcasecmp(str + 1, reg_names[i] + 1) == 0) return 1;
-    }
-    
-    return 0;
-}
-
 int is_label_declaration(const char *str) {
     return str[0] == ':';
 }
 
 int is_label_reference(const char *str) {
     return !is_number(str) && !is_float(str) && !is_register(str) && !is_string(str);
-}
-
-XRegisters register_name_to_enum(const char *reg_name) {
-    if (strcasecmp(reg_name, "rax") == 0) return REG_RAX;
-    if (strcasecmp(reg_name, "rbx") == 0) return REG_RBX;
-    if (strcasecmp(reg_name, "rcx") == 0) return REG_RCX;
-    if (strcasecmp(reg_name, "rdx") == 0) return REG_RDX;
-    if (strcasecmp(reg_name, "rsi") == 0) return REG_RSI;
-    if (strcasecmp(reg_name, "rdi") == 0) return REG_RDI;
-    if (strcasecmp(reg_name, "r8") == 0) return REG_R8;
-    if (strcasecmp(reg_name, "r9") == 0) return REG_R9;
-    if (strcasecmp(reg_name, "ra") == 0) return REG_RA;
-    return -1;
 }
 
 void add_instruction(Program *program, InstructionData instr) {
