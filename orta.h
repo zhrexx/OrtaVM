@@ -266,129 +266,57 @@ void ortavm_free(OrtaVM *vm) {
     program_free(&vm->program);
 }
 
+typedef struct {
+    const char *name;
+    Instruction instruction;
+    int expected_args;
+} InstructionInfo;
+
+static const InstructionInfo instructions[] = {
+    {"push", IPUSH, 1}, {"mov", IMOV, 2}, {"pop", IPOP, 1},
+    {"add", IADD, 0}, {"sub", ISUB, 0}, {"mul", IMUL, 0},
+    {"div", IDIV, 0}, {"mod", IMOD, 0}, {"and", IAND, 0},
+    {"or", IOR, 0}, {"xor", IXOR, 0}, {"not", INOT, 0},
+    {"eq", IEQ, 0}, {"ne", INE, 0}, {"lt", ILT, 0},
+    {"gt", IGT, 0}, {"le", ILE, 0}, {"ge", IGE, 0},
+    {"jmp", IJMP, 1}, {"jmpif", IJMPIF, 1}, {"call", ICALL, 1},
+    {"ret", IRET, 0}, {"load", ILOAD, 1}, {"store", ISTORE, 1},
+    {"print", IPRINT, 0}, {"dup", IDUP, 0}, {"swap", ISWAP, 0},
+    {"drop", IDROP, 0}, {"rotl", IROTL, 1}, {"rotr", IROTR, 1},
+    {"alloc", IALLOC, 1}, {"halt", IHALT, 0}, {"merge", IMERGE, 0},
+    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}
+};
+
+#define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
+
 Instruction parse_instruction(const char *instruction) {
-    if (strcmp("push", instruction) == 0) return IPUSH;
-    if (strcmp("mov", instruction) == 0) return IMOV;
-    if (strcmp("pop", instruction) == 0) return IPOP;
-    if (strcmp("add", instruction) == 0) return IADD;
-    if (strcmp("sub", instruction) == 0) return ISUB;
-    if (strcmp("mul", instruction) == 0) return IMUL;
-    if (strcmp("div", instruction) == 0) return IDIV;
-    if (strcmp("mod", instruction) == 0) return IMOD;
-    if (strcmp("and", instruction) == 0) return IAND;
-    if (strcmp("or", instruction) == 0) return IOR;
-    if (strcmp("xor", instruction) == 0) return IXOR;
-    if (strcmp("not", instruction) == 0) return INOT;
-    if (strcmp("eq", instruction) == 0) return IEQ;
-    if (strcmp("ne", instruction) == 0) return INE;
-    if (strcmp("lt", instruction) == 0) return ILT;
-    if (strcmp("gt", instruction) == 0) return IGT;
-    if (strcmp("le", instruction) == 0) return ILE;
-    if (strcmp("ge", instruction) == 0) return IGE;
-    if (strcmp("jmp", instruction) == 0) return IJMP;
-    if (strcmp("jmpif", instruction) == 0) return IJMPIF;
-    if (strcmp("call", instruction) == 0) return ICALL;
-    if (strcmp("ret", instruction) == 0) return IRET;
-    if (strcmp("load", instruction) == 0) return ILOAD;
-    if (strcmp("store", instruction) == 0) return ISTORE;
-    if (strcmp("print", instruction) == 0) return IPRINT;
-    if (strcmp("dup", instruction) == 0) return IDUP;
-    if (strcmp("swap", instruction) == 0) return ISWAP;
-    if (strcmp("drop", instruction) == 0) return IDROP;
-    if (strcmp("rotl", instruction) == 0) return IROTL;
-    if (strcmp("rotr", instruction) == 0) return IROTR;
-    if (strcmp("alloc", instruction) == 0) return IALLOC;
-    if (strcmp("halt", instruction) == 0) return IHALT;
-    if (strcmp("merge", instruction) == 0) return IMERGE;
-    if (strcmp("xcall", instruction) == 0) return IXCALL;
-    if (strcmp("write", instruction) == 0) return IWRITE;
-    if (strcmp("printmem", instruction) == 0) return IPRINTMEM;
+    for (size_t i = 0; i < INSTRUCTION_COUNT; i++) {
+        if (strcmp(instructions[i].name, instruction) == 0) {
+            return instructions[i].instruction;
+        }
+    }
     return -1;
 }
 
 const char *instruction_to_string(Instruction instruction) {
-    switch (instruction) {
-        case IPUSH: return "push";
-        case IMOV: return "mov";
-        case IPOP: return "pop";
-        case IADD: return "add";
-        case ISUB: return "sub";
-        case IMUL: return "mul";
-        case IDIV: return "div";
-        case IMOD: return "mod";
-        case IAND: return "and";
-        case IOR: return "or";
-        case IXOR: return "xor";
-        case INOT: return "not";
-        case IEQ: return "eq";
-        case INE: return "ne";
-        case ILT: return "lt";
-        case IGT: return "gt";
-        case ILE: return "le";
-        case IGE: return "ge";
-        case IJMP: return "jmp";
-        case IJMPIF: return "jmpif";
-        case ICALL: return "call";
-        case IRET: return "ret";
-        case ILOAD: return "load";
-        case ISTORE: return "store";
-        case IPRINT: return "print";
-        case IDUP: return "dup";
-        case ISWAP: return "swap";
-        case IDROP: return "drop";
-        case IROTL: return "rotl";
-        case IROTR: return "rotr";
-        case IALLOC: return "alloc";
-        case IHALT: return "halt";
-        case IMERGE: return "merge";
-        case IXCALL: return "xcall";
-        case IWRITE: return "write";
-        case IPRINTMEM: return "printmem";
-        default: return "unknown";
+    for (size_t i = 0; i < INSTRUCTION_COUNT; i++) {
+        if (instructions[i].instruction == instruction) {
+            return instructions[i].name;
+        }
     }
+    return "unknown";
 }
 
 int instruction_expected_args(Instruction instruction) {
-    switch (instruction) {
-        case IPUSH: return 1;
-        case IMOV: return 2;
-        case IPOP: return 1;
-        case IADD: return 0;
-        case ISUB: return 0;
-        case IMUL: return 0;
-        case IDIV: return 0;
-        case IMOD: return 0;
-        case IAND: return 0;
-        case IOR: return 0;
-        case IXOR: return 0;
-        case INOT: return 0;
-        case IEQ: return 0;
-        case INE: return 0;
-        case ILT: return 0;
-        case IGT: return 0;
-        case ILE: return 0;
-        case IGE: return 0;
-        case IJMP: return 1;
-        case IJMPIF: return 1;
-        case ICALL: return 1;
-        case IRET: return 0;
-        case ILOAD: return 1;
-        case ISTORE: return 1;
-        case IPRINT: return 0;
-        case IDUP: return 0;
-        case ISWAP: return 0;
-        case IDROP: return 0;
-        case IROTL: return 1;
-        case IROTR: return 1;
-        case IALLOC: return 1;
-        case IHALT: return 0;
-        case IMERGE: return 0;
-        case IXCALL: return 0;
-        case IWRITE: return 0;
-        case IPRINTMEM: return 0;
-        default: return -1;
+    for (size_t i = 0; i < INSTRUCTION_COUNT; i++) {
+        if (instructions[i].instruction == instruction) {
+            return instructions[i].expected_args;
+        }
     }
+    return -1;
 }
+
+
 
 int is_number(const char *str) {
     char *endptr;
@@ -1218,7 +1146,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         }
         case IXCALL: {
             XRegister *regs = vm->xpu.registers;
-            XRegister rax = regs[REG_RAX];
+            XRegister rax = regs[REG_RAX]; // opcode
             XRegister rbx = regs[REG_RBX];
             XRegister rcx = regs[REG_RCX];
             XRegister rsi = regs[REG_RSI];
@@ -1258,9 +1186,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
                      } break;
         case IWRITE: {
-                XRegister *rax = &xpu->registers[REG_RAX];
-                XRegister *rbx = &xpu->registers[REG_RBX];
-                XRegister *rcx = &xpu->registers[REG_RCX];
+                XRegister *rax = &xpu->registers[REG_RAX]; // value 
+                XRegister *rbx = &xpu->registers[REG_RBX]; // pointer
+                XRegister *rcx = &xpu->registers[REG_RCX]; // offset
     
                 if (rbx->reg_value.type == WPOINTER) {
                     void *address = rbx->reg_value.value;
