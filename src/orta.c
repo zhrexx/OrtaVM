@@ -172,9 +172,9 @@ int main(int argc, char **argv) {
         char bytecode_filename[256];
         snprintf(bytecode_filename, sizeof(bytecode_filename), "%.*s.xbin", (int)(len - 2), filename);
         
-        print_progress("COMPILE", "Creating bytecode file");
-        printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
         if (!orta_disable_compile) { 
+            print_progress("COMPILE", "Creating bytecode file");
+            printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
             if (create_bytecode(&vm, bytecode_filename)) {
                 print_success("Bytecode created successfully");
             } else {
