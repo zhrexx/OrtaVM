@@ -245,10 +245,14 @@ typedef struct {
     size_t memory_capacity;
 } Program;
 
+typedef enum {
+    FLAG_NOTHING = 0,
+} Flags;
+
 typedef struct {
     char magic[4];
-    int flags[4];
     int flags_count;
+    int flags[4];
 } OrtaMeta;
 
 typedef struct {
@@ -311,6 +315,11 @@ OrtaVM ortavm_create(const char *filename) {
     OrtaVM vm;
     vm.xpu = xpu_init();
     program_init(&vm.program, filename);
+    vm.meta.flags_count = 0;
+    sprintf(vm.meta.magic, "XBIN");
+    for (size_t i = 0; i < 4; i++) {
+        vm.meta.flags[i] = FLAG_NOTHING;
+    }
     return vm;
 }
 
