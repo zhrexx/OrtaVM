@@ -1423,86 +1423,84 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
         return 0;
     }
     
-    if (fwrite(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fwrite(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
+        goto error;
 
     size_t filename_len = strlen(program->filename);
-    if (fwrite(&filename_len, sizeof(size_t), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
-    if (fwrite(program->filename, 1, filename_len, fp) != filename_len) {
-        fclose(fp);
-        return 0;
-    }
+    if (fwrite(&filename_len, sizeof(size_t), 1, fp) != 1)
+        goto error;
+    
+    if (fwrite(program->filename, 1, filename_len, fp) != filename_len)
+        goto error;
 
     size_t instructions_count = program->instructions_count;
-    if (fwrite(&instructions_count, sizeof(size_t), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fwrite(&instructions_count, sizeof(size_t), 1, fp) != 1)
+        goto error;
 
     for (size_t i = 0; i < instructions_count; i++) {
         InstructionData *instr = &program->instructions[i];
         
-        if (fwrite(&instr->opcode, sizeof(Instruction), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fwrite(&instr->opcode, sizeof(Instruction), 1, fp) != 1)
+            goto error;
 
         size_t operands_count = instr->operands.size;
-        if (fwrite(&operands_count, sizeof(size_t), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fwrite(&operands_count, sizeof(size_t), 1, fp) != 1)
+            goto error;
 
         for (size_t j = 0; j < operands_count; j++) {
             char *operand = *(char **)vector_get(&instr->operands, j);
             size_t operand_len = strlen(operand);
             
-            if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1) {
-                fclose(fp);
-                return 0;
-            }
+            if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1)
+                goto error;
             
-            if (fwrite(operand, 1, operand_len, fp) != operand_len) {
-                fclose(fp);
-                return 0;
-            }
+            if (fwrite(operand, 1, operand_len, fp) != operand_len)
+                goto error;
         }
     }
 
     size_t labels_count = program->labels_count;
-    if (fwrite(&labels_count, sizeof(size_t), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fwrite(&labels_count, sizeof(size_t), 1, fp) != 1)
+        goto error;
 
     for (size_t i = 0; i < labels_count; i++) {
         Label *label = &program->labels[i];
         
         size_t name_len = strlen(label->name);
-        if (fwrite(&name_len, sizeof(size_t), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fwrite(&name_len, sizeof(size_t), 1, fp) != 1)
+            goto error;
         
-        if (fwrite(label->name, 1, name_len, fp) != name_len) {
-            fclose(fp);
-            return 0;
-        }
+        if (fwrite(label->name, 1, name_len, fp) != name_len)
+            goto error;
         
-        size_t address = label->address;
-        if (fwrite(&address, sizeof(size_t), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fwrite(&label->address, sizeof(size_t), 1, fp) != 1)
+            goto error;
     }
 
     fclose(fp);
     return 1;
+
+error:
+    fclose(fp);
+    return 0;
+}
+
+void free_program_instructions(Program *program, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
+            char **operand_ptr = vector_get(&program->instructions[i].operands, j);
+            free(*operand_ptr);
+        }
+        vector_free(&program->instructions[i].operands);
+    }
+    free(program->instructions);
+}
+
+void free_program_labels(Program *program, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        free(program->labels[i].name);
+    }
+    free(program->labels);
 }
 
 int load_bytecode(OrtaVM *vm, const char *input_filename) {
@@ -1515,82 +1513,67 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 
     program_free(program);
     
-    if (fread(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fread(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
+        goto error_close;
 
     size_t filename_len;
-    if (fread(&filename_len, sizeof(size_t), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fread(&filename_len, sizeof(size_t), 1, fp) != 1)
+        goto error_close;
     
     char *filename = malloc(filename_len + 1);
-    if (!filename) {
-        fclose(fp);
-        return 0;
-    }
+    if (!filename)
+        goto error_close;
     
     if (fread(filename, 1, filename_len, fp) != filename_len) {
         free(filename);
-        fclose(fp);
-        return 0;
+        goto error_close;
     }
     filename[filename_len] = '\0';
     program->filename = strdup(filename);
     free(filename);
 
     size_t instructions_count;
-    if (fread(&instructions_count, sizeof(size_t), 1, fp) != 1) {
-        fclose(fp);
-        return 0;
-    }
+    if (fread(&instructions_count, sizeof(size_t), 1, fp) != 1)
+        goto error_close;
 
     program->instructions = malloc(sizeof(InstructionData) * instructions_count);
-    if (!program->instructions) {
-        fclose(fp);
-        return 0;
-    }
+    if (!program->instructions)
+        goto error_close;
+    
     program->instructions_count = instructions_count;
     program->instructions_capacity = instructions_count;
 
-    for (size_t i = 0; i < instructions_count; i++) {
+    size_t i;
+    for (i = 0; i < instructions_count; i++) {
         Instruction opcode;
-        if (fread(&opcode, sizeof(Instruction), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fread(&opcode, sizeof(Instruction), 1, fp) != 1)
+            goto error_instructions;
 
         size_t operands_count;
-        if (fread(&operands_count, sizeof(size_t), 1, fp) != 1) {
-            fclose(fp);
-            return 0;
-        }
+        if (fread(&operands_count, sizeof(size_t), 1, fp) != 1)
+            goto error_instructions;
 
         Vector operands;
         vector_init(&operands, 10, sizeof(char*));
         
-        for (size_t j = 0; j < operands_count; j++) {
+        size_t j;
+        for (j = 0; j < operands_count; j++) {
             size_t operand_len;
             if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
                 vector_free(&operands);
-                fclose(fp);
-                return 0;
+                goto error_instructions;
             }
             
             char *temp_operand = malloc(operand_len + 1);
             if (!temp_operand) {
                 vector_free(&operands);
-                fclose(fp);
-                return 0;
+                goto error_instructions;
             }
             
             if (fread(temp_operand, 1, operand_len, fp) != operand_len) {
                 free(temp_operand);
                 vector_free(&operands);
-                fclose(fp);
-                return 0;
+                goto error_instructions;
             }
             temp_operand[operand_len] = '\0';
             
@@ -1598,8 +1581,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
             if (!persistent_operand) {
                 free(temp_operand);
                 vector_free(&operands);
-                fclose(fp);
-                return 0;
+                goto error_instructions;
             }
             
             vector_push(&operands, &persistent_operand);
@@ -1611,108 +1593,35 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     }
 
     size_t labels_count;
-    if (fread(&labels_count, sizeof(size_t), 1, fp) != 1) {
-        for (size_t i = 0; i < program->instructions_count; i++) {
-            for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
-                char **operand_ptr = vector_get(&program->instructions[i].operands, j);
-                free(*operand_ptr);
-            }
-            vector_free(&program->instructions[i].operands);
-        }
-        free(program->instructions);
-        fclose(fp);
-        return 0;
-    }
+    if (fread(&labels_count, sizeof(size_t), 1, fp) != 1)
+        goto error_instructions;
 
     program->labels = malloc(sizeof(Label) * labels_count);
-    if (!program->labels) {
-        for (size_t i = 0; i < program->instructions_count; i++) {
-            for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
-                char **operand_ptr = vector_get(&program->instructions[i].operands, j);
-                free(*operand_ptr);
-            }
-            vector_free(&program->instructions[i].operands);
-        }
-        free(program->instructions);
-        fclose(fp);
-        return 0;
-    }
+    if (!program->labels)
+        goto error_instructions;
+    
     program->labels_count = labels_count;
     program->labels_capacity = labels_count;
 
-    for (size_t i = 0; i < labels_count; i++) {
+    for (i = 0; i < labels_count; i++) {
         size_t name_len;
-        if (fread(&name_len, sizeof(size_t), 1, fp) != 1) {
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
-            for (size_t j = 0; j < program->instructions_count; j++) {
-                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
-                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
-                    free(*operand_ptr);
-                }
-                vector_free(&program->instructions[j].operands);
-            }
-            free(program->instructions);
-            free(program->labels);
-            fclose(fp);
-            return 0;
-        }
+        if (fread(&name_len, sizeof(size_t), 1, fp) != 1)
+            goto error_labels;
         
         char *name = malloc(name_len + 1);
-        if (!name) {
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
-            for (size_t j = 0; j < program->instructions_count; j++) {
-                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
-                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
-                    free(*operand_ptr);
-                }
-                vector_free(&program->instructions[j].operands);
-            }
-            free(program->instructions);
-            free(program->labels);
-            fclose(fp);
-            return 0;
-        }
+        if (!name)
+            goto error_labels;
         
         if (fread(name, 1, name_len, fp) != name_len) {
             free(name);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
-            for (size_t j = 0; j < program->instructions_count; j++) {
-                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
-                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
-                    free(*operand_ptr);
-                }
-                vector_free(&program->instructions[j].operands);
-            }
-            free(program->instructions);
-            free(program->labels);
-            fclose(fp);
-            return 0;
+            goto error_labels;
         }
         name[name_len] = '\0';
 
         size_t address;
         if (fread(&address, sizeof(size_t), 1, fp) != 1) {
             free(name);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
-            for (size_t j = 0; j < program->instructions_count; j++) {
-                for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
-                    char **operand_ptr = vector_get(&program->instructions[j].operands, k);
-                    free(*operand_ptr);
-                }
-                vector_free(&program->instructions[j].operands);
-            }
-            free(program->instructions);
-            free(program->labels);
-            fclose(fp);
-            return 0;
+            goto error_labels;
         }
 
         program->labels[i].name = strdup(name);
@@ -1722,7 +1631,18 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 
     fclose(fp);
     return 1;
+
+error_labels:
+    free_program_labels(program, i);
+    
+error_instructions:
+    free_program_instructions(program, i);
+    
+error_close:
+    fclose(fp);
+    return 0;
 }
+
 
 #define MAX_LINE_LENGTH 1024
 #define MAX_INCLUDE_DEPTH 16
@@ -1731,6 +1651,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 #define MAX_DEFINE_VALUE 1024
 #define MAX_ARGS 16
 #define MAX_ARG_LEN 256
+#define MAX_INCLUDE_PATHS 16
 
 typedef struct {
     char name[MAX_DEFINE_NAME];
@@ -1742,6 +1663,21 @@ typedef struct {
 
 Define defines[MAX_DEFINES];
 int define_count = 0;
+
+// Add support for multiple include paths
+char include_paths[MAX_INCLUDE_PATHS][MAX_LINE_LENGTH];
+int include_path_count = 0;
+
+void add_include_path(const char *path) {
+    if (include_path_count >= MAX_INCLUDE_PATHS) {
+        fprintf(stderr, "Warning: Too many include paths\n");
+        return;
+    }
+    
+    strncpy(include_paths[include_path_count], path, MAX_LINE_LENGTH - 1);
+    include_paths[include_path_count][MAX_LINE_LENGTH - 1] = '\0';
+    include_path_count++;
+}
 
 void add_simple_define(const char *name, const char *value) {
     if (define_count >= MAX_DEFINES) {
@@ -1961,7 +1897,87 @@ int parse_define_directive(char *line) {
     return 0;
 }
 
+FILE *find_include_file(const char *filename) {
+    FILE *file = NULL;
+    
+    file = fopen(filename, "r");
+    if (file) return file;
+    
+    char full_path[MAX_LINE_LENGTH];
+    for (int i = 0; i < include_path_count; i++) {
+        snprintf(full_path, MAX_LINE_LENGTH, "%s/%s", include_paths[i], filename);
+        file = fopen(full_path, "r");
+        if (file) {
+            return file;
+        }
+    }
+    
+    return NULL;
+}
+
+int process_include(const char *filename, FILE *output, int depth) {
+    if (depth >= MAX_INCLUDE_DEPTH) {
+        fprintf(stderr, "Error: Maximum include depth exceeded for %s\n", filename);
+        return 0;
+    }
+    
+    FILE *include_fp = find_include_file(filename);
+    if (!include_fp) {
+        fprintf(stderr, "Warning: Cannot include file %s\n", filename);
+        return 0;
+    }
+    
+    char include_line[MAX_LINE_LENGTH];
+    while (fgets(include_line, MAX_LINE_LENGTH, include_fp)) {
+        char trimmed_line[MAX_LINE_LENGTH] = {0};
+        int i = 0, j = 0;
+        int in_string = 0;
+
+        while (include_line[i] != '\0' && include_line[i] != '\n') {
+            if (include_line[i] == '"') in_string = !in_string;
+            if (!in_string && include_line[i] == ';') {
+                trimmed_line[j] = '\0';
+                break;
+            }
+            trimmed_line[j++] = include_line[i++];
+        }
+
+        while (j > 0 && (trimmed_line[j - 1] == ' ' || trimmed_line[j - 1] == '\t')) j--;
+        trimmed_line[j] = '\0';
+
+        if (j > 0) {
+            if (strncmp(trimmed_line, "#include", 8) == 0) {
+                char nested_include_file[MAX_LINE_LENGTH];
+                if (sscanf(trimmed_line + 8, " \"%[^\"]\"", nested_include_file) == 1) {
+                    process_include(nested_include_file, output, depth + 1);
+                } else if (sscanf(trimmed_line + 8, " <%[^>]>", nested_include_file) == 1) {
+                    process_include(nested_include_file, output, depth + 1);
+                }
+            } else if (strncmp(trimmed_line, "#define", 7) == 0) {
+                parse_define_directive(trimmed_line);
+            } else {
+                char *processed = process_defines(trimmed_line);
+                if (processed) {
+                    fputs(processed, output);
+                    fputs("\n", output);
+                }
+            }
+        }
+    }
+    
+    fclose(include_fp);
+    return 1;
+}
+
 int orta_preprocess(char *filename, char *output_file) {
+    char *dpaths[] = {
+        ".", "~/.orta/"
+    };
+    int path_count = 2;
+    for (int i = 0; i < path_count && i < MAX_INCLUDE_PATHS; i++) {
+        add_include_path(dpaths[i]);
+    }
+    
     FILE *input = fopen(filename, "r");
     if (!input) {
         fprintf(stderr, "Error: Cannot open input file %s\n", filename);
@@ -1995,23 +2011,15 @@ int orta_preprocess(char *filename, char *output_file) {
         }
 
         while (j > 0 && (trimmed_line[j - 1] == ' ' || trimmed_line[j - 1] == '\t')) j--;
-
         trimmed_line[j] = '\0';
 
         if (j > 0) {
             if (strncmp(trimmed_line, "#include", 8) == 0) {
                 char include_file[MAX_LINE_LENGTH];
                 if (sscanf(trimmed_line + 8, " \"%[^\"]\"", include_file) == 1) {
-                    FILE *include_fp = fopen(include_file, "r");
-                    if (include_fp) {
-                        char include_line[MAX_LINE_LENGTH];
-                        while (fgets(include_line, MAX_LINE_LENGTH, include_fp)) {
-                            fputs(include_line, output);
-                        }
-                        fclose(include_fp);
-                    } else {
-                        fprintf(stderr, "Warning: Cannot include file %s\n", include_file);
-                    }
+                    process_include(include_file, output, 0);
+                } else if (sscanf(trimmed_line + 8, " <%[^>]>", include_file) == 1) {
+                    process_include(include_file, output, 0);
                 }
             } else if (strncmp(trimmed_line, "#define", 7) == 0) {
                 parse_define_directive(trimmed_line);
@@ -2024,12 +2032,11 @@ int orta_preprocess(char *filename, char *output_file) {
             }
         }
     }
-
+    
+    free(SNULL);
     fclose(input);
     fclose(output);
     return 1;
 }
-
-
 
 #endif
