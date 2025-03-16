@@ -1,5 +1,4 @@
 // TODO: add more registers
-// TODO: add flags to xbin
 
 #ifndef ORTA_H 
 #define ORTA_H
@@ -246,13 +245,16 @@ typedef struct {
 } Program;
 
 typedef enum {
-    FLAG_NOTHING = 0,
+    FLAG_NOTHING     = 0,
+    FLAG_STACK       = 1,
+    FLAG_MEMORY      = 2,
+    FLAG_CMD         = 3,
 } Flags;
 
 typedef struct {
     char magic[4];
-    int flags_count;
-    int flags[4];
+    short flags_count;
+    short flags[4];
 } OrtaMeta;
 
 typedef struct {
@@ -326,6 +328,15 @@ OrtaVM ortavm_create(const char *filename) {
 void ortavm_free(OrtaVM *vm) {
     xpu_free(&vm->xpu);
     program_free(&vm->program);
+}
+
+void add_flag(OrtaVM *vm, Flags flag) {
+    for (int i = 0; i < vm->meta.flags_count; i++) {
+        if (vm->meta.flags[i] == (short)flag) {
+            return;
+        }
+    }
+    vm->meta.flags[vm->meta.flags_count++] = (short)flag;
 }
 
 typedef struct {
@@ -570,6 +581,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     switch (instr->opcode) {
         case IPUSH:
             if (instr->operands.size > 0) {
+                add_flag(vm, FLAG_STACK);
                 char *operand = vector_get_str(&instr->operands, 0);
                 if (is_number(operand)) {
                     int *value = malloc(sizeof(int));
@@ -646,6 +658,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 			break;
 
         case IPOP:
+            add_flag(vm, FLAG_STACK);
             if (instr->operands.size >= 1) {
 				char *operand = vector_get_str(&instr->operands, 0);
                 if (is_register(operand)) {
@@ -1143,6 +1156,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             
         case IALLOC:
             if (instr->operands.size > 0) {
+                add_flag(vm, FLAG_MEMORY);
                 char *operand = vector_get_str(&instr->operands, 0);
                 if (is_number(operand)) {
                     size_t size = atoi(operand);
@@ -1198,6 +1212,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                             } break;
                     case 2: { // CMD call 
                                 if (rbx.reg_value.type == WCHARP) {
+                                    add_flag(vm, FLAG_CMD);
                                     int r = system((char *)rbx.reg_value.value);
                                     printf("[XCALL] %s returned %d\n", (char*)rbx.reg_value.value);
                                 }                    
