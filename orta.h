@@ -246,8 +246,15 @@ typedef struct {
 } Program;
 
 typedef struct {
+    char magic[4];
+    int flags[4];
+    int flags_count;
+} OrtaMeta;
+
+typedef struct {
     XPU xpu;
     Program program;
+    OrtaMeta meta;
 } OrtaVM;
 
 void program_init(Program *program, const char *filename) {
@@ -1399,11 +1406,16 @@ void print_registers(XPU *xpu) {
     }
 }
 
-
-int create_bytecode(Program *program, const char *output_filename) {
+int create_bytecode(OrtaVM *vm, const char *output_filename) {
+    Program *program = &vm->program;
     FILE *fp = fopen(output_filename, "wb");
     if (!fp) {
         fprintf(stderr, "Error: Could not create bytecode file '%s'\n", output_filename);
+        return 0;
+    }
+    
+    if (fwrite(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1) {
+        fclose(fp);
         return 0;
     }
 
@@ -1484,7 +1496,8 @@ int create_bytecode(Program *program, const char *output_filename) {
     return 1;
 }
 
-int load_bytecode(Program *program, const char *input_filename) {
+int load_bytecode(OrtaVM *vm, const char *input_filename) {
+    Program *program = &vm->program;
     FILE *fp = fopen(input_filename, "rb");
     if (!fp) {
         fprintf(stderr, "Error: Could not open bytecode file '%s'\n", input_filename);
@@ -1492,6 +1505,11 @@ int load_bytecode(Program *program, const char *input_filename) {
     }
 
     program_free(program);
+    
+    if (fread(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1) {
+        fclose(fp);
+        return 0;
+    }
 
     size_t filename_len;
     if (fread(&filename_len, sizeof(size_t), 1, fp) != 1) {
@@ -1616,6 +1634,9 @@ int load_bytecode(Program *program, const char *input_filename) {
     for (size_t i = 0; i < labels_count; i++) {
         size_t name_len;
         if (fread(&name_len, sizeof(size_t), 1, fp) != 1) {
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
             for (size_t j = 0; j < program->instructions_count; j++) {
                 for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
                     char **operand_ptr = vector_get(&program->instructions[j].operands, k);
@@ -1624,9 +1645,6 @@ int load_bytecode(Program *program, const char *input_filename) {
                 vector_free(&program->instructions[j].operands);
             }
             free(program->instructions);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
             free(program->labels);
             fclose(fp);
             return 0;
@@ -1634,6 +1652,9 @@ int load_bytecode(Program *program, const char *input_filename) {
         
         char *name = malloc(name_len + 1);
         if (!name) {
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
             for (size_t j = 0; j < program->instructions_count; j++) {
                 for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
                     char **operand_ptr = vector_get(&program->instructions[j].operands, k);
@@ -1642,9 +1663,6 @@ int load_bytecode(Program *program, const char *input_filename) {
                 vector_free(&program->instructions[j].operands);
             }
             free(program->instructions);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
             free(program->labels);
             fclose(fp);
             return 0;
@@ -1652,6 +1670,9 @@ int load_bytecode(Program *program, const char *input_filename) {
         
         if (fread(name, 1, name_len, fp) != name_len) {
             free(name);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
             for (size_t j = 0; j < program->instructions_count; j++) {
                 for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
                     char **operand_ptr = vector_get(&program->instructions[j].operands, k);
@@ -1660,9 +1681,6 @@ int load_bytecode(Program *program, const char *input_filename) {
                 vector_free(&program->instructions[j].operands);
             }
             free(program->instructions);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
             free(program->labels);
             fclose(fp);
             return 0;
@@ -1672,6 +1690,9 @@ int load_bytecode(Program *program, const char *input_filename) {
         size_t address;
         if (fread(&address, sizeof(size_t), 1, fp) != 1) {
             free(name);
+            for (size_t j = 0; j < i; j++) {
+                free(program->labels[j].name);
+            }
             for (size_t j = 0; j < program->instructions_count; j++) {
                 for (size_t k = 0; k < program->instructions[j].operands.size; k++) {
                     char **operand_ptr = vector_get(&program->instructions[j].operands, k);
@@ -1680,9 +1701,6 @@ int load_bytecode(Program *program, const char *input_filename) {
                 vector_free(&program->instructions[j].operands);
             }
             free(program->instructions);
-            for (size_t j = 0; j < i; j++) {
-                free(program->labels[j].name);
-            }
             free(program->labels);
             fclose(fp);
             return 0;
@@ -1696,8 +1714,6 @@ int load_bytecode(Program *program, const char *input_filename) {
     fclose(fp);
     return 1;
 }
-
-
 
 #define MAX_LINE_LENGTH 1024
 #define MAX_INCLUDE_DEPTH 16

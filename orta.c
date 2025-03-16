@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
         is_bytecode = true;
         print_progress("LOAD", "Loading compiled bytecode");
         
-        if (!load_bytecode(&vm.program, filename)) {
+        if (!load_bytecode(&vm, filename)) {
             print_error("Failed to load bytecode file");
             ortavm_free(&vm);
             return EXIT_FAILURE;
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
         print_progress("COMPILE", "Creating bytecode file");
         printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
         if (!orta_disable_compile) { 
-            if (create_bytecode(&vm.program, bytecode_filename)) {
+            if (create_bytecode(&vm, bytecode_filename)) {
                 print_success("Bytecode created successfully");
             } else {
                 print_error("Failed to create bytecode file");
