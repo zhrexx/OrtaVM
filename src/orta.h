@@ -205,6 +205,27 @@ typedef enum {
 } Instruction;
 
 typedef struct {
+    const char *name;
+    Instruction instruction;
+    int expected_args;
+} InstructionInfo;
+
+static const InstructionInfo instructions[] = {
+    {"push", IPUSH, 1}, {"mov", IMOV, 2}, {"pop", IPOP, 1},
+    {"add", IADD, 0}, {"sub", ISUB, 0}, {"mul", IMUL, 0},
+    {"div", IDIV, 0}, {"mod", IMOD, 0}, {"and", IAND, 0},
+    {"or", IOR, 0}, {"xor", IXOR, 2}, {"not", INOT, 0},
+    {"eq", IEQ, 0}, {"ne", INE, 0}, {"lt", ILT, 0},
+    {"gt", IGT, 0}, {"le", ILE, 0}, {"ge", IGE, 0},
+    {"jmp", IJMP, 1}, {"jmpif", IJMPIF, 1}, {"call", ICALL, 1},
+    {"ret", IRET, 0}, {"load", ILOAD, 1}, {"store", ISTORE, 1},
+    {"print", IPRINT, 0}, {"dup", IDUP, 0}, {"swap", ISWAP, 0},
+    {"drop", IDROP, 0}, {"rotl", IROTL, 1}, {"rotr", IROTR, 1},
+    {"alloc", IALLOC, 1}, {"halt", IHALT, 0}, {"merge", IMERGE, 0},
+    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}
+};
+
+typedef struct {
     Instruction opcode;
     Vector operands;
 } InstructionData;
@@ -323,27 +344,6 @@ void add_flag(OrtaVM *vm, Flags flag) {
     }
     vm->meta.flags[vm->meta.flags_count++] = (short)flag;
 }
-
-typedef struct {
-    const char *name;
-    Instruction instruction;
-    int expected_args;
-} InstructionInfo;
-
-static const InstructionInfo instructions[] = {
-    {"push", IPUSH, 1}, {"mov", IMOV, 2}, {"pop", IPOP, 1},
-    {"add", IADD, 0}, {"sub", ISUB, 0}, {"mul", IMUL, 0},
-    {"div", IDIV, 0}, {"mod", IMOD, 0}, {"and", IAND, 0},
-    {"or", IOR, 0}, {"xor", IXOR, 0}, {"not", INOT, 0},
-    {"eq", IEQ, 0}, {"ne", INE, 0}, {"lt", ILT, 0},
-    {"gt", IGT, 0}, {"le", ILE, 0}, {"ge", IGE, 0},
-    {"jmp", IJMP, 1}, {"jmpif", IJMPIF, 1}, {"call", ICALL, 1},
-    {"ret", IRET, 0}, {"load", ILOAD, 1}, {"store", ISTORE, 1},
-    {"print", IPRINT, 0}, {"dup", IDUP, 0}, {"swap", ISWAP, 0},
-    {"drop", IDROP, 0}, {"rotl", IROTL, 1}, {"rotr", IROTR, 1},
-    {"alloc", IALLOC, 1}, {"halt", IHALT, 0}, {"merge", IMERGE, 0},
-    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}
-};
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
 
@@ -784,17 +784,19 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
             
         case IXOR:
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            
-            if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
-                *int_result = *(int*)w2.value ^ *(int*)w1.value;
-                xstack_push(&xpu->stack, word_create(int_result, WINT));
-            }
-            
-            free(w1.value);
-            free(w2.value);
+            if (instr->operands.size >= 2) {
+				char *sreg1 = vector_get_str(&instr->operands, 0);
+                char *sreg2 = vector_get_str(&instr->operands, 1);
+                if (is_register(sreg1) && is_register(sreg2)) {
+                    XRegisters preg1 = register_name_to_enum(sreg1);
+                    XRegisters preg2 = register_name_to_enum(sreg2);
+                    XRegister reg1 = xpu->registers[preg1];
+                    XRegister reg2 = xpu->registers[preg2];
+                    if (preg1 != -1 && preg2 != -1 && reg1.reg_value.type == WINT && reg1.reg_value.type == WINT) {
+                        *(int*)reg1.reg_value.value ^= *(int*)reg2.reg_value.value;
+                    }
+                }
+            } 
             break;
             
         case INOT:

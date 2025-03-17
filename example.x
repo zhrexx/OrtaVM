@@ -1,4 +1,4 @@
-;#include "std.x"
+#include "std.x"
 
 __entry:
 ;    push 1000
@@ -25,4 +25,6 @@ __entry:
     
     push "Hello, World"
     print
-    call cregs
+    ;call cregs
+
+    xor rax rax
