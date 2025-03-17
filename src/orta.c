@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "orta.h"
+#include "std.h"
 
 #define COLOR_RESET   "\x1b[0m"
 #define COLOR_BOLD    "\x1b[1m"
@@ -71,7 +72,77 @@ void print_usage(const char *program_name) {
     printf("   %s example.xbin       %s# Execute pre-compiled bytecode\n\n", program_name, COLOR_GREEN);
 }
 
+char *expand_path(const char *path) {
+    if (path[0] == '~') {
+        
+        #ifndef _WIN32
+        const char *home = getenv("HOME");
+        #else 
+        const char *home = getenv("USERPROFILE");
+        #endif
+        if (!home) return NULL;
+
+        size_t len = strlen(home) + strlen(path);
+        char *full_path = malloc(len);
+        if (!full_path) return NULL;
+        snprintf(full_path, len, "%s%s", home, path + 1);
+        return full_path;
+    }
+    return strdup(path);
+}
+
+int check_directory(const char *path) {
+    char *full_path = expand_path(path);
+    if (!full_path) return 0;
+
+    struct stat st;
+    int exists = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
+    free(full_path);
+    return exists;
+}
+
+void ensure_directory(const char *path) {
+    char *full_path = expand_path(path);
+    if (!full_path) {
+        print_error("Failed to expand path");
+        exit(1);
+    }
+
+    struct stat st;
+    if (stat(full_path, &st) != 0) {
+        mkdir(full_path, 0755);
+    }
+
+    free(full_path);
+}
+
+int install_std() {
+    ensure_directory("~/.orta/");
+
+    char *std_x_path = expand_path("~/.orta/std.x");
+    if (!std_x_path) {
+        print_error("Could not allocate memory for path");
+        return 1;
+    }
+
+    FILE *fp = fopen(std_x_path, "wb");
+    free(std_x_path);
+
+    if (!fp) {
+        print_error("Could not open file: ~/.orta/std.x");
+        return 1;
+    }
+
+    fwrite(std_x, 1, std_x_len, fp);
+    fclose(fp);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (install_std()) {
+        return 1;
+    }
+
     if (argc < 2) {
         print_usage(argv[0]);
         return EXIT_FAILURE;

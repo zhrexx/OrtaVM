@@ -11,9 +11,13 @@
 
 #ifdef _WIN32
     #include <windows.h>
+    #define mkdir(path, mode) _mkdir(path)
+    #define stat _stat
 #else
     #include <unistd.h>
     #include <time.h>
+    #include <sys/stat.h> 
+    #include <sys/types.h>
 #endif
 
 
@@ -23,6 +27,15 @@
 #define ODEFAULT_STACK_SIZE 16384
 #define ODEFAULT_ENTRY "__entry"
 #define MEMORY_CAPACITY 1024
+
+#define MAX_LINE_LENGTH 1024
+#define MAX_INCLUDE_DEPTH 16
+#define MAX_DEFINES 100
+#define MAX_DEFINE_NAME 64
+#define MAX_DEFINE_VALUE 1024
+#define MAX_ARGS 16
+#define MAX_ARG_LEN 256
+#define MAX_INCLUDE_PATHS 16
 
 static size_t OSTACK_SIZE = ODEFAULT_STACK_SIZE;
 static char *OENTRY = ODEFAULT_ENTRY;
@@ -181,42 +194,14 @@ void xpu_free(XPU *xpu) {
 }
 
 typedef enum {
-    IPUSH,
-    IMOV,
-    IPOP,
-    IADD,
-    ISUB,
-    IMUL,
-    IDIV,
-    IMOD,
-    IAND,
-    IOR,
-    IXOR,
-    INOT,
-    IEQ,
-    INE,
-    ILT,
-    IGT,
-    ILE,
-    IGE,
-    IJMP,
-    IJMPIF,
-    ICALL,
-    IRET,
-    ILOAD,
-    ISTORE,
-    IPRINT,
-    IDUP,
-    ISWAP,
-    IDROP,
-    IROTL,
-    IROTR,
-    IALLOC,
-    IHALT,
-    IMERGE,
-    IXCALL,
-    IWRITE,
-    IPRINTMEM,
+    IPUSH, IMOV, IPOP, IADD,
+    ISUB, IMUL, IDIV, IMOD, IAND, IOR,
+    IXOR, INOT, IEQ, INE, ILT, IGT,
+    ILE, IGE, IJMP, IJMPIF, ICALL, IRET,
+    ILOAD, ISTORE, IPRINT, IDUP,
+    ISWAP, IDROP, IROTL, IROTR,
+    IALLOC,IHALT, IMERGE, IXCALL, 
+    IWRITE, IPRINTMEM,
 } Instruction;
 
 typedef struct {
@@ -389,8 +374,6 @@ int instruction_expected_args(Instruction instruction) {
     return -1;
 }
 
-
-
 int is_number(const char *str) {
     char *endptr;
     strtol(str, &endptr, 10);
@@ -409,7 +392,8 @@ int is_string(const char *str) {
 }
 
 int is_label_declaration(const char *str) {
-    return str[0] == ':';
+    size_t len = strlen(str);
+    return (len > 0) && (str[len - 1] == ':');
 }
 
 int is_label_reference(const char *str) {
@@ -502,7 +486,10 @@ int parse_program(OrtaVM *vm, const char *filename) {
         
         char *first_token = vector_get_str(&tokens, 0);
         if (first_token != NULL && is_label_declaration(first_token)) {
-            char *label_name = strdup(first_token + 1);
+            size_t label_len = strlen(first_token);
+            char *label_name = strdup(first_token);
+            label_name[label_len - 1] = '\0';
+
             add_label(&vm->program, label_name, vm->program.instructions_count);
             //printf("Adding label: '%s' at address %zu\n", label_name, vm->program.instructions_count);
             free(label_name);
@@ -1658,16 +1645,6 @@ error_close:
     return 0;
 }
 
-
-#define MAX_LINE_LENGTH 1024
-#define MAX_INCLUDE_DEPTH 16
-#define MAX_DEFINES 100
-#define MAX_DEFINE_NAME 64
-#define MAX_DEFINE_VALUE 1024
-#define MAX_ARGS 16
-#define MAX_ARG_LEN 256
-#define MAX_INCLUDE_PATHS 16
-
 typedef struct {
     char name[MAX_DEFINE_NAME];
     char value[MAX_DEFINE_VALUE];
@@ -1679,17 +1656,38 @@ typedef struct {
 Define defines[MAX_DEFINES];
 int define_count = 0;
 
-// Add support for multiple include paths
 char include_paths[MAX_INCLUDE_PATHS][MAX_LINE_LENGTH];
 int include_path_count = 0;
+
 
 void add_include_path(const char *path) {
     if (include_path_count >= MAX_INCLUDE_PATHS) {
         fprintf(stderr, "Warning: Too many include paths\n");
         return;
     }
-    
-    strncpy(include_paths[include_path_count], path, MAX_LINE_LENGTH - 1);
+
+    char resolved_path[MAX_LINE_LENGTH];
+    if (path[0] == '~') {
+        const char *home = NULL;
+
+        #if defined(_WIN32) || defined(_WIN64)
+        home = getenv("USERPROFILE");
+        #else
+        home = getenv("HOME");
+        #endif
+
+        if (home) {
+            snprintf(resolved_path, sizeof(resolved_path), "%s%s", home, path + 1);
+        } else {
+            strncpy(resolved_path, path, sizeof(resolved_path) - 1);
+            resolved_path[sizeof(resolved_path) - 1] = '\0';
+        }
+    } else {
+        strncpy(resolved_path, path, sizeof(resolved_path) - 1);
+        resolved_path[sizeof(resolved_path) - 1] = '\0';
+    }
+
+    strncpy(include_paths[include_path_count], resolved_path, MAX_LINE_LENGTH - 1);
     include_paths[include_path_count][MAX_LINE_LENGTH - 1] = '\0';
     include_path_count++;
 }
@@ -1986,7 +1984,8 @@ int process_include(const char *filename, FILE *output, int depth) {
 
 int orta_preprocess(char *filename, char *output_file) {
     char *dpaths[] = {
-        ".", "~/.orta/"
+        ".",
+        "~/.orta/",
     };
     int path_count = 2;
     for (int i = 0; i < path_count && i < MAX_INCLUDE_PATHS; i++) {

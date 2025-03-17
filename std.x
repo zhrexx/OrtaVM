@@ -1,7 +1,7 @@
 
         ; Wait seconds
         ; rbx = seconds
-:wait
+wait:
     mov 1 rax   ; xcall opcode
     push 1000 
     push rbx 
@@ -12,14 +12,14 @@
         
         ; Simple system command
         ; rbx = command
-:_system
+_system:
     mov 2 rax ; xcall cmd opcode 
     xcall
     ret
 
         ; cast latest stack element to different type
         ; rbx = type as str
-:cast
+cast:
     mov 3 rax 
     xcall
     ret
@@ -29,7 +29,7 @@
 ;
 
         ; Push all regs to stack
-:pusha 
+pusha: 
     push rax 
     push rbx 
     push rcx 
@@ -40,7 +40,7 @@
     push r9 
     ret 
 
-:popa
+popa:
     pop rax 
     pop rbx 
     pop rcx 
@@ -52,7 +52,7 @@
     ret
 
         ; Clear Registers
-:cregs
+cregs:
     mov 0 rax 
     mov 0 rbx
     mov 0 rcx 
