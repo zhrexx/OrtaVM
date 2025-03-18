@@ -11,7 +11,9 @@
 
 #ifdef _WIN32
     #include <windows.h>
-    #define mkdir(path, mode) _mkdir(path)
+    #include <dirent.h> 
+    #include <sys/stat.h>
+    #define mkdir(path, skip) mkdir(path);
     #define stat _stat
 #else
     #include <unistd.h>
@@ -43,7 +45,7 @@ typedef enum {
     WINT,
     WFLOAT,
     WCHARP, 
-    WCHAR,
+    W_CHAR,
     WPOINTER,
     WBOOL,
 } WordType;
@@ -74,6 +76,12 @@ typedef enum {
     REG_RDI,
     REG_R8,
     REG_R9,
+    REG_R10,
+    REG_R11,
+    REG_R12,
+    REG_R13,
+    REG_R14,
+    REG_R15,
     REG_RA, // Return Address | Dont use!
     REG_FR, // Function return pass all returns here
     REG_COUNT,
@@ -101,8 +109,14 @@ XRegisterInfo register_table[REG_COUNT] = {
     {"RDI", REG_RDI, REGSIZE_64BIT},
     {"R8",  REG_R8,  REGSIZE_64BIT},
     {"R9",  REG_R9,  REGSIZE_64BIT},
+    {"R10", REG_R10, REGSIZE_64BIT},
+    {"R11", REG_R11, REGSIZE_64BIT},
+    {"R12", REG_R12, REGSIZE_64BIT},
+    {"R13", REG_R13, REGSIZE_64BIT},
+    {"R14", REG_R14, REGSIZE_64BIT},
+    {"R15", REG_R15, REGSIZE_64BIT},
     {"RA",  REG_RA,  REGSIZE_64BIT}, // Return Address | Don't use!
-    {"FR",  REG_FR,  REGSIZE_64BIT}, 
+    {"FR",  REG_FR,  REGSIZE_64BIT}, // Function return
 };
 
 int is_register(const char *str) {
@@ -707,7 +721,7 @@ WordType get_type(char *s) {
     } else if (strcmp(s, "charp") == 0) {
         return WCHARP;
     } else if (strcmp(s, "char") == 0) {
-        return WCHAR;
+        return W_CHAR;
     } else if (strcmp(s, "bool") == 0) {
         return WBOOL;
     } else if (strcmp(s, "pointer") == 0) {
@@ -1217,7 +1231,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 printf("%f\n", *(float*)w1.value);
             } else if (w1.type == WCHARP) {
                 printf("%s\n", (char*)w1.value);
-            } else if (w1.type == WCHAR) {
+            } else if (w1.type == W_CHAR) {
                 printf("%c\n", *(char*)w1.value);
             }
             break;
@@ -1408,7 +1422,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     } else if (rax->reg_value.type == WCHARP) {
                         size_t len = strlen((char*)rax->reg_value.value) + 1;
                         memcpy(address, rax->reg_value.value, len);
-                    } else if (rax->reg_value.type == WCHAR) {
+                    } else if (rax->reg_value.type == W_CHAR) {
                         *(char*)address = *(char*)rax->reg_value.value;
                     } else {
                         fprintf(stderr, "Error: Unsupported type in RAX for IWRITE\n");
@@ -1489,7 +1503,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
                 switch (type) {
                     case WINT:     size = sizeof(int);      break;
-                    case WCHAR:    size = sizeof(char);     break;
+                    case W_CHAR:    size = sizeof(char);     break;
                     case WCHARP:   size = sizeof(char *);   break;
                     case WPOINTER: size = sizeof(void *);   break;
                     case WFLOAT:   size = sizeof(float);    break;
@@ -1556,7 +1570,7 @@ static void print_word(size_t index, Word w) {
         case WCHARP:
             printf("STRING  : %s", (char*)w.value);
             break;
-        case WCHAR:
+        case W_CHAR:
             printf("CHAR    : %c", *(char*)w.value);
             break;
         case WPOINTER:
@@ -1595,7 +1609,7 @@ void print_registers(XPU *xpu) {
             case WCHARP:
                 printf("STRING  : %s", (char*)w.value);
                 break;
-            case WCHAR:
+            case W_CHAR:
                 printf("CHAR    : %c", *(char*)w.value);
                 break;
             case WPOINTER:
