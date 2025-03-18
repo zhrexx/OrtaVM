@@ -20,13 +20,12 @@
     #include <sys/types.h>
 #endif
 
-
 #include "libs/vector.h"
 #include "libs/str.h"
 
 #define ODEFAULT_STACK_SIZE 16384
 #define ODEFAULT_ENTRY "__entry"
-#define MEMORY_CAPACITY 1024
+#define MEMORY_CAPACITY 8192
 
 #define MAX_LINE_LENGTH 1024
 #define MAX_INCLUDE_DEPTH 16
@@ -76,6 +75,7 @@ typedef enum {
     REG_R8,
     REG_R9,
     REG_RA, // Return Address | Dont use!
+    REG_FR, // Function return pass all returns here
     REG_COUNT,
 } XRegisters;
 
@@ -101,7 +101,8 @@ XRegisterInfo register_table[REG_COUNT] = {
     {"RDI", REG_RDI, REGSIZE_64BIT},
     {"R8",  REG_R8,  REGSIZE_64BIT},
     {"R9",  REG_R9,  REGSIZE_64BIT},
-    {"RA",  REG_RA,  REGSIZE_64BIT} // Return Address | Don't use!
+    {"RA",  REG_RA,  REGSIZE_64BIT}, // Return Address | Don't use!
+    {"FR",  REG_FR,  REGSIZE_64BIT}, 
 };
 
 int is_register(const char *str) {
@@ -240,7 +241,7 @@ static const InstructionInfo instructions[] = {
     {"ret", IRET, ExactArgs(0)}, {"load", ILOAD, ExactArgs(1)}, {"store", ISTORE, ExactArgs(1)},
     {"print", IPRINT, ExactArgs(0)}, {"dup", IDUP, ExactArgs(0)}, {"swap", ISWAP, ExactArgs(0)},
     {"drop", IDROP, ExactArgs(0)}, {"rotl", IROTL, ExactArgs(1)}, {"rotr", IROTR, ExactArgs(1)},
-    {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, ExactArgs(0)},
+    {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
 };
@@ -453,6 +454,128 @@ void xsleep(unsigned long miliseconds) {
     microsleep(miliseconds * 1000);
 }
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
+
+int eval(char *s) {
+    if (!s || *s == '\0') return 0;
+    
+    char *p = s;
+    int values[100];
+    char ops[100];
+    int v_idx = 0;
+    int o_idx = 0;
+    
+    values[v_idx++] = 0;
+    ops[o_idx++] = '+';
+    
+    while (*p != '\0') {
+        while (isspace(*p)) p++;
+        
+        if (isdigit(*p)) {
+            int val = 0;
+            while (isdigit(*p)) {
+                val = val * 10 + (*p - '0');
+                p++;
+            }
+            
+            char op = ops[--o_idx];
+            if (op == '+') values[v_idx - 1] += val;
+            else if (op == '-') values[v_idx - 1] -= val;
+            else if (op == '*') values[v_idx - 1] *= val;
+            else if (op == '/') {
+                if (val == 0) {
+                    fprintf(stderr, "Error: Division by zero\n");
+                    return 0;
+                }
+                values[v_idx - 1] /= val;
+            }
+        } 
+        else if (*p == '+' || *p == '-') {
+            ops[o_idx++] = *p;
+            p++;
+        }
+        else if (*p == '*' || *p == '/') {
+            ops[o_idx++] = *p;
+            p++;
+            
+            while (isspace(*p)) p++;
+            
+            int val = 0;
+            if (*p == '(') {
+                p++;
+                int paren_count = 1;
+                char *start = p;
+                
+                while (paren_count > 0 && *p != '\0') {
+                    if (*p == '(') paren_count++;
+                    else if (*p == ')') paren_count--;
+                    if (paren_count > 0) p++;
+                }
+                
+                if (*p == ')') {
+                    *p = '\0';
+                    val = eval(start);
+                    *p = ')';
+                    p++;
+                }
+            } else if (isdigit(*p)) {
+                while (isdigit(*p)) {
+                    val = val * 10 + (*p - '0');
+                    p++;
+                }
+            }
+            
+            char op = ops[--o_idx];
+            if (op == '*') values[v_idx - 1] *= val;
+            else if (op == '/') {
+                if (val == 0) {
+                    fprintf(stderr, "Error: Division by zero\n");
+                    return 0;
+                }
+                values[v_idx - 1] /= val;
+            }
+        }
+        else if (*p == '(') {
+            p++;
+            int paren_count = 1;
+            char *start = p;
+            
+            while (paren_count > 0 && *p != '\0') {
+                if (*p == '(') paren_count++;
+                else if (*p == ')') paren_count--;
+                if (paren_count > 0) p++;
+            }
+            
+            if (*p == ')') {
+                *p = '\0';
+                int val = eval(start);
+                *p = ')';
+                p++;
+                
+                char op = ops[--o_idx];
+                if (op == '+') values[v_idx - 1] += val;
+                else if (op == '-') values[v_idx - 1] -= val;
+                else if (op == '*') values[v_idx - 1] *= val;
+                else if (op == '/') {
+                    if (val == 0) {
+                        fprintf(stderr, "Error: Division by zero\n");
+                        return 0;
+                    }
+                    values[v_idx - 1] /= val;
+                }
+            }
+        }
+        else {
+            p++;
+        }
+    }
+    
+    return values[0];
+}
+
 char* trim_left(const char *str) {
     while (isspace((unsigned char)*str)) {
         str++;
@@ -599,7 +722,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     int *int_result;
     float *float_result;
     char *str_result;
-    
+    XRegister *regs = vm->xpu.registers;
+    XRegister *rax = &regs[REG_RAX];
+    XRegister *rbx = &regs[REG_RBX];
+    XRegister *rcx = &regs[REG_RCX];
+    XRegister *rsi = &regs[REG_RSI];
+    XRegister *rdx = &regs[REG_RDX];
+
     switch (instr->opcode) {
         case IPUSH:
             if (instr->operands.size > 0) {
@@ -1188,64 +1317,69 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
             
         case IMERGE: {
-            Word w1 = xstack_pop(&xpu->stack);
-            Word w2 = xstack_pop(&xpu->stack);
+            if (instr->operands.size == 0) {
+                Word w1 = xstack_pop(&xpu->stack);
+                Word w2 = xstack_pop(&xpu->stack);
     
-            if (w1.type == WCHARP && w2.type == WCHARP) {
-                char *str1 = (char *)w1.value;
-                char *str2 = (char *)w2.value;
-                size_t len1 = strlen(str1);
-                size_t len2 = strlen(str2);
-                char *merged = malloc(len1 + len2 + 2);
-                if (!merged) {
-                    fprintf(stderr, "Error: Memory allocation failed for IMERGE\n");
+                if (w1.type == WCHARP && w2.type == WCHARP) {
+                    char *str1 = (char *)w1.value;
+                    char *str2 = (char *)w2.value;
+                    size_t len1 = strlen(str1);
+                    size_t len2 = strlen(str2);
+                    char *merged = malloc(len1 + len2 + 2);
+                    if (!merged) {
+                        fprintf(stderr, "Error: Memory allocation failed for IMERGE\n");
+                        free(str1);
+                        free(str2);
+                        break;
+                    }
+                    strcpy(merged, str2);
+                    strcat(merged, " ");
+                    strcat(merged, str1);
+                    xstack_push(&xpu->stack, word_create(merged, WCHARP));
                     free(str1);
                     free(str2);
-                    break;
+                } else {
+                    fprintf(stderr, "Error: IMERGE requires two string operands\n");
+                    free(w1.value);
+                    free(w2.value);
                 }
-                strcpy(merged, str2);
-                strcat(merged, " ");
-                strcat(merged, str1);
-                xstack_push(&xpu->stack, word_create(merged, WCHARP));
-                free(str1);
-                free(str2);
             } else {
-                fprintf(stderr, "Error: IMERGE requires two string operands\n");
-                free(w1.value);
-                free(w2.value);
+                char *string = malloc(256);
+                VECTOR_FOR_EACH(char *, elem, &instr->operands) {
+                    char *rcharp = *(char **)elem;
+                    rcharp[strlen(rcharp)-1] = '\0'; 
+                    strcat(string, rcharp+1);
+                    strcat(string, " ");
+                }
+                xstack_push(&xpu->stack, word_create(string, WCHARP));
             }
             break;
         }
         case IXCALL: {
-            XRegister *regs = vm->xpu.registers;
-            XRegister rax = regs[REG_RAX]; // opcode
-            XRegister rbx = regs[REG_RBX];
-            XRegister rcx = regs[REG_RCX];
-            XRegister rsi = regs[REG_RSI];
-            XRegister rdx = regs[REG_RDX];
-            if (rax.reg_value.type == WINT) {
-                switch (*(int *)rax.reg_value.value) {
+            if (rax->reg_value.type == WINT) {
+                switch (*(int *)rax->reg_value.value) {
                     case 1: { // sleep 
-                                 if (rbx.reg_value.type == WINT) {
-                                    xsleep(*(int *)rbx.reg_value.value);
+                                 if (rbx->reg_value.type == WINT) {
+                                    xsleep(*(int *)rbx->reg_value.value);
                                  }
                             } break;
                     case 2: { // CMD call 
-                                if (rbx.reg_value.type == WCHARP) {
+                                if (rbx->reg_value.type == WCHARP) {
                                     add_flag(vm, FLAG_CMD);
-                                    int r = system((char *)rbx.reg_value.value);
-                                    printf("[XCALL] %s returned %d\n", (char*)rbx.reg_value.value);
+                                    int r = system((char *)rbx->reg_value.value);
+                                    printf("[XCALL] %s returned %d\n", (char*)rbx->reg_value.value);
                                 }                    
         
                             } break;
                     case 3: { // cast
-                                if (rbx.reg_value.type == WCHARP) {
+                                if (rbx->reg_value.type == WCHARP) {
                                     Word w = xstack_pop(&xpu->stack);
-                                    w.type = get_type((char *)rbx.reg_value.value);
+                                    w.type = get_type((char *)rbx->reg_value.value);
                                     xstack_push(&xpu->stack, w);
                                 }
                             } break;
-                    case 4: { // get null onto the stack 
+                    case 4: { // get nil onto the stack 
                             xstack_push(&xpu->stack, word_create(NULL, WPOINTER));
                             } break; 
                     default: {  
@@ -1254,15 +1388,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 }
             } else {
                 fprintf(stderr, "ERROR: invalid code (Invalid type)\n");
-            }
+            } 
 
 
                      } break;
         case IWRITE: {
-                XRegister *rax = &xpu->registers[REG_RAX]; // value 
-                XRegister *rbx = &xpu->registers[REG_RBX]; // pointer
-                XRegister *rcx = &xpu->registers[REG_RCX]; // offset
-    
                 if (rbx->reg_value.type == WPOINTER) {
                     void *address = rbx->reg_value.value;
         
@@ -1288,10 +1418,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 }
                      } break;
         case IPRINTMEM: {
-            XRegister *rbx = &xpu->registers[REG_RBX]; // pointer
-            XRegister *rcx = &xpu->registers[REG_RCX]; // amount
-            XRegister *rax = &xpu->registers[REG_RAX]; // type
-    
             if (rbx->reg_value.type == WPOINTER) {
                 void *address = rbx->reg_value.value;
         
@@ -1454,11 +1580,10 @@ void print_stack(XPU *xpu) {
 
 void print_registers(XPU *xpu) {
     printf(BOLD CYAN "Registers:\n" RESET);
-    const char *reg_names[] = {"RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "R8", "R9", "RA"};
     
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = xpu->registers[i].reg_value;
-        printf("[%3s] ", reg_names[i]);
+        printf("[%3s] ", register_table[i].name);
         
         switch (w.type) {
             case WINT:

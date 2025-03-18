@@ -1,8 +1,7 @@
-#include "std.x"
-
+;#include "std.x"
 
 __entry:
-    mov 0 rax
-
+    add
     ret
+
 
