@@ -201,7 +201,8 @@ typedef enum {
     ILOAD, ISTORE, IPRINT, IDUP,
     ISWAP, IDROP, IROTL, IROTR,
     IALLOC,IHALT, IMERGE, IXCALL, 
-    IWRITE, IPRINTMEM,
+    IWRITE, IPRINTMEM, ISIZEOF,
+    IDEC, IINC,
 } Instruction;
 
 typedef struct {
@@ -222,7 +223,8 @@ static const InstructionInfo instructions[] = {
     {"print", IPRINT, 0}, {"dup", IDUP, 0}, {"swap", ISWAP, 0},
     {"drop", IDROP, 0}, {"rotl", IROTL, 1}, {"rotr", IROTR, 1},
     {"alloc", IALLOC, 1}, {"halt", IHALT, 0}, {"merge", IMERGE, 0},
-    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}
+    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}, 
+    {"sizeof", ISIZEOF, 1}, {"dec", IDEC, 1}, {"inc", IINC, 1},
 };
 
 typedef struct {
@@ -601,7 +603,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 					XRegisters dst_reg = register_name_to_enum(dst_operand);
 					if (dst_reg != -1) {
 						if (xpu->registers[dst_reg].reg_value.value) {
-							free(xpu->registers[dst_reg].reg_value.value);
                             xpu->registers[dst_reg].reg_value.value = NULL;
 						}
 						
@@ -871,8 +872,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             
             xstack_push(&xpu->stack, word_create(int_result, WINT));
-            free(w1.value);
-            free(w2.value);
             break;
             
         case IGT:
@@ -1086,7 +1085,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             
         case IDROP:
             w1 = xstack_pop(&xpu->stack);
-            free(w1.value);
             break;
             
         case IROTL:
@@ -1324,6 +1322,42 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 fprintf(stderr, "Error: IPRINTMEM requires a pointer in RBX\n");
             }
                         } break;
+        case ISIZEOF: {
+                char *operand = vector_get_str(&instr->operands, 0);   
+                printf("o = %s\n", operand);
+                WordType type = get_type(operand);
+                int size = 0;
+
+                switch (type) {
+                    case WINT:     size = sizeof(int);      break;
+                    case WCHAR:    size = sizeof(char);     break;
+                    case WCHARP:   size = sizeof(char *);   break;
+                    case WPOINTER: size = sizeof(void *);   break;
+                    case WFLOAT:   size = sizeof(float);    break;
+                    case WBOOL:    size = sizeof(bool);     break;
+                }
+                xstack_push(&xpu->stack, word_create(&size, WINT));
+
+                      } break;
+        case IDEC: {
+                char *operand = vector_get_str(&instr->operands, 0); // reg
+                if (is_register(operand)) {
+                    XRegister *reg = &xpu->registers[register_name_to_enum(operand)];
+                     if (reg->reg_value.type == WINT) {
+                        *(int *)reg->reg_value.value -= 1;
+                     }
+                }
+
+                   } break;
+        case IINC: {
+                char *operand = vector_get_str(&instr->operands, 0); // reg
+                if (is_register(operand)) {
+                    XRegister *reg = &xpu->registers[register_name_to_enum(operand)];
+                     if (reg->reg_value.type == WINT) {
+                        *(int *)reg->reg_value.value += 1;
+                     }
+                }
+                   } break;
 
         case IHALT:
             return;

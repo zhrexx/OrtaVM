@@ -10,11 +10,8 @@ orta: src/orta.c src/orta.h
 fcfx: src/fcfx.c src/orta.h
 	$(CC) $(CFLAGS) src/fcfx.c -o fcfx
 
-libx:
-	nasm -felf64 src/libx.asm -o libx.o
-
 clean:
-	rm *.pre.x *.xbin libx.o xtoa fcfx orta
+	rm *.pre.x *.xbin xtoa fcfx orta
 
 
 release:
