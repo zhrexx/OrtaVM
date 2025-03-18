@@ -205,27 +205,46 @@ typedef enum {
     IDEC, IINC,
 } Instruction;
 
+typedef enum {
+    ARG_EXACT,
+    ARG_MIN,
+    ARG_MAX,
+    ARG_RANGE
+} ArgRequirementType;
+
+typedef struct {
+    ArgRequirementType type;
+    int value;
+    int value2;
+} ArgRequirement;
+
 typedef struct {
     const char *name;
     Instruction instruction;
-    int expected_args;
+    ArgRequirement args;
 } InstructionInfo;
 
+#define ExactArgs(n) {ARG_EXACT, (n), (n)}
+#define MinArgs(n) {ARG_MIN, (n), 0}
+#define MaxArgs(n) {ARG_MAX, (n), 0}
+#define RangeArgs(min, max) {ARG_EXACT, (min), (max)}
+
 static const InstructionInfo instructions[] = {
-    {"push", IPUSH, 1}, {"mov", IMOV, 2}, {"pop", IPOP, 1},
-    {"add", IADD, 0}, {"sub", ISUB, 0}, {"mul", IMUL, 0},
-    {"div", IDIV, 0}, {"mod", IMOD, 0}, {"and", IAND, 0},
-    {"or", IOR, 0}, {"xor", IXOR, 2}, {"not", INOT, 0},
-    {"eq", IEQ, 0}, {"ne", INE, 0}, {"lt", ILT, 0},
-    {"gt", IGT, 0}, {"le", ILE, 0}, {"ge", IGE, 0},
-    {"jmp", IJMP, 1}, {"jmpif", IJMPIF, 1}, {"call", ICALL, 1},
-    {"ret", IRET, 0}, {"load", ILOAD, 1}, {"store", ISTORE, 1},
-    {"print", IPRINT, 0}, {"dup", IDUP, 0}, {"swap", ISWAP, 0},
-    {"drop", IDROP, 0}, {"rotl", IROTL, 1}, {"rotr", IROTR, 1},
-    {"alloc", IALLOC, 1}, {"halt", IHALT, 0}, {"merge", IMERGE, 0},
-    {"xcall", IXCALL, 0}, {"write", IWRITE, 0}, {"printmem", IPRINTMEM, 0}, 
-    {"sizeof", ISIZEOF, 1}, {"dec", IDEC, 1}, {"inc", IINC, 1},
+    {"push", IPUSH, ExactArgs(1)}, {"mov", IMOV, ExactArgs(2)}, {"pop", IPOP, ExactArgs(1)},
+    {"add", IADD, ExactArgs(0)}, {"sub", ISUB, ExactArgs(0)}, {"mul", IMUL, ExactArgs(0)},
+    {"div", IDIV, ExactArgs(0)}, {"mod", IMOD, ExactArgs(0)}, {"and", IAND, ExactArgs(0)},
+    {"or", IOR, ExactArgs(0)}, {"xor", IXOR, ExactArgs(2)}, {"not", INOT, ExactArgs(0)},
+    {"eq", IEQ, ExactArgs(0)}, {"ne", INE, ExactArgs(0)}, {"lt", ILT, ExactArgs(0)},
+    {"gt", IGT, ExactArgs(0)}, {"le", ILE, ExactArgs(0)}, {"ge", IGE, ExactArgs(0)},
+    {"jmp", IJMP, ExactArgs(1)}, {"jmpif", IJMPIF, ExactArgs(1)}, {"call", ICALL, ExactArgs(1)},
+    {"ret", IRET, ExactArgs(0)}, {"load", ILOAD, ExactArgs(1)}, {"store", ISTORE, ExactArgs(1)},
+    {"print", IPRINT, ExactArgs(0)}, {"dup", IDUP, ExactArgs(0)}, {"swap", ISWAP, ExactArgs(0)},
+    {"drop", IDROP, ExactArgs(0)}, {"rotl", IROTL, ExactArgs(1)}, {"rotr", IROTR, ExactArgs(1)},
+    {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, ExactArgs(0)},
+    {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
+    {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
 };
+
 
 typedef struct {
     Instruction opcode;
@@ -367,13 +386,13 @@ const char *instruction_to_string(Instruction instruction) {
     return "unknown";
 }
 
-int instruction_expected_args(Instruction instruction) {
+ArgRequirement instruction_expected_args(Instruction instruction) {
     for (size_t i = 0; i < INSTRUCTION_COUNT; i++) {
         if (instructions[i].instruction == instruction) {
-            return instructions[i].expected_args;
+            return instructions[i].args;
         }
     }
-    return -1;
+    return (ArgRequirement){ARG_EXACT, -1, 0};
 }
 
 int is_number(const char *str) {
@@ -439,6 +458,20 @@ char* trim_left(const char *str) {
         str++;
     }
     return strdup(str);
+}
+bool validateArgCount(ArgRequirement req, int actualArgCount) {
+    switch(req.type) {
+        case ARG_EXACT: 
+            return actualArgCount == req.value;
+        case ARG_MIN:
+            return actualArgCount >= req.value;
+        case ARG_MAX:
+            return actualArgCount <= req.value;
+        case ARG_RANGE:
+            return actualArgCount >= req.value && actualArgCount <= req.value2;
+        default:
+            return false;
+    }
 }
 
 int parse_program(OrtaVM *vm, const char *filename) {
@@ -524,10 +557,10 @@ int parse_program(OrtaVM *vm, const char *filename) {
             return 0;
         }
         
-        int expected_args = instruction_expected_args(parsed_instruction);
-        if (expected_args != -1 && tokens.size != expected_args) {
+        ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
+        if (!validateArgCount(expected_args, tokens.size)) {
             fprintf(stderr, "Error: Expected %d arguments for instruction '%s', but got %zu\n",
-                    expected_args, instruction_to_string(parsed_instruction), tokens.size);
+                    expected_args.value, instruction_to_string(parsed_instruction), tokens.size);
             vector_free(&tokens);
             vector_free(&lines);
             return 0;

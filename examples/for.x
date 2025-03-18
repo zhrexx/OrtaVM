@@ -1,4 +1,5 @@
 ; Equivalent to: for (int i = 0; i < 5; i++) { print(i); }
+#define $LOOPS 5
 
 __entry:
     mov 0 r8
@@ -10,7 +11,7 @@ __entry:
     ; body end 
     inc r8
     push r8
-    push 5
+    push $LOOPS
     lt
     jmpif loop
     ret
