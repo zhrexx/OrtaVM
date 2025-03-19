@@ -253,7 +253,7 @@ static const InstructionInfo instructions[] = {
     {"gt", IGT, ExactArgs(0)}, {"le", ILE, ExactArgs(0)}, {"ge", IGE, ExactArgs(0)},
     {"jmp", IJMP, ExactArgs(1)}, {"jmpif", IJMPIF, ExactArgs(1)}, {"call", ICALL, ExactArgs(1)},
     {"ret", IRET, ExactArgs(0)}, {"load", ILOAD, ExactArgs(1)}, {"store", ISTORE, ExactArgs(1)},
-    {"print", IPRINT, ExactArgs(0)}, {"dup", IDUP, ExactArgs(0)}, {"swap", ISWAP, ExactArgs(0)},
+    {"print", IPRINT, MinArgs(0)}, {"dup", IDUP, ExactArgs(0)}, {"swap", ISWAP, ExactArgs(0)},
     {"drop", IDROP, ExactArgs(0)}, {"rotl", IROTL, ExactArgs(1)}, {"rotr", IROTR, ExactArgs(1)},
     {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
@@ -467,11 +467,6 @@ void microsleep(unsigned long usecs) {
 void xsleep(unsigned long miliseconds) {
     microsleep(miliseconds * 1000);
 }
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <string.h>
 
 int eval(char *s) {
     if (!s || *s == '\0') return 0;
@@ -712,6 +707,18 @@ int parse_program(OrtaVM *vm, const char *filename) {
     vector_free(&lines);
     return 1;
 }
+
+char *hmerge(InstructionData *instr) {
+     char *string = malloc(256);
+     VECTOR_FOR_EACH(char *, elem, &instr->operands) {
+         char *rcharp = *(char **)elem;
+         rcharp[strlen(rcharp)-1] = '\0'; 
+         strcat(string, rcharp+1);
+         strcat(string, " ");
+     }
+     return string;
+}
+
 
 WordType get_type(char *s) {
     if (strcmp(s, "int") == 0) {
@@ -1223,18 +1230,30 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             break;
             
-        case IPRINT:
-            w1 = xstack_peek(&xpu->stack, 0);
-            if (w1.type == WINT) {
-                printf("%d\n", *(int*)w1.value);
-            } else if (w1.type == WFLOAT) {
-                printf("%f\n", *(float*)w1.value);
-            } else if (w1.type == WCHARP) {
-                printf("%s\n", (char*)w1.value);
-            } else if (w1.type == W_CHAR) {
-                printf("%c\n", *(char*)w1.value);
+        case IPRINT: {
+            if (instr->operands.size == 0) {
+                w1 = xstack_peek(&xpu->stack, 0);
+                if (w1.type == WINT) {
+                    printf("%d\n", *(int*)w1.value);
+                } else if (w1.type == WFLOAT) {
+                    printf("%f\n", *(float*)w1.value);
+                } else if (w1.type == WCHARP) {
+                    printf("%s\n", (char*)w1.value);
+                } else if (w1.type == W_CHAR) {
+                    printf("%c\n", *(char*)w1.value);
+                }
+            } else if (instr->operands.size == 1 && is_register(vector_get_str(&instr->operands, 0))) {
+                XRegister reg = regs[register_name_to_enum(vector_get_str(&instr->operands, 0))];
+                if (reg.reg_value.type == WINT) {
+                    printf("%d\n", *(int*)reg.reg_value.value);
+                } else if (reg.reg_value.type == WCHARP) {
+                    printf("%s", (char*)reg.reg_value.value);
+                } // TODO: add more
+            } else {
+                char *string = hmerge(instr);
+                printf("%s\n", string); 
             }
-            break;
+                     } break;
             
         case IDUP:
             w1 = xstack_peek(&xpu->stack, 0);
@@ -1359,14 +1378,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     free(w2.value);
                 }
             } else {
-                char *string = malloc(256);
-                VECTOR_FOR_EACH(char *, elem, &instr->operands) {
-                    char *rcharp = *(char **)elem;
-                    rcharp[strlen(rcharp)-1] = '\0'; 
-                    strcat(string, rcharp+1);
-                    strcat(string, " ");
-                }
-                xstack_push(&xpu->stack, word_create(string, WCHARP));
+                char *tp = hmerge(instr);
+                xstack_push(&xpu->stack, word_create(tp, WCHARP));
             }
             break;
         }
