@@ -21,9 +21,7 @@ static int bp_count = 0;
 static int running = 1;
 
 void print_header() {
-    printf("\n%s╔═══════════════════════════════════════════════╗%s\n", COLOR_CYAN, COLOR_RESET);
-    printf("%s║          XBin Debugger v1.0 - Orta VM         ║%s\n", COLOR_CYAN, COLOR_RESET);
-    printf("%s╚═══════════════════════════════════════════════╝%s\n\n", COLOR_CYAN, COLOR_RESET);
+    printf("\n%s XBin Debugger v1.0 - Orta VM %s\n\n", COLOR_CYAN, COLOR_RESET);
     printf("Type %shelp%s for a list of commands\n\n", COLOR_YELLOW, COLOR_RESET);
 }
 
@@ -68,16 +66,15 @@ void list_breakpoints() {
     }
     
     printf("%sBreakpoints:%s\n", COLOR_BOLD, COLOR_RESET);
-    printf("┌─────┬───────────┐\n");
-    printf("│ %sIdx%s │ %sAddress%s   │\n", COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET);
-    printf("├─────┼───────────┤\n");
+    printf("Idx | Address\n");
+    printf("----------------\n");
     
     for (int i = 0; i < bp_count; i++) {
-        printf("│ %s%3d%s │ 0x%-8zx │\n", 
+        printf("%s%3d%s | 0x%-8zx\n", 
                is_breakpoint(vm.xpu.ip) && breakpoints[i] == vm.xpu.ip ? COLOR_RED : "", 
                i, COLOR_RESET, breakpoints[i]);
     }
-    printf("└─────┴───────────┘\n");
+    printf("\n");
 }
 
 void delete_breakpoint(int index) {
@@ -145,42 +142,40 @@ void cmd_continue() {
 
 void cmd_registers() {
     printf("%sRegisters:%s\n", COLOR_BOLD, COLOR_RESET);
-    printf("┌──────────┬───────────────┐\n");
-    printf("│ %sRegister%s │ %sValue%s         │\n", COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET);
-    printf("├──────────┼───────────────┤\n");
+    printf("Register | Value\n");
+    printf("------------------\n");
     
-    printf("│ IP       │ 0x%-12zx │\n", vm.xpu.ip);
-    printf("│ SP       │ 0x%-12zx │\n", vm.xpu.stack.count);
+    printf("IP       | 0x%-12zx\n", vm.xpu.ip);
+    printf("SP       | 0x%-12zx\n", vm.xpu.stack.count);
     
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = vm.xpu.registers[i].reg_value;
-        printf("│ %-8s │ ", register_table[i].name);
+        printf("%-8s | ", register_table[i].name);
         
         switch (w.type) {
             case WINT:
-                printf("INT: %-10d │\n", *(int*)w.value);
+                printf("INT: %-10d\n", *(int*)w.value);
                 break;
             case WFLOAT:
-                printf("FLT: %-10.2f │\n", *(float*)w.value);
+                printf("FLT: %-10.2f\n", *(float*)w.value);
                 break;
             case WCHARP:
-                printf("STR: %-10s │\n", (char*)w.value);
+                printf("STR: %-10s\n", (char*)w.value);
                 break;
             case W_CHAR:
-                printf("CHR: %-10c │\n", *(char*)w.value);
+                printf("CHR: %-10c\n", *(char*)w.value);
                 break;
             case WPOINTER:
-                printf("PTR: %-10p │\n", w.value);
+                printf("PTR: %-10p\n", w.value);
                 break;
             case WBOOL:
-                printf("BOOL: %-9s │\n", (*(int*)w.value) ? "true" : "false");
+                printf("BOOL: %-9s\n", (*(int*)w.value) ? "true" : "false");
                 break;
             default:
-                printf("%-14s │\n", "EMPTY");
+                printf("%-14s\n", "EMPTY");
         }
     }
-    
-    printf("└──────────┴───────────────┘\n");
+    printf("\n");
 }
 
 void cmd_stack(int argc, char **argv) {
@@ -193,20 +188,18 @@ void cmd_stack(int argc, char **argv) {
     }
     
     printf("%sStack (top %d):%s\n", COLOR_BOLD, n, COLOR_RESET);
-    printf("┌───────┬────────────────┐\n");
-    printf("│ %sIndex%s │ %sValue%s          │\n", COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET);
-    printf("├───────┼────────────────┤\n");
+    printf("Index | Value\n");
+    printf("----------------\n");
     
     for (int i = 0; i < n && i < vm.xpu.stack.count; i++) {
-        printf("│ %s%5d%s │ ", 
+        printf("%s%5d%s | ", 
                i == 0 ? COLOR_GREEN : "", 
                vm.xpu.stack.count - 1 - i,
                COLOR_RESET);
         print_word(i, vm.xpu.stack.stack[vm.xpu.stack.count - 1 - i]);
-        printf(" │\n");
+        printf("\n");
     }
-    
-    printf("└───────┴────────────────┘\n");
+    printf("\n");
 }
 
 void cmd_memory(int argc, char **argv) {
@@ -241,10 +234,8 @@ void cmd_memory(int argc, char **argv) {
 
 void cmd_disassemble() {
     printf("%sCurrent IP: 0x%zx%s\n", COLOR_BOLD, vm.xpu.ip, COLOR_RESET);
-    printf("┌──────┬───────────┬─────────────────────────┐\n");
-    printf("│ %sCurr%s  │ %sAddress%s   │ %sInstruction%s             │\n", 
-           COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET);
-    printf("├──────┼───────────┼─────────────────────────┤\n");
+    printf("Curr | Address   | Instruction\n");
+    printf("-------------------------------\n");
     
     for (int i = -2; i <= 2; i++) {
         size_t ip = vm.xpu.ip + i;
@@ -252,7 +243,7 @@ void cmd_disassemble() {
         
         InstructionData *instr = &vm.program.instructions[ip];
         
-        printf("│ %s%s%s │ 0x%-7zx │ %s%-10s%s ", 
+        printf("%s%s%s | 0x%-7zx | %s%-10s%s ", 
                (i == 0) ? COLOR_GREEN : "",
                (i == 0) ? "→" : " ",
                COLOR_RESET,
@@ -261,40 +252,30 @@ void cmd_disassemble() {
                instruction_to_string(instr->opcode),
                COLOR_RESET);
         
-        int printed = 0;
         VECTOR_FOR_EACH(char*, op, &instr->operands) {
             printf("%s ", *op);
-            printed += strlen(*op) + 1;
         }
-        
-        for (int j = 0; j < 20 - printed; j++) {
-            printf(" ");
-        }
-        
-        printf("│\n");
+        printf("\n");
     }
-    
-    printf("└──────┴───────────┴─────────────────────────┘\n");
+    printf("\n");
 }
 
 void cmd_help() {
     printf("%sAvailable commands:%s\n", COLOR_BOLD, COLOR_RESET);
-    printf("┌────────────────┬──────────────────────────────────────────────┐\n");
-    printf("│ %sCommand%s        │ %sDescription%s                                  │\n", 
-           COLOR_BOLD, COLOR_RESET, COLOR_BOLD, COLOR_RESET);
-    printf("├────────────────┼──────────────────────────────────────────────┤\n");
-    printf("│ %sbreak <addr>%s   │ Set breakpoint at specified address          │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %slist%s           │ List all breakpoints                         │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %sdelete <idx>%s   │ Delete breakpoint by index                   │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %sstep%s           │ Execute next instruction                     │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %scontinue%s       │ Continue execution until breakpoint or end   │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %sregisters%s      │ Display registers                            │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %sstack [n]%s      │ Display top n stack values (default: 5)      │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %smemory <a> <s>%s │ Display s bytes of memory starting at addr a │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %sdisassemble%s    │ Show current instruction and surroundings    │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %shelp%s           │ Show this help message                       │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("│ %squit%s           │ Exit the debugger                            │\n", COLOR_YELLOW, COLOR_RESET);
-    printf("└────────────────┴──────────────────────────────────────────────┘\n");
+    printf("Command        | Description\n");
+    printf("----------------------------------------------------\n");
+    printf("%sbreak <addr>%s   | Set breakpoint at specified address\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%slist%s           | List all breakpoints\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%sdelete <idx>%s   | Delete breakpoint by index\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%sstep%s           | Execute next instruction\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%scontinue%s       | Continue execution until breakpoint or end\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%sregisters%s      | Display registers\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%sstack [n]%s      | Display top n stack values (default: 5)\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%smemory <a> <s>%s | Display s bytes of memory starting at addr a\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%sdisassemble%s    | Show current instruction and surroundings\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%shelp%s           | Show this help message\n", COLOR_YELLOW, COLOR_RESET);
+    printf("%squit%s           | Exit the debugger\n", COLOR_YELLOW, COLOR_RESET);
+    printf("\n");
 }
 
 void handle_command(char *input) {
