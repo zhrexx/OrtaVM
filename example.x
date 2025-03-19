@@ -1,16 +1,14 @@
-#define $LOOPS 10000000
+
+func:
+    push 1 
+    push 1
+    add
+
+    pop fr
+    ret
 
 __entry:
-    mov 0 r8
-    loop:
-    ; body
-    print r8 ; Removed stack operations
-    ; body end 
-    inc r8
-    push r8
-    push $LOOPS
-    lt
-    jmpif loop
+    call func
     ret
 
 

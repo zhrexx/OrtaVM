@@ -1,5 +1,3 @@
-// TODO: add more registers
-
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -120,8 +118,6 @@ XRegisterInfo register_table[REG_COUNT] = {
 };
 
 int is_register(const char *str) {
-    if (str[0] != 'r' && str[0] != 'R') return 0;
-    
     for (int i = 0; i < REG_COUNT; i++) {
         if (strcasecmp(str, register_table[i].name) == 0) return 1;
     }
@@ -217,7 +213,7 @@ typedef enum {
     ISWAP, IDROP, IROTL, IROTR,
     IALLOC,IHALT, IMERGE, IXCALL, 
     IWRITE, IPRINTMEM, ISIZEOF,
-    IDEC, IINC,
+    IDEC, IINC, IEVAL, 
 } Instruction;
 
 typedef enum {
@@ -258,6 +254,7 @@ static const InstructionInfo instructions[] = {
     {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
+    {"eval", IEVAL, MinArgs(0)},
 };
 
 
@@ -1191,11 +1188,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (w1.type == WINT) {
                 xpu->ip = *(int*)w1.value;
                 free(w1.value);
+                xpu->registers[REG_RA].reg_value.value = NULL;
+                xpu->registers[REG_RA].reg_value.type = WPOINTER;
                 return;
             }
             free(w1.value);
+            xpu->registers[REG_RA].reg_value.value = NULL;
+            xpu->registers[REG_RA].reg_value.type = WPOINTER;
             break;
-            
+
         case ILOAD:
             if (instr->operands.size > 0) {
                 char *operand = vector_get_str(&instr->operands, 0);
@@ -1544,7 +1545,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                      }
                 }
                    } break;
-
+        case IEVAL: {
+                char *str = hmerge(instr);
+                int e = eval(str);
+                xstack_push(&xpu->stack, word_create(&e, WINT));
+                    } break;
         case IHALT:
             return;
     }
