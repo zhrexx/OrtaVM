@@ -213,7 +213,7 @@ typedef enum {
     ISWAP, IDROP, IROTL, IROTR,
     IALLOC,IHALT, IMERGE, IXCALL, 
     IWRITE, IPRINTMEM, ISIZEOF,
-    IDEC, IINC, IEVAL, ICMP,  
+    IDEC, IINC, IEVAL, ICMP, ILOADB 
 } Instruction;
 
 typedef enum {
@@ -254,7 +254,7 @@ static const InstructionInfo instructions[] = {
     {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
-    {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, ExactArgs(2)},
+    {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, ExactArgs(2)}, {"loadb", ILOADB, MinArgs(1)},
 };
 
 
@@ -422,6 +422,23 @@ int is_float(const char *str) {
 int is_string(const char *str) {
     size_t len = strlen(str);
     return len >= 2 && str[0] == '"' && str[len - 1] == '"';
+}
+
+bool is_pointer(char *str) {
+    if (str == NULL) return false;
+    if (strlen(str) < 2) return false;
+    if (str[0]!= '(' || str[strlen(str) - 1]!= ')') return false;
+    return true;
+}
+
+void *get_pointer(char *str) {
+    if (is_pointer(str)) {
+        str++;
+        str[strlen(str) - 1] = '\0';
+        return (void*)(uintptr_t)strtoull(str, NULL, 0);
+    } else {
+        return NULL;
+    }
 }
 
 int is_label_declaration(const char *str) {
@@ -1669,6 +1686,66 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 						if (free_val2) free(val2.value);
 				}
                    } break;
+                case ILOADB: {
+                    if (instr->operands.size > 0) {
+                        char *operand = vector_get_str(&instr->operands, 0);
+                        if (is_register(operand)) {
+                            XRegisters reg = register_name_to_enum(operand);
+                            if (reg != -1) {
+                                Word w = xpu->registers[reg].reg_value;
+                                if (w.type == WPOINTER) {
+                                    void *address = w.value;
+                                    if (rcx->reg_value.type == WINT) {
+                                        int offset = *(int*)rcx->reg_value.value;
+                                        address = (char*)address + offset;
+                                    }
+                                    char *value = malloc(sizeof(char));
+                                    *value = *(char*)address;
+                                    xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                                } else if (w.type == WCHARP) {
+                                    char *str = (char*)w.value;
+                                    char *value = malloc(sizeof(char));
+                                    *value = *str;
+                                    xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                                } else {
+                                    fprintf(stderr, "Error: ILOADB requires a pointer or string in the register\n");
+                                }
+                            } else {
+                                fprintf(stderr, "Error: Invalid register '%s'\n", operand);
+                            }
+                    } else if (is_pointer(operand)) {
+                        void *address = (void*)operand;
+                        if (rcx->reg_value.type == WINT) {
+                            int offset = *(int*)rcx->reg_value.value;
+                            address = (char*)address + offset;
+                        }
+                        char *value = malloc(sizeof(char));
+                        *value = *(char*)address;
+                        xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                    } else {
+                        fprintf(stderr, "Error: ILOADB requires a pointer or register\n");
+                    }
+                } else {
+                    Word w = xstack_pop(&xpu->stack);
+                    if (w.type == WPOINTER) {
+                        void *address = w.value;
+                        if (rcx->reg_value.type == WINT) {
+                            int offset = *(int*)rcx->reg_value.value;
+                            address = (char*)address + offset;
+                        }
+                        char *value = malloc(sizeof(char));
+                        *value = *(char*)address;
+                        xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                    } else if (w.type == WCHARP) {
+                        char *str = (char*)w.value;
+                        char *value = malloc(sizeof(char));
+                        *value = *str;
+                        xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                    } else {
+                        fprintf(stderr, "Error: ILOADB requires a pointer or string on the stack\n");
+                    }
+                }
+                             } break; 
         case IHALT:
             return;
     }
