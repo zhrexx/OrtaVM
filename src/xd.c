@@ -325,6 +325,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "%sError:%s Failed to load bytecode\n", COLOR_RED, COLOR_RESET);
         return 1;
     }
+    find_label(&vm.program, OENTRY, &vm.xpu.ip);
 
     print_header();
     printf("%sLoaded '%s' with %zu instructions%s\n", 

@@ -254,7 +254,7 @@ static const InstructionInfo instructions[] = {
     {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
-    {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, ExactArgs(2)}, {"loadb", ILOADB, MinArgs(1)},
+    {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, MinArgs(1)}, {"loadb", ILOADB, MinArgs(1)},
 };
 
 
@@ -1425,8 +1425,16 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 }
                             } break;
                     case 4: { // get nil onto the stack 
-                            xstack_push(&xpu->stack, word_create(NULL, WPOINTER));
+                                xstack_push(&xpu->stack, word_create(NULL, WPOINTER));
                             } break; 
+                    case 5: { // strlen
+                                if (rbx->reg_value.type == WCHARP) {
+                                    int r = strlen((char *)rbx->reg_value.value);
+                                    int *result = malloc(sizeof(int));
+                                    *result = r;
+                                    xstack_push(&xpu->stack, word_create(result, WINT));
+                                }
+                            } break;
                     default: {  
                                 printf("WARNING: Unknown opcode\n");
                              } break;
@@ -1674,7 +1682,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 										else *result = 1;
 								}
 						} else {
-								*result = -999;
+							printf("Type val1: %d & type val2: %d\n", val1.type, val2.type);	
+                            *result = -999;
 						}
 						
 						if (rdx->reg_value.value) {
@@ -1686,44 +1695,69 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 						if (free_val2) free(val2.value);
 				}
                    } break;
-                case ILOADB: {
-                    if (instr->operands.size > 0) {
-                        char *operand = vector_get_str(&instr->operands, 0);
-                        if (is_register(operand)) {
-                            XRegisters reg = register_name_to_enum(operand);
-                            if (reg != -1) {
-                                Word w = xpu->registers[reg].reg_value;
-                                if (w.type == WPOINTER) {
-                                    void *address = w.value;
-                                    if (rcx->reg_value.type == WINT) {
-                                        int offset = *(int*)rcx->reg_value.value;
-                                        address = (char*)address + offset;
-                                    }
+            case ILOADB: {
+                if (instr->operands.size > 0) {
+                    char *operand = vector_get_str(&instr->operands, 0);
+                    if (is_register(operand)) {
+                        XRegisters reg = register_name_to_enum(operand);
+                        if (reg != -1) {
+                            Word w = xpu->registers[reg].reg_value;
+                            if (w.type == WPOINTER) {
+                                void *address = w.value;
+                                if (rcx->reg_value.type == WINT) {
+                                    int offset = *(int*)rcx->reg_value.value;
+                                    address = (char*)address + offset;
+                                }
+                                if (address) {
                                     char *value = malloc(sizeof(char));
                                     *value = *(char*)address;
                                     xstack_push(&xpu->stack, word_create(value, W_CHAR));
-                                } else if (w.type == WCHARP) {
-                                    char *str = (char*)w.value;
-                                    char *value = malloc(sizeof(char));
-                                    *value = *str;
-                                    xstack_push(&xpu->stack, word_create(value, W_CHAR));
                                 } else {
-                                    fprintf(stderr, "Error: ILOADB requires a pointer or string in the register\n");
+                                    fprintf(stderr, "Error: Invalid pointer\n");
+                                    exit(1);
                                 }
+                            } else if (w.type == WCHARP) {
+                                char *str = (char*)w.value;
+                                char *value = malloc(sizeof(char));
+                                *value = *str;
+                                xstack_push(&xpu->stack, word_create(value, W_CHAR));
                             } else {
-                                fprintf(stderr, "Error: Invalid register '%s'\n", operand);
+                                fprintf(stderr, "Error: ILOADB requires a pointer or string in register '%s'\n", operand);
                             }
+                        } else {
+                            fprintf(stderr, "Error: Invalid register '%s'\n", operand);
+                        }
                     } else if (is_pointer(operand)) {
-                        void *address = (void*)operand;
+                        void *address = get_pointer(operand);
+                        if (address) {
+                            char *value = malloc(sizeof(char));
+                            *value = *(char*)address;
+                            xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                        } else {
+                            fprintf(stderr, "Error: Invalid pointer format '%s'\n", operand);
+                            exit(1);
+                        }
                         if (rcx->reg_value.type == WINT) {
                             int offset = *(int*)rcx->reg_value.value;
                             address = (char*)address + offset;
                         }
-                        char *value = malloc(sizeof(char));
-                        *value = *(char*)address;
-                        xstack_push(&xpu->stack, word_create(value, W_CHAR));
+
+                    } else if (is_string(operand)) {
+                        operand = operand + 1;
+                        operand[strlen(operand) - 1] = '\0';
+                        if (xpu->registers[REG_RCX].reg_value.type == WINT) {
+                            int offset = *(int*)xpu->registers[REG_RCX].reg_value.value;
+                            operand = operand + offset;
+                        }
+                        if (operand != NULL && *operand != '\0') {
+                            char *value = malloc(sizeof(char));
+                            *value = *operand;
+                            xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                        } else {
+                            fprintf(stderr, "Error: ILOADB out of bounds string access\n");
+                        }
                     } else {
-                        fprintf(stderr, "Error: ILOADB requires a pointer or register\n");
+                        fprintf(stderr, "Error: ILOADB operand must be a register or pointer\n");
                     }
                 } else {
                     Word w = xstack_pop(&xpu->stack);
@@ -1738,14 +1772,22 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         xstack_push(&xpu->stack, word_create(value, W_CHAR));
                     } else if (w.type == WCHARP) {
                         char *str = (char*)w.value;
-                        char *value = malloc(sizeof(char));
-                        *value = *str;
-                        xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                        if (xpu->registers[REG_RCX].reg_value.type == WINT) {
+                           int offset = *(int*)xpu->registers[REG_RCX].reg_value.value;
+                            str = str + offset;
+                        }
+                        if (str!= NULL && *str!= '\0') {
+                            char *value = malloc(sizeof(char));
+                            *value = *str;
+                            xstack_push(&xpu->stack, word_create(value, W_CHAR));
+                        } else {
+                            fprintf(stderr, "Error: ILOADB out of bounds string access\n");
+                        }
                     } else {
-                        fprintf(stderr, "Error: ILOADB requires a pointer or string on the stack\n");
+                        fprintf(stderr, "Error: ILOADB requires pointer or string on stack\n");
                     }
                 }
-                             } break; 
+            } break;
         case IHALT:
             return;
     }
