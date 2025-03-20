@@ -213,7 +213,7 @@ typedef enum {
     ISWAP, IDROP, IROTL, IROTR,
     IALLOC,IHALT, IMERGE, IXCALL, 
     IWRITE, IPRINTMEM, ISIZEOF,
-    IDEC, IINC, IEVAL, 
+    IDEC, IINC, IEVAL, ICMP,  
 } Instruction;
 
 typedef enum {
@@ -254,7 +254,7 @@ static const InstructionInfo instructions[] = {
     {"alloc", IALLOC, ExactArgs(1)}, {"halt", IHALT, ExactArgs(0)}, {"merge", IMERGE, MinArgs(0)},
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
-    {"eval", IEVAL, MinArgs(0)},
+    {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, ExactArgs(2)},
 };
 
 
@@ -1550,6 +1550,125 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 int e = eval(str);
                 xstack_push(&xpu->stack, word_create(&e, WINT));
                     } break;
+        case ICMP: {
+				if (instr->operands.size >= 2) {
+						char *operand1 = vector_get_str(&instr->operands, 0);
+						char *operand2 = vector_get_str(&instr->operands, 1);
+						
+						Word val1, val2;
+						bool free_val1 = false, free_val2 = false;
+						
+						if (is_register(operand1)) {
+								XRegisters reg = register_name_to_enum(operand1);
+								if (reg != -1) {
+										val1 = xpu->registers[reg].reg_value;
+								} else {
+										fprintf(stderr, "Error: Invalid register '%s'\n", operand1);
+										break;
+								}
+						} else if (is_number(operand1)) {
+								int *value = malloc(sizeof(int));
+								*value = atoi(operand1);
+								val1 = word_create(value, WINT);
+								free_val1 = true;
+						} else if (is_float(operand1)) {
+								float *value = malloc(sizeof(float));
+								*value = atof(operand1);
+								val1 = word_create(value, WFLOAT);
+								free_val1 = true;
+						} else if (is_string(operand1)) {
+								size_t len = strlen(operand1) - 2;
+								char *value = malloc(len + 1);
+								strncpy(value, operand1 + 1, len);
+								value[len] = '\0';
+								val1 = word_create(value, WCHARP);
+								free_val1 = true;
+						} else if (operand1[0] == '\'' && strlen(operand1) >= 2) {
+								char *value = malloc(sizeof(char));
+								*value = operand1[1];
+								val1 = word_create(value, W_CHAR);
+								free_val1 = true;
+						} else {
+								fprintf(stderr, "Error: Invalid operand '%s'\n", operand1);
+								break;
+						}
+						
+						if (is_register(operand2)) {
+								XRegisters reg = register_name_to_enum(operand2);
+								if (reg != -1) {
+										val2 = xpu->registers[reg].reg_value;
+								} else {
+										if (free_val1) free(val1.value);
+										fprintf(stderr, "Error: Invalid register '%s'\n", operand2);
+										break;
+								}
+						} else if (is_number(operand2)) {
+								int *value = malloc(sizeof(int));
+								*value = atoi(operand2);
+								val2 = word_create(value, WINT);
+								free_val2 = true;
+						} else if (is_float(operand2)) {
+								float *value = malloc(sizeof(float));
+								*value = atof(operand2);
+								val2 = word_create(value, WFLOAT);
+								free_val2 = true;
+						} else if (is_string(operand2)) {
+								size_t len = strlen(operand2) - 2;
+								char *value = malloc(len + 1);
+								strncpy(value, operand2 + 1, len);
+								value[len] = '\0';
+								val2 = word_create(value, WCHARP);
+								free_val2 = true;
+						} else if (operand2[0] == '\'' && strlen(operand2) >= 2) {
+								char *value = malloc(sizeof(char));
+								*value = operand2[1];
+								val2 = word_create(value, W_CHAR);
+								free_val2 = true;
+						} else {
+								if (free_val1) free(val1.value);
+								fprintf(stderr, "Error: Invalid operand '%s'\n", operand2);
+								break;
+						}
+						
+						int *result = malloc(sizeof(int));
+						*result = 0;
+						
+						if (val1.type == val2.type) {
+								if (val1.type == WINT) {
+										int v1 = *(int*)val1.value;
+										int v2 = *(int*)val2.value;
+										if (v1 == v2) *result = 0;
+										else if (v1 < v2) *result = -1;
+										else *result = 1;
+								} else if (val1.type == WFLOAT) {
+										float v1 = *(float*)val1.value;
+										float v2 = *(float*)val2.value;
+										if (v1 == v2) *result = 0;
+										else if (v1 < v2) *result = -1;
+										else *result = 1;
+								} else if (val1.type == WCHARP) {
+										int cmp = strcmp((char*)val1.value, (char*)val2.value);
+										*result = cmp;
+								} else if (val1.type == W_CHAR) {
+										char v1 = *(char*)val1.value;
+										char v2 = *(char*)val2.value;
+										if (v1 == v2) *result = 0;
+										else if (v1 < v2) *result = -1;
+										else *result = 1;
+								}
+						} else {
+								*result = -999;
+						}
+						
+						if (rdx->reg_value.value) {
+								free(rdx->reg_value.value);
+						}
+						rdx->reg_value = word_create(result, WINT);
+						
+						if (free_val1) free(val1.value);
+						if (free_val2) free(val2.value);
+				}
+                   } break;
         case IHALT:
             return;
     }
