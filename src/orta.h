@@ -242,8 +242,8 @@ typedef struct {
 
 static const InstructionInfo instructions[] = {
     {"push", IPUSH, ExactArgs(1)}, {"mov", IMOV, ExactArgs(2)}, {"pop", IPOP, ExactArgs(1)},
-    {"add", IADD, ExactArgs(0)}, {"sub", ISUB, ExactArgs(0)}, {"mul", IMUL, ExactArgs(0)},
-    {"div", IDIV, ExactArgs(0)}, {"mod", IMOD, ExactArgs(0)}, {"and", IAND, ExactArgs(0)},
+    {"add", IADD, MinArgs(0)}, {"sub", ISUB, MinArgs(0)}, {"mul", IMUL, MinArgs(0)},
+    {"div", IDIV, MinArgs(0)}, {"mod", IMOD, ExactArgs(0)}, {"and", IAND, ExactArgs(0)},
     {"or", IOR, ExactArgs(0)}, {"xor", IXOR, ExactArgs(2)}, {"not", INOT, ExactArgs(0)},
     {"eq", IEQ, ExactArgs(0)}, {"ne", INE, ExactArgs(0)}, {"lt", ILT, ExactArgs(0)},
     {"gt", IGT, ExactArgs(0)}, {"le", ILE, ExactArgs(0)}, {"ge", IGE, ExactArgs(0)},
@@ -281,6 +281,7 @@ typedef struct {
     void *memory; // UserSpaceMemory
     size_t memory_used;
     size_t memory_capacity;
+    void *dead_memory;
 } Program;
 
 typedef enum {
@@ -313,6 +314,7 @@ void program_init(Program *program, const char *filename) {
     program->memory = malloc(MEMORY_CAPACITY);
     program->memory_capacity = MEMORY_CAPACITY;
     program->memory_used = 0;
+    program->dead_memory = malloc(1);
 }
 
 void add_label(Program *program, const char *name, size_t address) {
@@ -751,6 +753,7 @@ WordType get_type(char *s) {
     return -1;
 }
 
+// TODO: add instructions with operands else use stack
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
     Word w1, w2, result;
@@ -792,55 +795,65 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             break;
         case IMOV:
-			if (instr->operands.size >= 2) {
-				char *src_operand = vector_get_str(&instr->operands, 0);
-				char *dst_operand = vector_get_str(&instr->operands, 1);
-				
-				if (is_register(dst_operand)) {
-					XRegisters dst_reg = register_name_to_enum(dst_operand);
-					if (dst_reg != -1) {
-						if (xpu->registers[dst_reg].reg_value.value) {
-                            xpu->registers[dst_reg].reg_value.value = NULL;
-						}
-						
-						if (is_register(src_operand)) {
-							XRegisters src_reg = register_name_to_enum(src_operand);
-							if (src_reg != -1) {
-								Word src_word = xpu->registers[src_reg].reg_value;
-								if (src_word.type == WINT) {
-									int *value = malloc(sizeof(int));
-									*value = *(int*)src_word.value;
-									xpu->registers[dst_reg].reg_value = word_create(value, WINT);
-								} else if (src_word.type == WFLOAT) {
-									float *value = malloc(sizeof(float));
-									*value = *(float*)src_word.value;
-									xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
-								} else if (src_word.type == WCHARP) {
-									char *value = strdup((char*)src_word.value);
-									xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
-								} else {
-									xpu->registers[dst_reg].reg_value = word_create(NULL, WPOINTER);
-								}
-							}
-						} else if (is_number(src_operand)) {
-							int *value = malloc(sizeof(int));
-							*value = atoi(src_operand);
-							xpu->registers[dst_reg].reg_value = word_create(value, WINT);
-						} else if (is_float(src_operand)) {
-							float *value = malloc(sizeof(float));
-							*value = atof(src_operand);
-							xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
-						} else if (is_string(src_operand)) {
-							size_t len = strlen(src_operand) - 2;
-							char *value = malloc(len + 1);
-							strncpy(value, src_operand + 1, len);
-							value[len] = '\0';
-							xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
-						}
-					}
-				}
-			}
-			break;
+            if (instr->operands.size >= 2) {
+                char *src_operand = vector_get_str(&instr->operands, 0);
+                char *dst_operand = vector_get_str(&instr->operands, 1);
+        
+                if (is_register(dst_operand)) {
+                    XRegisters dst_reg = register_name_to_enum(dst_operand);
+                    if (dst_reg != -1) {
+                        if (is_register(src_operand)) {
+                            XRegisters src_reg = register_name_to_enum(src_operand);
+                            if (src_reg != -1) {
+                                Word src_word = xpu->registers[src_reg].reg_value;
+                                if (dst_reg == src_reg) break;
+                                if (xpu->registers[dst_reg].reg_value.value && xpu->registers[dst_reg].reg_value.value != NULL) free(xpu->registers[dst_reg].reg_value.value);
+                                if (src_word.type == WINT) {
+                                    int *value = malloc(sizeof(int));
+                                    *value = *(int*)src_word.value;
+                                    xpu->registers[dst_reg].reg_value = word_create(value, WINT);
+                                } else if (src_word.type == WFLOAT) {
+                                    float *value = malloc(sizeof(float));
+                                    *value = *(float*)src_word.value;
+                                    xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
+                                } else if (src_word.type == WCHARP) {
+                                    char *value = strdup((char*)src_word.value);
+                                    xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
+                                } else if (src_word.type == WPOINTER) {
+                                    void **value = malloc(sizeof(void*));
+                                    *value = src_word.value;
+                                    xpu->registers[dst_reg].reg_value = word_create(value, WPOINTER);
+                                } else if (src_word.type == W_CHAR) {
+                                    char *value = malloc(sizeof(char));
+                                    *value = *(char*)src_word.value;
+                                    xpu->registers[dst_reg].reg_value = word_create(value, W_CHAR);
+                                } else if (src_word.type == WBOOL) {
+                                    int *value = malloc(sizeof(int));
+                                    *value = *(int*)src_word.value;
+                                    xpu->registers[dst_reg].reg_value = word_create(value, WBOOL);
+                                } else {
+                                    xpu->registers[dst_reg].reg_value = word_create(NULL, WPOINTER);
+                                }
+                            }
+                        } else if (is_number(src_operand)) {
+                            int *value = malloc(sizeof(int));
+                            *value = atoi(src_operand);
+                            xpu->registers[dst_reg].reg_value = word_create(value, WINT);
+                        } else if (is_float(src_operand)) {
+                            float *value = malloc(sizeof(float));
+                            *value = atof(src_operand);
+                            xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
+                        } else if (is_string(src_operand)) {
+                            size_t len = strlen(src_operand) - 2;
+                            char *value = malloc(len + 1);
+                            strncpy(value, src_operand + 1, len);
+                            value[len] = '\0';
+                            xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
+                        }
+            }
+        }
+    }
+    break;
 
         case IPOP:
             add_flag(vm, FLAG_STACK);
@@ -856,85 +869,419 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
             
         case IADD:
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            
-            if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
-                *int_result = *(int*)w2.value + *(int*)w1.value;
-                xstack_push(&xpu->stack, word_create(int_result, WINT));
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                float_result = malloc(sizeof(float));
-                *float_result = *(float*)w2.value + *(float*)w1.value;
-                xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+            if (instr->operands.size == 0) {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
+                
+                if (w1.type == WINT && w2.type == WINT) {
+                    int_result = malloc(sizeof(int));
+                    *int_result = *(int*)w2.value + *(int*)w1.value;
+                    xstack_push(&xpu->stack, word_create(int_result, WINT));
+                } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+                    float_result = malloc(sizeof(float));
+                    *float_result = *(float*)w2.value + *(float*)w1.value;
+                    xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+                }
+                free(w1.value);
+                free(w2.value);
+            } else {
+                if (instr->operands.size < 2) {
+                    fprintf(stderr, "Error: IADD requires two operands\n");
+                    break;
+                }
+                char *dest_op = vector_get_str(&instr->operands, 0);
+                char *src_op = vector_get_str(&instr->operands, 1);
+
+                if (!is_register(dest_op)) {
+                    fprintf(stderr, "Error: Destination must be a register\n");
+                    break;
+                }
+
+                XRegisters dest_reg = register_name_to_enum(dest_op);
+                if (dest_reg == -1) {
+                    fprintf(stderr, "Error: Invalid register %s\n", dest_op);
+                    break;
+                }
+
+                XRegister *dest_reg_ptr = &xpu->registers[dest_reg];
+                Word *dest_word = &dest_reg_ptr->reg_value;
+
+                Word src_word;
+                bool src_is_temp = false;
+
+                if (is_register(src_op)) {
+                    XRegisters src_reg = register_name_to_enum(src_op);
+                    if (src_reg == -1) {
+                        fprintf(stderr, "Error: Invalid register %s\n", src_op);
+                        break;
+                    }
+                    src_word = xpu->registers[src_reg].reg_value;
+                } else if (is_number(src_op)) {
+                    int *val = malloc(sizeof(int));
+                    *val = atoi(src_op);
+                    src_word = word_create(val, WINT);
+                    src_is_temp = true;
+                } else if (is_float(src_op)) {
+                    float *val = malloc(sizeof(float));
+                    *val = atof(src_op);
+                    src_word = word_create(val, WFLOAT);
+                    src_is_temp = true;
+                } else {
+                    fprintf(stderr, "Error: Invalid source operand %s\n", src_op);
+                    break;
+                }
+
+                if (dest_word->type == WINT && src_word.type == WINT) {
+                    int result = *(int*)dest_word->value + *(int*)src_word.value;
+                    free(dest_word->value);
+                    int *new_val = malloc(sizeof(int));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
+                    float result = *(float*)dest_word->value + *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
+                    float result = (float)*(int*)dest_word->value + *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                    dest_word->type = WFLOAT;
+                } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
+                    float result = *(float*)dest_word->value + (float)*(int*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else {
+                    fprintf(stderr, "Error: Type mismatch in IADD\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                }
+
+                if (src_is_temp) free(src_word.value);
             }
-            
-            free(w1.value);
-            free(w2.value);
             break;
             
         case ISUB:
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            
-            if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
-                *int_result = *(int*)w2.value - *(int*)w1.value;
-                xstack_push(&xpu->stack, word_create(int_result, WINT));
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                float_result = malloc(sizeof(float));
-                *float_result = *(float*)w2.value - *(float*)w1.value;
-                xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+            if (instr->operands.size == 0) {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
+                
+                if (w1.type == WINT && w2.type == WINT) {
+                    int_result = malloc(sizeof(int));
+                    *int_result = *(int*)w2.value - *(int*)w1.value;
+                    xstack_push(&xpu->stack, word_create(int_result, WINT));
+                } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+                    float_result = malloc(sizeof(float));
+                    *float_result = *(float*)w2.value - *(float*)w1.value;
+                    xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+                }
+                free(w1.value);
+                free(w2.value);
+            } else {
+                if (instr->operands.size < 2) {
+                    fprintf(stderr, "Error: ISUB requires two operands\n");
+                    break;
+                }
+                char *dest_op = vector_get_str(&instr->operands, 0);
+                char *src_op = vector_get_str(&instr->operands, 1);
+
+                if (!is_register(dest_op)) {
+                    fprintf(stderr, "Error: Destination must be a register\n");
+                    break;
+                }
+
+                XRegisters dest_reg = register_name_to_enum(dest_op);
+                if (dest_reg == -1) {
+                    fprintf(stderr, "Error: Invalid register %s\n", dest_op);
+                    break;
+                }
+
+                XRegister *dest_reg_ptr = &xpu->registers[dest_reg];
+                Word *dest_word = &dest_reg_ptr->reg_value;
+
+                Word src_word;
+                bool src_is_temp = false;
+
+                if (is_register(src_op)) {
+                    XRegisters src_reg = register_name_to_enum(src_op);
+                    if (src_reg == -1) {
+                        fprintf(stderr, "Error: Invalid register %s\n", src_op);
+                        break;
+                    }
+                    src_word = xpu->registers[src_reg].reg_value;
+                } else if (is_number(src_op)) {
+                    int *val = malloc(sizeof(int));
+                    *val = atoi(src_op);
+                    src_word = word_create(val, WINT);
+                    src_is_temp = true;
+                } else if (is_float(src_op)) {
+                    float *val = malloc(sizeof(float));
+                    *val = atof(src_op);
+                    src_word = word_create(val, WFLOAT);
+                    src_is_temp = true;
+                } else {
+                    fprintf(stderr, "Error: Invalid source operand %s\n", src_op);
+                    break;
+                }
+
+                if (dest_word->type == WINT && src_word.type == WINT) {
+                    int result = *(int*)dest_word->value - *(int*)src_word.value;
+                    free(dest_word->value);
+                    int *new_val = malloc(sizeof(int));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
+                    float result = *(float*)dest_word->value - *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
+                    float result = (float)*(int*)dest_word->value - *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                    dest_word->type = WFLOAT;
+                } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
+                    float result = *(float*)dest_word->value - (float)*(int*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else {
+                    fprintf(stderr, "Error: Type mismatch in ISUB\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                }
+
+                if (src_is_temp) free(src_word.value);
             }
-            
-            free(w1.value);
-            free(w2.value);
             break;
             
         case IMUL:
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            
-            if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
-                *int_result = *(int*)w2.value * *(int*)w1.value;
-                xstack_push(&xpu->stack, word_create(int_result, WINT));
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                float_result = malloc(sizeof(float));
-                *float_result = *(float*)w2.value * *(float*)w1.value;
-                xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+            if (instr->operands.size == 0) {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
+                
+                if (w1.type == WINT && w2.type == WINT) {
+                    int_result = malloc(sizeof(int));
+                    *int_result = *(int*)w2.value * *(int*)w1.value;
+                    xstack_push(&xpu->stack, word_create(int_result, WINT));
+                } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+                    float_result = malloc(sizeof(float));
+                    *float_result = *(float*)w2.value * *(float*)w1.value;
+                    xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+                }
+                free(w1.value);
+                free(w2.value);
+            } else {
+                if (instr->operands.size < 2) {
+                    fprintf(stderr, "Error: IMUL requires two operands\n");
+                    break;
+                }
+                char *dest_op = vector_get_str(&instr->operands, 0);
+                char *src_op = vector_get_str(&instr->operands, 1);
+
+                if (!is_register(dest_op)) {
+                    fprintf(stderr, "Error: Destination must be a register\n");
+                    break;
+                }
+
+                XRegisters dest_reg = register_name_to_enum(dest_op);
+                if (dest_reg == -1) {
+                    fprintf(stderr, "Error: Invalid register %s\n", dest_op);
+                    break;
+                }
+
+                XRegister *dest_reg_ptr = &xpu->registers[dest_reg];
+                Word *dest_word = &dest_reg_ptr->reg_value;
+
+                Word src_word;
+                bool src_is_temp = false;
+
+                if (is_register(src_op)) {
+                    XRegisters src_reg = register_name_to_enum(src_op);
+                    if (src_reg == -1) {
+                        fprintf(stderr, "Error: Invalid register %s\n", src_op);
+                        break;
+                    }
+                    src_word = xpu->registers[src_reg].reg_value;
+                } else if (is_number(src_op)) {
+                    int *val = malloc(sizeof(int));
+                    *val = atoi(src_op);
+                    src_word = word_create(val, WINT);
+                    src_is_temp = true;
+                } else if (is_float(src_op)) {
+                    float *val = malloc(sizeof(float));
+                    *val = atof(src_op);
+                    src_word = word_create(val, WFLOAT);
+                    src_is_temp = true;
+                } else {
+                    fprintf(stderr, "Error: Invalid source operand %s\n", src_op);
+                    break;
+                }
+
+                if (dest_word->type == WINT && src_word.type == WINT) {
+                    int result = *(int*)dest_word->value * *(int*)src_word.value;
+                    free(dest_word->value);
+                    int *new_val = malloc(sizeof(int));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
+                    float result = *(float*)dest_word->value * *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
+                    float result = (float)*(int*)dest_word->value * *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                    dest_word->type = WFLOAT;
+                } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
+                    float result = *(float*)dest_word->value * (float)*(int*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else {
+                    fprintf(stderr, "Error: Type mismatch in IMUL\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                }
+
+                if (src_is_temp) free(src_word.value);
             }
-            
-            free(w1.value);
-            free(w2.value);
             break;
             
         case IDIV:
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            
-            if (w1.type == WINT && w2.type == WINT) {
-                if (*(int*)w1.value == 0) {
-                    fprintf(stderr, "Error: Division by zero\n");
-                } else {
-                    int_result = malloc(sizeof(int));
-                    *int_result = *(int*)w2.value / *(int*)w1.value;
-                    xstack_push(&xpu->stack, word_create(int_result, WINT));
+            if (instr->operands.size == 0) {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
+                
+                if (w1.type == WINT && w2.type == WINT) {
+                    if (*(int*)w1.value == 0) {
+                        fprintf(stderr, "Error: Division by zero\n");
+                        free(w1.value);
+                        free(w2.value);
+                    } else {
+                        int_result = malloc(sizeof(int));
+                        *int_result = *(int*)w2.value / *(int*)w1.value;
+                        xstack_push(&xpu->stack, word_create(int_result, WINT));
+                    }
+                } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+                    if (*(float*)w1.value == 0.0f) {
+                        fprintf(stderr, "Error: Division by zero\n");
+                        free(w1.value);
+                        free(w2.value);
+                    } else {
+                        float_result = malloc(sizeof(float));
+                        *float_result = *(float*)w2.value / *(float*)w1.value;
+                        xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+                    }
                 }
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                if (*(float*)w1.value == 0.0f) {
-                    fprintf(stderr, "Error: Division by zero\n");
-                } else {
-                    float_result = malloc(sizeof(float));
-                    *float_result = *(float*)w2.value / *(float*)w1.value;
-                    xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
+                free(w1.value);
+                free(w2.value);
+            } else {
+                if (instr->operands.size < 2) {
+                    fprintf(stderr, "Error: IDIV requires two operands\n");
+                    break;
                 }
+                char *dest_op = vector_get_str(&instr->operands, 0);
+                char *src_op = vector_get_str(&instr->operands, 1);
+
+                if (!is_register(dest_op)) {
+                    fprintf(stderr, "Error: Destination must be a register\n");
+                    break;
+                }
+
+                XRegisters dest_reg = register_name_to_enum(dest_op);
+                if (dest_reg == -1) {
+                    fprintf(stderr, "Error: Invalid register %s\n", dest_op);
+                    break;
+                }
+
+                XRegister *dest_reg_ptr = &xpu->registers[dest_reg];
+                Word *dest_word = &dest_reg_ptr->reg_value;
+
+                Word src_word;
+                bool src_is_temp = false;
+
+                if (is_register(src_op)) {
+                    XRegisters src_reg = register_name_to_enum(src_op);
+                    if (src_reg == -1) {
+                        fprintf(stderr, "Error: Invalid register %s\n", src_op);
+                        break;
+                    }
+                    src_word = xpu->registers[src_reg].reg_value;
+                } else if (is_number(src_op)) {
+                    int *val = malloc(sizeof(int));
+                    *val = atoi(src_op);
+                    src_word = word_create(val, WINT);
+                    src_is_temp = true;
+                } else if (is_float(src_op)) {
+                    float *val = malloc(sizeof(float));
+                    *val = atof(src_op);
+                    src_word = word_create(val, WFLOAT);
+                    src_is_temp = true;
+                } else {
+                    fprintf(stderr, "Error: Invalid source operand %s\n", src_op);
+                    break;
+                }
+
+                if (src_word.type == WINT && *(int*)src_word.value == 0) {
+                    fprintf(stderr, "Error: Division by zero\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                } else if (src_word.type == WFLOAT && *(float*)src_word.value == 0.0f) {
+                    fprintf(stderr, "Error: Division by zero\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                }
+
+                if (dest_word->type == WINT && src_word.type == WINT) {
+                    int result = *(int*)dest_word->value / *(int*)src_word.value;
+                    free(dest_word->value);
+                    int *new_val = malloc(sizeof(int));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
+                    float result = *(float*)dest_word->value / *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
+                    float result = (float)*(int*)dest_word->value / *(float*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                    dest_word->type = WFLOAT;
+                } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
+                    float result = *(float*)dest_word->value / (float)*(int*)src_word.value;
+                    free(dest_word->value);
+                    float *new_val = malloc(sizeof(float));
+                    *new_val = result;
+                    dest_word->value = new_val;
+                } else {
+                    fprintf(stderr, "Error: Type mismatch in IDIV\n");
+                    if (src_is_temp) free(src_word.value);
+                    break;
+                }
+
+                if (src_is_temp) free(src_word.value);
             }
-            
-            free(w1.value);
-            free(w2.value);
             break;
-            
+
         case IMOD:
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
@@ -942,13 +1289,14 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (w1.type == WINT && w2.type == WINT) {
                 if (*(int*)w1.value == 0) {
                     fprintf(stderr, "Error: Modulo by zero\n");
+                    free(w1.value);
+                    free(w2.value);
                 } else {
                     int_result = malloc(sizeof(int));
                     *int_result = *(int*)w2.value % *(int*)w1.value;
                     xstack_push(&xpu->stack, word_create(int_result, WINT));
                 }
             }
-            
             free(w1.value);
             free(w2.value);
             break;
@@ -962,7 +1310,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 *int_result = *(int*)w2.value & *(int*)w1.value;
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
-            
             free(w1.value);
             free(w2.value);
             break;
@@ -976,9 +1323,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 *int_result = *(int*)w2.value | *(int*)w1.value;
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
-            
             free(w1.value);
-            free(w2.value);
             break;
             
         case IXOR:
@@ -1006,7 +1351,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
             
-            free(w1.value);
             break;
             
         case IEQ:
@@ -1027,8 +1371,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             
             xstack_push(&xpu->stack, word_create(int_result, WINT));
-            free(w1.value);
-            free(w2.value);
             break;
             
         case INE:
@@ -1049,8 +1391,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             
             xstack_push(&xpu->stack, word_create(int_result, WINT));
-            free(w1.value);
-            free(w2.value);
             break;
             
         case ILT:
