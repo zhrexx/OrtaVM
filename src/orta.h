@@ -2140,7 +2140,7 @@ void execute_program(OrtaVM *vm) {
     size_t f = 0;
     if (!find_label(&vm->program, OENTRY, &f)) {
         xpu->ip = 0;
-        printf("WARNING: No entry found running at 0");
+        printf("WARNING: No entry found running at 0\n");
     } else {
         xpu->ip = f;
     }

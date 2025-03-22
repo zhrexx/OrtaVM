@@ -128,10 +128,15 @@ void display_help() {
            "  help      - Show this help message\n");
 }
 
-int main() {
+int main(int argc, char **argv) {
     OrtaVM vm = ortavm_create("repl");
     char *line;
-    printf("%s", LOGO); 
+    char *output = "repl.xbin";
+    if (argc > 1) {
+        output = argv[1];
+    }
+
+    printf("%s%s%s%s", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET); 
     printf("OrtaVM REPL (type 'help' for commands)\n");
     
     while ((line = readline("> ")) != NULL) {
@@ -153,6 +158,9 @@ int main() {
         }
         else if (strcmp(line, "help") == 0) {
             display_help();
+        }
+        else if (strcmp(line, "save") == 0) {
+            create_bytecode(&vm, output);
         }
         else if (strlen(line) > 0) {
             if (!parse_line(&vm, line)) {
