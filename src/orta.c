@@ -6,6 +6,130 @@
 #include "std.h"
 #include "config.h"
 
+char* trim_left(const char *str) {
+    while (isspace((unsigned char)*str)) {
+        str++;
+    }
+    return strdup(str);
+}
+bool validateArgCount(ArgRequirement req, int actualArgCount) {
+    switch(req.type) {
+        case ARG_EXACT: 
+            return actualArgCount == req.value;
+        case ARG_MIN:
+            return actualArgCount >= req.value;
+        case ARG_MAX:
+            return actualArgCount <= req.value;
+        case ARG_RANGE:
+            return actualArgCount >= req.value && actualArgCount <= req.value2;
+        default:
+            return false;
+    }
+}
+
+int parse_program(OrtaVM *vm, const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Failed to open file '%s'\n", filename);
+        return 0;
+    }
+    
+    char buffer[8192];
+    size_t bytes_read = fread(buffer, sizeof(char), 8191, fp);
+    buffer[bytes_read] = '\0';
+    fclose(fp);
+    
+    Vector lines = split_to_vector(buffer, "\n");
+    
+    VECTOR_FOR_EACH(char *, line, &lines) {
+        if (*line == NULL) continue;
+        
+        char *trimmed = trim_left(*line);
+        if (trimmed == NULL || strlen(trimmed) == 0 || starts_with(";", trimmed)) {
+            free(trimmed);
+            continue;
+        }
+        
+        Vector tokens = split_to_vector(trimmed, " ");
+        free(trimmed);
+        if (tokens.size < 1) {
+            vector_free(&tokens);
+            continue;
+        }
+        
+        for (size_t i = 0; i < tokens.size; i++) {
+            char *token = vector_get_str(&tokens, i);
+            if (token != NULL && starts_with(";", token)) {
+                while (tokens.size > i) {
+                    vector_remove(&tokens, i);
+                }
+                break;
+            }
+        }
+        
+        if (tokens.size == 0) {
+            vector_free(&tokens);
+            continue;
+        }
+        
+        char *first_token = vector_get_str(&tokens, 0);
+        if (first_token != NULL && is_label_declaration(first_token)) {
+            size_t label_len = strlen(first_token);
+            char *label_name = strdup(first_token);
+            label_name[label_len - 1] = '\0';
+
+            add_label(&vm->program, label_name, vm->program.instructions_count);
+            //printf("Adding label: '%s' at address %zu\n", label_name, vm->program.instructions_count);
+            free(label_name);
+            
+            vector_remove(&tokens, 0);
+            
+            if (tokens.size == 0) {
+                vector_free(&tokens);
+                continue;
+            }
+            
+            first_token = vector_get_str(&tokens, 0);
+        }
+        
+        if (first_token == NULL) {
+            vector_free(&tokens);
+            continue;
+        }
+        
+        char *instruction_name = strdup(first_token);
+        vector_remove(&tokens, 0);
+        
+        Instruction parsed_instruction = parse_instruction(instruction_name);
+        free(instruction_name);
+        
+        if (parsed_instruction == -1) {
+            fprintf(stderr, "Error: Unknown instruction '%s'\n", first_token);
+            vector_free(&tokens);
+            vector_free(&lines);
+            return 0;
+        }
+        
+        ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
+        if (!validateArgCount(expected_args, tokens.size)) {
+            fprintf(stderr, "Error: Expected %d arguments for instruction '%s', but got %zu\n",
+                    expected_args.value, instruction_to_string(parsed_instruction), tokens.size);
+            vector_free(&tokens);
+            vector_free(&lines);
+            return 0;
+        }
+        
+        InstructionData instr;
+        instr.opcode = parsed_instruction;
+        instr.operands = tokens;
+        add_instruction(&vm->program, instr);
+    }
+    
+    vector_free(&lines);
+    return 1;
+}
+
+
 void print_usage(const char *program_name) {
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET);
     

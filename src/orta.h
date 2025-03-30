@@ -131,7 +131,7 @@ XRegisters register_name_to_enum(const char *reg_name) {
             return register_table[i].id;
         }
     }
-    return -1;
+    return (XRegisters)-1;
 }
 
 
@@ -143,7 +143,7 @@ typedef struct {
 
 XStack xstack_create(size_t capacity) {
     XStack x = {0};
-    x.stack = malloc(sizeof(Word) * capacity);
+    x.stack = (Word *)malloc(sizeof(Word) * capacity);
     x.capacity = capacity;
     x.count = 0;
     return x;
@@ -187,7 +187,7 @@ typedef struct {
 XPU xpu_init() {
     XPU xpu = {0};
     xpu.stack = xstack_create(OSTACK_SIZE);
-    xpu.registers = malloc(sizeof(XRegister) * REG_COUNT);
+    xpu.registers = (XRegister *)malloc(sizeof(XRegister) * REG_COUNT);
     xpu.ip = 0;
     
     for (int i = 0; i < REG_COUNT; i++) {
@@ -213,7 +213,8 @@ typedef enum {
     ISWAP, IDROP, IROTL, IROTR,
     IALLOC,IHALT, IMERGE, IXCALL, 
     IWRITE, IPRINTMEM, ISIZEOF,
-    IDEC, IINC, IEVAL, ICMP, ILOADB 
+    IDEC, IINC, IEVAL, ICMP, ILOADB,
+    ICPYMEM, ISTOREB,
 } Instruction;
 
 typedef enum {
@@ -255,6 +256,7 @@ static const InstructionInfo instructions[] = {
     {"xcall", IXCALL, ExactArgs(0)}, {"write", IWRITE, ExactArgs(0)}, {"printmem", IPRINTMEM, ExactArgs(0)}, 
     {"sizeof", ISIZEOF, ExactArgs(1)}, {"dec", IDEC, ExactArgs(1)}, {"inc", IINC, ExactArgs(1)},
     {"eval", IEVAL, MinArgs(0)}, {"cmp", ICMP, MinArgs(1)}, {"loadb", ILOADB, MinArgs(1)},
+    {"cpymem", ICPYMEM, ExactArgs(0)}, {"storeb", ISTOREB, MinArgs(0)},
 };
 
 
@@ -307,10 +309,10 @@ void program_init(Program *program, const char *filename) {
     program->filename = strdup(filename);
     program->instructions_capacity = 128;
     program->instructions_count = 0;
-    program->instructions = malloc(sizeof(InstructionData) * program->instructions_capacity);
+    program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * program->instructions_capacity);
     program->labels_capacity = 32;
     program->labels_count = 0;
-    program->labels = malloc(sizeof(Label) * program->labels_capacity);
+    program->labels = (Label *)malloc(sizeof(Label) * program->labels_capacity);
     program->memory = malloc(MEMORY_CAPACITY);
     program->memory_capacity = MEMORY_CAPACITY;
     program->memory_used = 0;
@@ -320,7 +322,7 @@ void program_init(Program *program, const char *filename) {
 void add_label(Program *program, const char *name, size_t address) {
     if (program->labels_count >= program->labels_capacity) {
         program->labels_capacity *= 2;
-        program->labels = realloc(program->labels, sizeof(Label) * program->labels_capacity);
+        program->labels = (Label *)realloc(program->labels, sizeof(Label) * program->labels_capacity);
     }
     
     program->labels[program->labels_count].name = strdup(name);
@@ -388,7 +390,7 @@ Instruction parse_instruction(const char *instruction) {
             return instructions[i].instruction;
         }
     }
-    return -1;
+    return (Instruction)-1;
 }
 
 const char *instruction_to_string(Instruction instruction) {
@@ -455,7 +457,7 @@ int is_label_reference(const char *str) {
 void add_instruction(Program *program, InstructionData instr) {
     if (program->instructions_count >= program->instructions_capacity) {
         program->instructions_capacity *= 2;
-        program->instructions = realloc(program->instructions, sizeof(InstructionData) * program->instructions_capacity);
+        program->instructions = (InstructionData*)realloc(program->instructions, sizeof(InstructionData) * program->instructions_capacity);
     }
     
     program->instructions[program->instructions_count++] = instr;
@@ -479,6 +481,18 @@ void microsleep(unsigned long usecs) {
         nanosleep(&ts, NULL);
     #endif
 }
+
+char *hmerge(InstructionData *instr) {
+     char *string = (char *)malloc(256);
+     VECTOR_FOR_EACH(char *, elem, &instr->operands) {
+         char *rcharp = *(char **)elem;
+         rcharp[strlen(rcharp)-1] = '\0'; 
+         strcat(string, rcharp+1);
+         strcat(string, " ");
+     }
+     return string;
+}
+
 
 void xsleep(unsigned long miliseconds) {
     microsleep(miliseconds * 1000);
@@ -601,140 +615,6 @@ int eval(char *s) {
     return values[0];
 }
 
-char* trim_left(const char *str) {
-    while (isspace((unsigned char)*str)) {
-        str++;
-    }
-    return strdup(str);
-}
-bool validateArgCount(ArgRequirement req, int actualArgCount) {
-    switch(req.type) {
-        case ARG_EXACT: 
-            return actualArgCount == req.value;
-        case ARG_MIN:
-            return actualArgCount >= req.value;
-        case ARG_MAX:
-            return actualArgCount <= req.value;
-        case ARG_RANGE:
-            return actualArgCount >= req.value && actualArgCount <= req.value2;
-        default:
-            return false;
-    }
-}
-
-int parse_program(OrtaVM *vm, const char *filename) {
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        fprintf(stderr, "Error: Failed to open file '%s'\n", filename);
-        return 0;
-    }
-    
-    char buffer[8192];
-    size_t bytes_read = fread(buffer, sizeof(char), 8191, fp);
-    buffer[bytes_read] = '\0';
-    fclose(fp);
-    
-    Vector lines = split_to_vector(buffer, "\n");
-    
-    VECTOR_FOR_EACH(char *, line, &lines) {
-        if (*line == NULL) continue;
-        
-        char *trimmed = trim_left(*line);
-        if (trimmed == NULL || strlen(trimmed) == 0 || starts_with(";", trimmed)) {
-            free(trimmed);
-            continue;
-        }
-        
-        Vector tokens = split_to_vector(trimmed, " ");
-        free(trimmed);
-        if (tokens.size < 1) {
-            vector_free(&tokens);
-            continue;
-        }
-        
-        for (size_t i = 0; i < tokens.size; i++) {
-            char *token = vector_get_str(&tokens, i);
-            if (token != NULL && starts_with(";", token)) {
-                while (tokens.size > i) {
-                    vector_remove(&tokens, i);
-                }
-                break;
-            }
-        }
-        
-        if (tokens.size == 0) {
-            vector_free(&tokens);
-            continue;
-        }
-        
-        char *first_token = vector_get_str(&tokens, 0);
-        if (first_token != NULL && is_label_declaration(first_token)) {
-            size_t label_len = strlen(first_token);
-            char *label_name = strdup(first_token);
-            label_name[label_len - 1] = '\0';
-
-            add_label(&vm->program, label_name, vm->program.instructions_count);
-            //printf("Adding label: '%s' at address %zu\n", label_name, vm->program.instructions_count);
-            free(label_name);
-            
-            vector_remove(&tokens, 0);
-            
-            if (tokens.size == 0) {
-                vector_free(&tokens);
-                continue;
-            }
-            
-            first_token = vector_get_str(&tokens, 0);
-        }
-        
-        if (first_token == NULL) {
-            vector_free(&tokens);
-            continue;
-        }
-        
-        char *instruction_name = strdup(first_token);
-        vector_remove(&tokens, 0);
-        
-        Instruction parsed_instruction = parse_instruction(instruction_name);
-        free(instruction_name);
-        
-        if (parsed_instruction == -1) {
-            fprintf(stderr, "Error: Unknown instruction '%s'\n", first_token);
-            vector_free(&tokens);
-            vector_free(&lines);
-            return 0;
-        }
-        
-        ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
-        if (!validateArgCount(expected_args, tokens.size)) {
-            fprintf(stderr, "Error: Expected %d arguments for instruction '%s', but got %zu\n",
-                    expected_args.value, instruction_to_string(parsed_instruction), tokens.size);
-            vector_free(&tokens);
-            vector_free(&lines);
-            return 0;
-        }
-        
-        InstructionData instr;
-        instr.opcode = parsed_instruction;
-        instr.operands = tokens;
-        add_instruction(&vm->program, instr);
-    }
-    
-    vector_free(&lines);
-    return 1;
-}
-
-char *hmerge(InstructionData *instr) {
-     char *string = malloc(256);
-     VECTOR_FOR_EACH(char *, elem, &instr->operands) {
-         char *rcharp = *(char **)elem;
-         rcharp[strlen(rcharp)-1] = '\0'; 
-         strcat(string, rcharp+1);
-         strcat(string, " ");
-     }
-     return string;
-}
-
 
 WordType get_type(char *s) {
     if (strcmp(s, "int") == 0) {
@@ -750,7 +630,7 @@ WordType get_type(char *s) {
     } else if (strcmp(s, "pointer") == 0) {
         return WPOINTER;
     }
-    return -1;
+    return (WordType)-1;
 }
 
 // TODO: add instructions with operands else use stack
@@ -773,16 +653,16 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 add_flag(vm, FLAG_STACK);
                 char *operand = vector_get_str(&instr->operands, 0);
                 if (is_number(operand)) {
-                    int *value = malloc(sizeof(int));
+                    int *value = (int *)malloc(sizeof(int));
                     *value = atoi(operand);
                     xstack_push(&xpu->stack, word_create(value, WINT));
                 } else if (is_float(operand)) {
-                    float *value = malloc(sizeof(float));
+                    float *value = (float *)malloc(sizeof(float));
                     *value = atof(operand);
                     xstack_push(&xpu->stack, word_create(value, WFLOAT));
                 } else if (is_string(operand)) {
                     size_t len = strlen(operand);
-                    char *value = malloc(len - 1);
+                    char *value = (char *)malloc(len - 1);
                     strncpy(value, operand + 1, len-2);
                     value[len-2] = '\0';
                     xstack_push(&xpu->stack, word_create(value, WCHARP));
@@ -809,26 +689,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 if (dst_reg == src_reg) break;
                                 if (xpu->registers[dst_reg].reg_value.value && xpu->registers[dst_reg].reg_value.value != NULL) free(xpu->registers[dst_reg].reg_value.value);
                                 if (src_word.type == WINT) {
-                                    int *value = malloc(sizeof(int));
+                                    int *value = (int *)malloc(sizeof(int));
                                     *value = *(int*)src_word.value;
                                     xpu->registers[dst_reg].reg_value = word_create(value, WINT);
                                 } else if (src_word.type == WFLOAT) {
-                                    float *value = malloc(sizeof(float));
+                                    float *value = (float *)malloc(sizeof(float));
                                     *value = *(float*)src_word.value;
                                     xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
                                 } else if (src_word.type == WCHARP) {
                                     char *value = strdup((char*)src_word.value);
                                     xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
                                 } else if (src_word.type == WPOINTER) {
-                                    void **value = malloc(sizeof(void*));
+                                    void **value = (void **)malloc(sizeof(void*));
                                     *value = src_word.value;
                                     xpu->registers[dst_reg].reg_value = word_create(value, WPOINTER);
                                 } else if (src_word.type == W_CHAR) {
-                                    char *value = malloc(sizeof(char));
+                                    char *value = (char *)malloc(sizeof(char));
                                     *value = *(char*)src_word.value;
                                     xpu->registers[dst_reg].reg_value = word_create(value, W_CHAR);
                                 } else if (src_word.type == WBOOL) {
-                                    int *value = malloc(sizeof(int));
+                                    int *value = (int *)malloc(sizeof(int));
                                     *value = *(int*)src_word.value;
                                     xpu->registers[dst_reg].reg_value = word_create(value, WBOOL);
                                 } else {
@@ -836,16 +716,16 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 }
                             }
                         } else if (is_number(src_operand)) {
-                            int *value = malloc(sizeof(int));
+                            int *value = (int *)malloc(sizeof(int));
                             *value = atoi(src_operand);
                             xpu->registers[dst_reg].reg_value = word_create(value, WINT);
                         } else if (is_float(src_operand)) {
-                            float *value = malloc(sizeof(float));
+                            float *value = (float *)malloc(sizeof(float));
                             *value = atof(src_operand);
                             xpu->registers[dst_reg].reg_value = word_create(value, WFLOAT);
                         } else if (is_string(src_operand)) {
                             size_t len = strlen(src_operand) - 2;
-                            char *value = malloc(len + 1);
+                            char *value = (char *)malloc(len + 1);
                             strncpy(value, src_operand + 1, len);
                             value[len] = '\0';
                             xpu->registers[dst_reg].reg_value = word_create(value, WCHARP);
@@ -874,11 +754,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 w2 = xstack_pop(&xpu->stack);
                 
                 if (w1.type == WINT && w2.type == WINT) {
-                    int_result = malloc(sizeof(int));
+                    int_result = (int *)malloc(sizeof(int));
                     *int_result = *(int*)w2.value + *(int*)w1.value;
                     xstack_push(&xpu->stack, word_create(int_result, WINT));
                 } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                    float_result = malloc(sizeof(float));
+                    float_result = (float *)malloc(sizeof(float));
                     *float_result = *(float*)w2.value + *(float*)w1.value;
                     xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
                 }
@@ -917,12 +797,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     }
                     src_word = xpu->registers[src_reg].reg_value;
                 } else if (is_number(src_op)) {
-                    int *val = malloc(sizeof(int));
+                    int *val = (int *)malloc(sizeof(int));
                     *val = atoi(src_op);
                     src_word = word_create(val, WINT);
                     src_is_temp = true;
                 } else if (is_float(src_op)) {
-                    float *val = malloc(sizeof(float));
+                    float *val = (float *)malloc(sizeof(float));
                     *val = atof(src_op);
                     src_word = word_create(val, WFLOAT);
                     src_is_temp = true;
@@ -934,26 +814,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (dest_word->type == WINT && src_word.type == WINT) {
                     int result = *(int*)dest_word->value + *(int*)src_word.value;
                     free(dest_word->value);
-                    int *new_val = malloc(sizeof(int));
+                    int *new_val = (int *)malloc(sizeof(int));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
                     float result = *(float*)dest_word->value + *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
                     float result = (float)*(int*)dest_word->value + *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                     dest_word->type = WFLOAT;
                 } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
                     float result = *(float*)dest_word->value + (float)*(int*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else {
@@ -972,11 +852,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 w2 = xstack_pop(&xpu->stack);
                 
                 if (w1.type == WINT && w2.type == WINT) {
-                    int_result = malloc(sizeof(int));
+                    int_result = (int *)malloc(sizeof(int));
                     *int_result = *(int*)w2.value - *(int*)w1.value;
                     xstack_push(&xpu->stack, word_create(int_result, WINT));
                 } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                    float_result = malloc(sizeof(float));
+                    float_result = (float *)malloc(sizeof(float));
                     *float_result = *(float*)w2.value - *(float*)w1.value;
                     xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
                 }
@@ -1015,12 +895,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     }
                     src_word = xpu->registers[src_reg].reg_value;
                 } else if (is_number(src_op)) {
-                    int *val = malloc(sizeof(int));
+                    int *val = (int *)malloc(sizeof(int));
                     *val = atoi(src_op);
                     src_word = word_create(val, WINT);
                     src_is_temp = true;
                 } else if (is_float(src_op)) {
-                    float *val = malloc(sizeof(float));
+                    float *val = (float *)malloc(sizeof(float));
                     *val = atof(src_op);
                     src_word = word_create(val, WFLOAT);
                     src_is_temp = true;
@@ -1032,26 +912,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (dest_word->type == WINT && src_word.type == WINT) {
                     int result = *(int*)dest_word->value - *(int*)src_word.value;
                     free(dest_word->value);
-                    int *new_val = malloc(sizeof(int));
+                    int *new_val = (int *)malloc(sizeof(int));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
                     float result = *(float*)dest_word->value - *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
                     float result = (float)*(int*)dest_word->value - *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                     dest_word->type = WFLOAT;
                 } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
                     float result = *(float*)dest_word->value - (float)*(int*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else {
@@ -1070,11 +950,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 w2 = xstack_pop(&xpu->stack);
                 
                 if (w1.type == WINT && w2.type == WINT) {
-                    int_result = malloc(sizeof(int));
+                    int_result = (int *)malloc(sizeof(int));
                     *int_result = *(int*)w2.value * *(int*)w1.value;
                     xstack_push(&xpu->stack, word_create(int_result, WINT));
                 } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                    float_result = malloc(sizeof(float));
+                    float_result = (float *)malloc(sizeof(float));
                     *float_result = *(float*)w2.value * *(float*)w1.value;
                     xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
                 }
@@ -1113,12 +993,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     }
                     src_word = xpu->registers[src_reg].reg_value;
                 } else if (is_number(src_op)) {
-                    int *val = malloc(sizeof(int));
+                    int *val = (int *)malloc(sizeof(int));
                     *val = atoi(src_op);
                     src_word = word_create(val, WINT);
                     src_is_temp = true;
                 } else if (is_float(src_op)) {
-                    float *val = malloc(sizeof(float));
+                    float *val = (float *)malloc(sizeof(float));
                     *val = atof(src_op);
                     src_word = word_create(val, WFLOAT);
                     src_is_temp = true;
@@ -1130,26 +1010,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (dest_word->type == WINT && src_word.type == WINT) {
                     int result = *(int*)dest_word->value * *(int*)src_word.value;
                     free(dest_word->value);
-                    int *new_val = malloc(sizeof(int));
+                    int *new_val = (int *)malloc(sizeof(int));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
                     float result = *(float*)dest_word->value * *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
                     float result = (float)*(int*)dest_word->value * *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                     dest_word->type = WFLOAT;
                 } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
                     float result = *(float*)dest_word->value * (float)*(int*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else {
@@ -1173,7 +1053,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         free(w1.value);
                         free(w2.value);
                     } else {
-                        int_result = malloc(sizeof(int));
+                        int_result = (int *)malloc(sizeof(int));
                         *int_result = *(int*)w2.value / *(int*)w1.value;
                         xstack_push(&xpu->stack, word_create(int_result, WINT));
                     }
@@ -1183,7 +1063,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         free(w1.value);
                         free(w2.value);
                     } else {
-                        float_result = malloc(sizeof(float));
+                        float_result = (float *)malloc(sizeof(float));
                         *float_result = *(float*)w2.value / *(float*)w1.value;
                         xstack_push(&xpu->stack, word_create(float_result, WFLOAT));
                     }
@@ -1223,12 +1103,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     }
                     src_word = xpu->registers[src_reg].reg_value;
                 } else if (is_number(src_op)) {
-                    int *val = malloc(sizeof(int));
+                    int *val = (int *)malloc(sizeof(int));
                     *val = atoi(src_op);
                     src_word = word_create(val, WINT);
                     src_is_temp = true;
                 } else if (is_float(src_op)) {
-                    float *val = malloc(sizeof(float));
+                    float *val = (float *)malloc(sizeof(float));
                     *val = atof(src_op);
                     src_word = word_create(val, WFLOAT);
                     src_is_temp = true;
@@ -1250,26 +1130,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (dest_word->type == WINT && src_word.type == WINT) {
                     int result = *(int*)dest_word->value / *(int*)src_word.value;
                     free(dest_word->value);
-                    int *new_val = malloc(sizeof(int));
+                    int *new_val = (int *)malloc(sizeof(int));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WFLOAT && src_word.type == WFLOAT) {
                     float result = *(float*)dest_word->value / *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else if (dest_word->type == WINT && src_word.type == WFLOAT) {
                     float result = (float)*(int*)dest_word->value / *(float*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                     dest_word->type = WFLOAT;
                 } else if (dest_word->type == WFLOAT && src_word.type == WINT) {
                     float result = *(float*)dest_word->value / (float)*(int*)src_word.value;
                     free(dest_word->value);
-                    float *new_val = malloc(sizeof(float));
+                    float *new_val = (float *)malloc(sizeof(float));
                     *new_val = result;
                     dest_word->value = new_val;
                 } else {
@@ -1292,7 +1172,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     free(w1.value);
                     free(w2.value);
                 } else {
-                    int_result = malloc(sizeof(int));
+                    int_result = (int *)malloc(sizeof(int));
                     *int_result = *(int*)w2.value % *(int*)w1.value;
                     xstack_push(&xpu->stack, word_create(int_result, WINT));
                 }
@@ -1306,7 +1186,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w2 = xstack_pop(&xpu->stack);
             
             if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
+                int_result = (int *)malloc(sizeof(int));
                 *int_result = *(int*)w2.value & *(int*)w1.value;
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
@@ -1319,7 +1199,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w2 = xstack_pop(&xpu->stack);
             
             if (w1.type == WINT && w2.type == WINT) {
-                int_result = malloc(sizeof(int));
+                int_result = (int *)malloc(sizeof(int));
                 *int_result = *(int*)w2.value | *(int*)w1.value;
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
@@ -1346,7 +1226,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             
             if (w1.type == WINT) {
-                int_result = malloc(sizeof(int));
+                int_result = (int *)malloc(sizeof(int));
                 *int_result = ~(*(int*)w1.value);
                 xstack_push(&xpu->stack, word_create(int_result, WINT));
             }
@@ -1357,7 +1237,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 0;
             
             if (w1.type == w2.type) {
@@ -1377,7 +1257,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 1;
             
             if (w1.type == w2.type) {
@@ -1397,7 +1277,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 0;
             
             if (w1.type == w2.type) {
@@ -1415,7 +1295,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 0;
             
             if (w1.type == w2.type) {
@@ -1435,7 +1315,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 0;
             
             if (w1.type == w2.type) {
@@ -1455,7 +1335,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             w2 = xstack_pop(&xpu->stack);
             
-            int_result = malloc(sizeof(int));
+            int_result = (int *)malloc(sizeof(int));
             *int_result = 0;
             
             if (w1.type == w2.type) {
@@ -1532,7 +1412,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 }
                 
                 if (target < vm->program.instructions_count) {
-                    int *return_address = malloc(sizeof(int));
+                    int *return_address = (int *)malloc(sizeof(int));
                     *return_address = xpu->ip + 1;
                     xpu->registers[REG_RA].reg_value = word_create(return_address, WINT);
                     xpu->ip = target;
@@ -1616,11 +1496,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case IDUP:
             w1 = xstack_peek(&xpu->stack, 0);
             if (w1.type == WINT) {
-                int *value = malloc(sizeof(int));
+                int *value = (int *)malloc(sizeof(int));
                 *value = *(int*)w1.value;
                 xstack_push(&xpu->stack, word_create(value, WINT));
             } else if (w1.type == WFLOAT) {
-                float *value = malloc(sizeof(float));
+                float *value = (float *)malloc(sizeof(float));
                 *value = *(float*)w1.value;
                 xstack_push(&xpu->stack, word_create(value, WFLOAT));
             } else if (w1.type == WCHARP) {
@@ -1647,7 +1527,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     int n = atoi(operand);
                     if (n <= 0 || n >= xpu->stack.count) break;
                     
-                    Word *temp = malloc(sizeof(Word) * n);
+                    Word *temp = (Word *)malloc(sizeof(Word) * n);
                     for (int i = 0; i < n; i++) {
                         temp[i] = xstack_pop(&xpu->stack);
                     }
@@ -1674,7 +1554,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     int n = atoi(operand);
                     if (n <= 0 || n >= xpu->stack.count) break;
                     
-                    Word *temp = malloc(sizeof(Word) * n);
+                    Word *temp = (Word *)malloc(sizeof(Word) * n);
                     for (int i = 0; i < n; i++) {
                         temp[i] = xstack_pop(&xpu->stack);
                     }
@@ -1717,7 +1597,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     char *str2 = (char *)w2.value;
                     size_t len1 = strlen(str1);
                     size_t len2 = strlen(str2);
-                    char *merged = malloc(len1 + len2 + 2);
+                    char *merged = (char *)malloc(len1 + len2 + 2);
                     if (!merged) {
                         fprintf(stderr, "Error: Memory allocation failed for IMERGE\n");
                         free(str1);
@@ -1753,7 +1633,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 if (rbx->reg_value.type == WCHARP) {
                                     add_flag(vm, FLAG_CMD);
                                     int r = system((char *)rbx->reg_value.value);
-                                    printf("[XCALL] %s returned %d\n", (char*)rbx->reg_value.value);
+                                    printf("[XCALL] %s returned %d\n", (char*)rbx->reg_value.value, r);
                                 }                    
         
                             } break;
@@ -1770,7 +1650,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     case 5: { // strlen
                                 if (rbx->reg_value.type == WCHARP) {
                                     int r = strlen((char *)rbx->reg_value.value);
-                                    int *result = malloc(sizeof(int));
+                                    int *result = (int *)malloc(sizeof(int));
                                     *result = r;
                                     xstack_push(&xpu->stack, word_create(result, WINT));
                                 }
@@ -1932,24 +1812,24 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 										break;
 								}
 						} else if (is_number(operand1)) {
-								int *value = malloc(sizeof(int));
+								int *value = (int *)malloc(sizeof(int));
 								*value = atoi(operand1);
 								val1 = word_create(value, WINT);
 								free_val1 = true;
 						} else if (is_float(operand1)) {
-								float *value = malloc(sizeof(float));
+								float *value = (float *)malloc(sizeof(float));
 								*value = atof(operand1);
 								val1 = word_create(value, WFLOAT);
 								free_val1 = true;
 						} else if (is_string(operand1)) {
 								size_t len = strlen(operand1) - 2;
-								char *value = malloc(len + 1);
+								char *value = (char *)malloc(len + 1);
 								strncpy(value, operand1 + 1, len);
 								value[len] = '\0';
 								val1 = word_create(value, WCHARP);
 								free_val1 = true;
 						} else if (operand1[0] == '\'' && strlen(operand1) >= 2) {
-								char *value = malloc(sizeof(char));
+								char *value = (char *)malloc(sizeof(char));
 								*value = operand1[1];
 								val1 = word_create(value, W_CHAR);
 								free_val1 = true;
@@ -1968,24 +1848,24 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 										break;
 								}
 						} else if (is_number(operand2)) {
-								int *value = malloc(sizeof(int));
+								int *value = (int *)malloc(sizeof(int));
 								*value = atoi(operand2);
 								val2 = word_create(value, WINT);
 								free_val2 = true;
 						} else if (is_float(operand2)) {
-								float *value = malloc(sizeof(float));
+								float *value = (float *)malloc(sizeof(float));
 								*value = atof(operand2);
 								val2 = word_create(value, WFLOAT);
 								free_val2 = true;
 						} else if (is_string(operand2)) {
 								size_t len = strlen(operand2) - 2;
-								char *value = malloc(len + 1);
+								char *value = (char *)malloc(len + 1);
 								strncpy(value, operand2 + 1, len);
 								value[len] = '\0';
 								val2 = word_create(value, WCHARP);
 								free_val2 = true;
 						} else if (operand2[0] == '\'' && strlen(operand2) >= 2) {
-								char *value = malloc(sizeof(char));
+								char *value = (char *)malloc(sizeof(char));
 								*value = operand2[1];
 								val2 = word_create(value, W_CHAR);
 								free_val2 = true;
@@ -1995,7 +1875,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 								break;
 						}
 						
-						int *result = malloc(sizeof(int));
+						int *result = (int *)malloc(sizeof(int));
 						*result = 0;
 						
 						if (val1.type == val2.type) {
@@ -2049,7 +1929,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                     address = (char*)address + offset;
                                 }
                                 if (address) {
-                                    char *value = malloc(sizeof(char));
+                                    char *value = (char *)malloc(sizeof(char));
                                     *value = *(char*)address;
                                     xstack_push(&xpu->stack, word_create(value, W_CHAR));
                                 } else {
@@ -2058,7 +1938,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                                 }
                             } else if (w.type == WCHARP) {
                                 char *str = (char*)w.value;
-                                char *value = malloc(sizeof(char));
+                                char *value = (char *)malloc(sizeof(char));
                                 *value = *str;
                                 xstack_push(&xpu->stack, word_create(value, W_CHAR));
                             } else {
@@ -2070,7 +1950,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     } else if (is_pointer(operand)) {
                         void *address = get_pointer(operand);
                         if (address) {
-                            char *value = malloc(sizeof(char));
+                            char *value = (char *)malloc(sizeof(char));
                             *value = *(char*)address;
                             xstack_push(&xpu->stack, word_create(value, W_CHAR));
                         } else {
@@ -2090,7 +1970,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                             operand = operand + offset;
                         }
                         if (operand != NULL && *operand != '\0') {
-                            char *value = malloc(sizeof(char));
+                            char *value = (char *)malloc(sizeof(char));
                             *value = *operand;
                             xstack_push(&xpu->stack, word_create(value, W_CHAR));
                         } else {
@@ -2107,7 +1987,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                             int offset = *(int*)rcx->reg_value.value;
                             address = (char*)address + offset;
                         }
-                        char *value = malloc(sizeof(char));
+                        char *value = (char *)malloc(sizeof(char));
                         *value = *(char*)address;
                         xstack_push(&xpu->stack, word_create(value, W_CHAR));
                     } else if (w.type == WCHARP) {
@@ -2117,7 +1997,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                             str = str + offset;
                         }
                         if (str!= NULL && *str!= '\0') {
-                            char *value = malloc(sizeof(char));
+                            char *value = (char *)malloc(sizeof(char));
                             *value = *str;
                             xstack_push(&xpu->stack, word_create(value, W_CHAR));
                         } else {
@@ -2128,6 +2008,92 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     }
                 }
             } break;
+        case ICPYMEM: {
+            w1 = xstack_pop(&xpu->stack);
+            w2 = xstack_pop(&xpu->stack);
+            Word n = xstack_pop(&xpu->stack);
+            if ((w1.type == WPOINTER || w1.type == WCHARP) && (w2.type == WPOINTER || w2.type == WCHARP) && n.type == WINT) {
+                memcpy(w1.value, w2.value, *(int *)n.value);
+            }
+                      } break;
+        case ISTOREB: {
+            void *address = NULL;
+            Word addr_word;
+            int using_stack_addr = 0;
+        
+            if (instr->operands.size >= 1) {
+                char *dest_operand = vector_get_str(&instr->operands, 0);
+                
+                if (is_register(dest_operand)) {
+                    XRegisters reg = register_name_to_enum(dest_operand);
+                    if (reg == -1) {
+                        fprintf(stderr, "Error: Invalid register '%s' for ISTOREB\n", dest_operand);
+                        break;
+                    }
+                    addr_word = xpu->registers[reg].reg_value;
+                } 
+                else if (is_pointer(dest_operand)) {
+                    addr_word.value = get_pointer(dest_operand);
+                    addr_word.type = WPOINTER;
+                }
+                else if (is_string(dest_operand)) {
+                    size_t len = strlen(dest_operand) - 2;
+                    addr_word.value = (void*)(dest_operand + 1);
+                    addr_word.type = WCHARP;
+                }
+                else {
+                    fprintf(stderr, "Error: ISTOREB invalid operand '%s'\n", dest_operand);
+                    break;
+                }
+        
+                if (addr_word.type != WPOINTER && addr_word.type != WCHARP) {
+                    fprintf(stderr, "Error: ISTOREB target must be pointer/string (got %d)\n", addr_word.type);
+                    break;
+                }
+                address = addr_word.value;
+            } 
+            else {
+                addr_word = xstack_pop(&xpu->stack);
+                if (addr_word.type != WPOINTER && addr_word.type != WCHARP) {
+                    fprintf(stderr, "Error: ISTOREB requires pointer/string on stack\n");
+                    free(addr_word.value);
+                    break;
+                }
+                address = addr_word.value;
+                using_stack_addr = 1;
+            }
+        
+            if (rcx->reg_value.type == WINT) {
+                int offset = *(int*)rcx->reg_value.value;
+                address = (char*)address + offset;
+            }
+        
+            Word value_word = xstack_pop(&xpu->stack);
+            char value_byte;
+        
+            if (value_word.type == W_CHAR) {
+                value_byte = *(char*)value_word.value;
+            }
+            else if (value_word.type == WCHARP && value_word.value != NULL) {
+                value_byte = *(char*)value_word.value;
+            }
+            else if (value_word.type == WINT) {
+                value_byte = (char)(*(int*)value_word.value);
+            }
+            else {
+                fprintf(stderr, "Error: ISTOREB requires char/string/int on stack (got %d)\n", 
+                       value_word.type);
+                free(value_word.value);
+                if (using_stack_addr) free(addr_word.value);
+                break;
+            }
+        
+            *((char*)address) = value_byte;
+        
+            free(value_word.value);
+            if (using_stack_addr) free(addr_word.value);
+            
+        } break; 
         case IHALT:
             return;
     }
@@ -2294,7 +2260,7 @@ error:
 void free_program_instructions(Program *program, size_t count) {
     for (size_t i = 0; i < count; i++) {
         for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
-            char **operand_ptr = vector_get(&program->instructions[i].operands, j);
+            char **operand_ptr = *(char ***)vector_get(&program->instructions[i].operands, j);
             free(*operand_ptr);
         }
         vector_free(&program->instructions[i].operands);
@@ -2326,7 +2292,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     if (fread(&filename_len, sizeof(size_t), 1, fp) != 1)
         goto error_close;
     
-    char *filename = malloc(filename_len + 1);
+    char *filename = (char *)malloc(filename_len + 1);
     if (!filename)
         goto error_close;
     
@@ -2342,7 +2308,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     if (fread(&instructions_count, sizeof(size_t), 1, fp) != 1)
         goto error_close;
 
-    program->instructions = malloc(sizeof(InstructionData) * instructions_count);
+    program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
     if (!program->instructions)
         goto error_close;
     
@@ -2370,7 +2336,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
                 goto error_instructions;
             }
             
-            char *temp_operand = malloc(operand_len + 1);
+            char *temp_operand = (char *)malloc(operand_len + 1);
             if (!temp_operand) {
                 vector_free(&operands);
                 goto error_instructions;
@@ -2402,7 +2368,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     if (fread(&labels_count, sizeof(size_t), 1, fp) != 1)
         goto error_instructions;
 
-    program->labels = malloc(sizeof(Label) * labels_count);
+    program->labels = (Label *)malloc(sizeof(Label) * labels_count);
     if (!program->labels)
         goto error_instructions;
     
@@ -2414,7 +2380,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
         if (fread(&name_len, sizeof(size_t), 1, fp) != 1)
             goto error_labels;
         
-        char *name = malloc(name_len + 1);
+        char *name = (char *)malloc(name_len + 1);
         if (!name)
             goto error_labels;
         
