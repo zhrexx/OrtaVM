@@ -149,7 +149,7 @@ void vector_free(Vector *vector) {
     if (vector->element_size == sizeof(char *)) {
         for (size_t i = 0; i < vector->size; i++) {
             char **element = (char **)vector_get(vector, i);
-            free(*element);
+//            free(*element);
         }
     } else if (vector->element_size == sizeof(Vector)) {
         for (size_t i = 0; i < vector->size; i++) {
