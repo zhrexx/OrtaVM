@@ -7,6 +7,15 @@
 
 #define MAX_INPUT_LENGTH 1024
 
+Instruction parse_instruction(const char *instruction) {
+    for (size_t i = 0; i < INSTRUCTION_COUNT; i++) {
+        if (strcmp(instructions[i].name, instruction) == 0) {
+            return instructions[i].instruction;
+        }
+    }
+    return (Instruction)-1;
+}
+
 char* readline(const char* prompt) {
     printf("%s", prompt);
     fflush(stdout);

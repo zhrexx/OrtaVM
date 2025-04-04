@@ -154,22 +154,22 @@ void cmd_registers() {
         
         switch (w.type) {
             case WINT:
-                printf("INT: %-10d\n", *(int*)w.value);
+                printf("INT: %-10d\n", w.as_int);
                 break;
             case WFLOAT:
-                printf("FLT: %-10.2f\n", *(float*)w.value);
+                printf("FLT: %-10.2f\n", w.as_float);
                 break;
             case WCHARP:
-                printf("STR: %-10s\n", (char*)w.value);
+                printf("STR: %-10s\n", w.as_string);
                 break;
             case W_CHAR:
-                printf("CHR: %-10c\n", *(char*)w.value);
+                printf("CHR: %-10c\n", w.as_char);
                 break;
             case WPOINTER:
-                printf("PTR: %-10p\n", w.value);
+                printf("PTR: %-10p\n", w.as_pointer);
                 break;
             case WBOOL:
-                printf("BOOL: %-9s\n", (*(int*)w.value) ? "true" : "false");
+                printf("BOOL: %-9s\n", (w.as_bool) ? "true" : "false");
                 break;
             default:
                 printf("%-14s\n", "EMPTY");

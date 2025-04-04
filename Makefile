@@ -1,23 +1,36 @@
 CC = gcc
-CFLAGS = -g -ggdb
+CFLAGS = -g -ggdb 
+LDFLAGS = -L. -lxlib
+SRCDIR = src
+BINDIR = bin
 
-.PHONY: all
-all: orta fcfx xd repl 
+TARGETS = orta fcfx xd repl
 
-orta: src/orta.c src/orta.h
-	$(CC) $(CFLAGS) src/orta.c -o orta
+.PHONY: all clean release debug dir
 
-fcfx: src/fcfx.c src/orta.h
-	$(CC) $(CFLAGS) src/fcfx.c -o fcfx
+all: dir $(TARGETS)
+
+dir:
+	@mkdir -p $(BINDIR)
+
+orta: $(SRCDIR)/orta.c $(SRCDIR)/orta.h
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@ 
+
+fcfx: $(SRCDIR)/fcfx.c $(SRCDIR)/orta.h
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@
+
+xd: $(SRCDIR)/xd.c $(SRCDIR)/orta.h
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@
+
+repl: $(SRCDIR)/repl.c $(SRCDIR)/orta.h
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@
 
 clean:
-	rm *.pre.x *.xbin xtoa fcfx orta
-
-xd: src/xd.c
-	$(CC) $(CFLAGS) src/xd.c -o xd
-
-repl: src/repl.c
-	$(CC) $(CFLAGS) src/repl.c -o repl
+	rm -rf $(BINDIR)
+	rm -f *.pre.x *.xbin xtoa
 
 release:
-	xxd -i std.x src/std.h
+	xxd -i std.x > $(SRCDIR)/std.h
+
+debug: CFLAGS += -DDEBUG
+debug: all
