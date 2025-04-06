@@ -1,10 +1,10 @@
 CC = gcc
 CFLAGS = -g -ggdb 
-LDFLAGS = -L. -lxlib
+LDFLAGS = -L. -lxlib 
 SRCDIR = src
 BINDIR = bin
 
-TARGETS = orta fcfx xd repl
+TARGETS = orta fcfx xd repl xtoa
 
 .PHONY: all clean release debug dir
 
@@ -25,6 +25,8 @@ xd: $(SRCDIR)/xd.c $(SRCDIR)/orta.h
 repl: $(SRCDIR)/repl.c $(SRCDIR)/orta.h
 	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@
 
+xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $(BINDIR)/$@
 clean:
 	rm -rf $(BINDIR)
 	rm -f *.pre.x *.xbin xtoa

@@ -479,9 +479,11 @@ char *hmerge(InstructionData *instr) {
         char *rcharp = *(char **)elem;
         size_t len = strlen(rcharp);
         if (len >= 1) {
-            rcharp[len-1] = '\0';
-            strcat(string, rcharp+1);
+            char *temp = strdup(rcharp);
+            temp[len-1] = '\0';
+            strcat(string, temp + 1);
             strcat(string, " ");
+            free(temp);
         }
     }
     return string;
@@ -1510,6 +1512,156 @@ error_close:
     fclose(fp);
     return 0;
 }
+
+int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data_size) {
+    Program *program = &vm->program;
+    size_t offset = 0;
+    
+    if (offset + sizeof(OrtaMeta) > data_size)
+        return 0;
+    memcpy(&vm->meta, data + offset, sizeof(OrtaMeta));
+    offset += sizeof(OrtaMeta);
+
+    size_t filename_len;
+    if (offset + sizeof(size_t) > data_size)
+        return 0;
+    memcpy(&filename_len, data + offset, sizeof(size_t));
+    offset += sizeof(size_t);
+    
+    if (offset + filename_len > data_size)
+        return 0;
+    char *filename = (char *)malloc(filename_len + 1);
+    if (!filename)
+        return 0;
+    memcpy(filename, data + offset, filename_len);
+    filename[filename_len] = '\0';
+    program->filename = strdup(filename);
+    free(filename);
+    offset += filename_len;
+
+    size_t instructions_count;
+    if (offset + sizeof(size_t) > data_size)
+        return 0;
+    memcpy(&instructions_count, data + offset, sizeof(size_t));
+    offset += sizeof(size_t);
+
+    program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
+    if (!program->instructions)
+        return 0;
+    
+    program->instructions_count = instructions_count;
+    program->instructions_capacity = instructions_count;
+
+    size_t i;
+    for (i = 0; i < instructions_count; i++) {
+        Instruction opcode;
+        if (offset + sizeof(Instruction) > data_size)
+            goto error_instructions;
+        memcpy(&opcode, data + offset, sizeof(Instruction));
+        offset += sizeof(Instruction);
+
+        size_t operands_count;
+        if (offset + sizeof(size_t) > data_size)
+            goto error_instructions;
+        memcpy(&operands_count, data + offset, sizeof(size_t));
+        offset += sizeof(size_t);
+
+        Vector operands;
+        vector_init(&operands, 10, sizeof(char*));
+        
+        size_t j;
+        for (j = 0; j < operands_count; j++) {
+            size_t operand_len;
+            if (offset + sizeof(size_t) > data_size) {
+                vector_free(&operands);
+                goto error_instructions;
+            }
+            memcpy(&operand_len, data + offset, sizeof(size_t));
+            offset += sizeof(size_t);
+            
+            if (offset + operand_len > data_size) {
+                vector_free(&operands);
+                goto error_instructions;
+            }
+            char *temp_operand = (char *)malloc(operand_len + 1);
+            if (!temp_operand) {
+                vector_free(&operands);
+                goto error_instructions;
+            }
+            
+            memcpy(temp_operand, data + offset, operand_len);
+            temp_operand[operand_len] = '\0';
+            offset += operand_len;
+            
+            char *persistent_operand = strdup(temp_operand);
+            if (!persistent_operand) {
+                free(temp_operand);
+                vector_free(&operands);
+                goto error_instructions;
+            }
+            
+            vector_push(&operands, &persistent_operand);
+            free(temp_operand);
+        }
+
+        program->instructions[i].opcode = opcode;
+        program->instructions[i].operands = operands;
+    }
+
+    size_t labels_count;
+    if (offset + sizeof(size_t) > data_size)
+        goto error_instructions;
+    memcpy(&labels_count, data + offset, sizeof(size_t));
+    offset += sizeof(size_t);
+
+    program->labels = (Label *)malloc(sizeof(Label) * labels_count);
+    if (!program->labels)
+        goto error_instructions;
+    
+    program->labels_count = labels_count;
+    program->labels_capacity = labels_count;
+
+    for (i = 0; i < labels_count; i++) {
+        size_t name_len;
+        if (offset + sizeof(size_t) > data_size)
+            goto error_labels;
+        memcpy(&name_len, data + offset, sizeof(size_t));
+        offset += sizeof(size_t);
+        
+        if (offset + name_len > data_size)
+            goto error_labels;
+        char *name = (char *)malloc(name_len + 1);
+        if (!name)
+            goto error_labels;
+        
+        memcpy(name, data + offset, name_len);
+        name[name_len] = '\0';
+        offset += name_len;
+
+        size_t address;
+        if (offset + sizeof(size_t) > data_size) {
+            free(name);
+            goto error_labels;
+        }
+        memcpy(&address, data + offset, sizeof(size_t));
+        offset += sizeof(size_t);
+
+        program->labels[i].name = strdup(name);
+        program->labels[i].address = address;
+        free(name);
+    }
+
+    return 1;
+
+error_labels:
+    free_program_labels(program, i);
+    
+error_instructions:
+    free_program_instructions(program, i);
+    
+    return 0;
+}
+
 
 void execute_program(OrtaVM *vm) {
     XPU *xpu = &vm->xpu;
