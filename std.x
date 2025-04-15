@@ -63,6 +63,26 @@ cregs:
     mov 0 r9
     ret
 
+; Reserver n bytes
+; rax = n
+; returns rbx a string with n bytes (char sequence and char is 1 byte)
+rb: 
+    mov 0 r8
+    mov "" rbx 
+    rb_loop:
+    ; body
+    push rbx 
+    push " "
+    merge 
+    pop rbx
+    ; body end 
+    inc r8
+    push r8
+    push rax
+    lt
+    jmpif rb_loop
+    ret
+
 
 
 
