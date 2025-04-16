@@ -1,9 +1,5 @@
-#include "std.x"
+;#include "std.x"
 
 __entry:
-    print "Hello, World!"
-    ret
-
-
-
-
+    push "Hello, World"
+    print

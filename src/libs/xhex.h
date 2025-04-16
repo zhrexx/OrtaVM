@@ -129,7 +129,6 @@ static void xhex_print_hex_dump(xhex_options_t *options) {
                 }
             } else {
                 if (options->c_style_output) {
-                    // Skip extra spaces in C output
                 } else {
                     fprintf(options->output, "   ");
                     if (options->group_size > 0 && (i + 1) % options->group_size == 0) {

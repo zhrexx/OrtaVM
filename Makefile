@@ -33,6 +33,9 @@ repl: $(SRCDIR)/repl.c $(SRCDIR)/orta.h
 xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
 	$(COMPILE)
 
+liborta.so: src/orta.h src/wrapper.c
+	gcc -fPIC -shared -o $(BINDIR)/liborta.so src/wrapper.c
+
 clean:
 	rm -rf $(BINDIR)
 	rm -f *.pre.x *.xbin xtoa
