@@ -1,6 +1,6 @@
 // TODO: add named memory
-// FIX: var and getvar and setvar
-// FIX: MEMORY SEGFAULT
+// FIX: variables in xbins
+
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -331,7 +331,7 @@ void program_init(Program *program, const char *filename) {
     program->memory_capacity = MEMORY_CAPACITY;
     program->memory_used = 0;
     program->dead_memory = malloc(1);
-    vector_init(&program->variables, 5, sizeof(Word));
+    vector_init(&program->variables, 5, sizeof(Variable));
 }
 
 void add_label(Program *program, const char *name, size_t address) {
@@ -379,6 +379,16 @@ void program_free(Program *program) {
     program->memory = NULL;
     free(program->dead_memory);
     program->dead_memory = NULL;
+
+    VECTOR_FOR_EACH(Variable, var, &program->variables) {
+        free(var->name);
+        if (var->value.type == WCHARP) {
+            free(var->value.as_string);
+        } else if (var->value.type == WPOINTER) {
+            free(var->value.as_pointer);
+        }
+    }
+    vector_free(&program->variables);
 }
 
 OrtaVM ortavm_create(const char *filename) {
@@ -1472,34 +1482,78 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 			}
 		} break;
         case IVAR: {
-            Variable *variable = malloc(sizeof(Variable));
-            variable->name = vector_get_str(&instr->operands, 0);
-            variable->value = (Word){.type = WPOINTER, .as_pointer = NULL};
-            vector_push(&vm->program.variables, variable); 
-                   } break; 
-        case ISETVAR: {
-            if (vm->xpu.stack.count > 0) {
-                Variable *variable = NULL;
-                VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
-                    if (var->name == vector_get_str(&instr->operands, 0)) {
-                        variable = var;
-                    }
-                }
-                Word word = xstack_pop(&vm->xpu.stack);
-                if (variable != NULL) variable->value = word;
+            if (instr->operands.size < 1) {
+                fprintf(stderr, "Error: 'var' requires a name\n");
+                break;
             }
-                      } break; 
-        case IGETVAR: { 
-                    Variable *variable = NULL;
-                    VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
-                        if (var->name == vector_get_str(&instr->operands, 0)) {
-                            variable = var;
-                        }
-                    }
-                    
-                    if (variable != NULL) xstack_push(&vm->xpu.stack, variable->value);
-                      } break;
+            char *name = vector_get_str(&instr->operands, 0);
+            Variable var;
+            var.name = strdup(name);
+            var.value.type = WPOINTER;
+            var.value.as_pointer = NULL;
+            vector_push(&vm->program.variables, &var);
+        } break;
+        case ISETVAR: {
+            if (instr->operands.size < 1) {
+                fprintf(stderr, "Error: 'setvar' requires a variable name\n");
+                break;
+            }
+            char *var_name = vector_get_str(&instr->operands, 0);
+            if (vm->xpu.stack.count == 0) {
+                fprintf(stderr, "Error: Stack underflow in 'setvar'\n");
+                break;
+            }
+            Word new_value = xstack_pop(&vm->xpu.stack);
 
+            Variable *target_var = NULL;
+            VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
+                if (strcmp(var->name, var_name) == 0) {
+                    target_var = var;
+                    break;
+                }
+            }
+
+            if (target_var) {
+                if (target_var->value.type == WCHARP) {
+                    free(target_var->value.as_string);
+                } else if (target_var->value.type == WPOINTER) {
+                    free(target_var->value.as_pointer);
+                }
+
+                if (new_value.type == WCHARP) {
+                    target_var->value.type = WCHARP;
+                    target_var->value.as_string = strdup(new_value.as_string);
+                } else {
+                    target_var->value = new_value;
+                }
+            } else {
+                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+            }
+        } break;
+
+        case IGETVAR: {
+            if (instr->operands.size < 1) {
+                fprintf(stderr, "Error: 'getvar' requires a variable name\n");
+                break;
+            }
+            char *var_name = vector_get_str(&instr->operands, 0);
+            Variable *found_var = NULL;
+            VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
+                if (strcmp(var->name, var_name) == 0) {
+                    found_var = var;
+                    break;
+                }
+            }
+            if (found_var) {
+                Word value = found_var->value;
+                if (value.type == WCHARP) {
+                    value.as_string = strdup(value.as_string);
+                }
+                xstack_push(&vm->xpu.stack, value);
+            } else {
+                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+            }
+        } break;
 
         case IHALT:
             xpu->ip = vm->program.instructions_count;
