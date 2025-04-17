@@ -9,3 +9,6 @@ __entry:
 
     push "Hello, World"
     print
+
+    alloc 10
+    free

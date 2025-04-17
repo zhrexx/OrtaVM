@@ -220,7 +220,7 @@ typedef enum {
     IRET, ILOAD, ISTORE, IPRINT, IDUP, ISWAP, IDROP, IROTL, IROTR,
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM, ISYSCALL,
-    IVAR, ISETVAR, IGETVAR
+    IVAR, ISETVAR, IGETVAR, IFREE
 } Instruction;
 
 typedef enum {
@@ -262,7 +262,8 @@ static const InstructionInfo instructions[] = {
     {"cmp", ICMP, {ARG_MIN, 1, 1}}, {"readmem", IREADMEM, {ARG_MIN, 1, 1}},
     {"cpymem", ICPYMEM, {ARG_EXACT, 0, 0}}, {"syscall", ISYSCALL, {ARG_MIN, 1, 1}},
     {"writemem", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
-    {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}}
+    {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
+    {"free", IFREE, {ARG_MIN, 0, 0}}
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -1553,6 +1554,53 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
             }
         } break;
+        
+		case IFREE: {
+				void *ptr_to_free = NULL;
+				
+				if (instr->operands.size >= 1) {
+						char *operand = vector_get_str(&instr->operands, 0);
+						
+						if (is_register(operand)) {
+								XRegisters reg = register_name_to_enum(operand);
+								if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+										ptr_to_free = regs[reg].reg_value.as_pointer;
+										
+										void *memory_start = vm->program.memory;
+										void *memory_end = (char*)memory_start + vm->program.memory_capacity;
+										
+										if (ptr_to_free >= memory_start && ptr_to_free < memory_end) {
+												regs[reg].reg_value.as_pointer = NULL;
+										} else {
+												free(ptr_to_free);
+												regs[reg].reg_value.as_pointer = NULL;
+										}
+								}
+						} else if (is_pointer(operand)) {
+								ptr_to_free = get_pointer(operand);
+								
+								void *memory_start = vm->program.memory;
+								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
+								
+								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
+										free(ptr_to_free);
+								}
+						}
+				} else {
+						Word w = xstack_pop(&xpu->stack);
+						if (w.type == WPOINTER) {
+								ptr_to_free = w.as_pointer;
+								
+								void *memory_start = vm->program.memory;
+								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
+								
+								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
+										free(ptr_to_free);
+								}
+						}
+				}
+				break;
+		}
 
         case IHALT:
             vm->program.halted = true;
