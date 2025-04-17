@@ -5,5 +5,6 @@ __entry:
     push 10
     setvar a
     getvar a
+    print
     push "Hello, World"
     print

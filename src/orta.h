@@ -1,6 +1,4 @@
 // TODO: add named memory
-// FIX: variables in xbins
-
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -1666,6 +1664,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     program->memory = malloc(MEMORY_CAPACITY);
     program->memory_capacity = MEMORY_CAPACITY;
     program->memory_used = 0;
+    vector_init(&program->variables, 5, sizeof(Variable));
 
     if (fread(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
         goto error_close;
