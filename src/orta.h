@@ -299,6 +299,7 @@ typedef struct {
     void *dead_memory; // would be used to mark dead memory somewhere
     
     Vector variables;
+    bool halted;
 } Program;
 
 typedef enum {
@@ -947,15 +948,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (is_number(operand)) target = atoi(operand);
             else if (is_label_reference(operand)) find_label(&vm->program, operand, &target);
             if (target < vm->program.instructions_count) {
-                rax->reg_value.type = WINT;
-                rax->reg_value.as_int = xpu->ip;
+                regs[REG_RA].reg_value.type = WINT;
+                regs[REG_RA].reg_value.as_int = xpu->ip;
                 xpu->ip = target - 1;
             }
             break;
         }
 
         case IRET: {
-            xpu->ip = rax->reg_value.as_int;
+            xpu->ip = regs[REG_RA].reg_value.as_int;
             break;
         }
 
@@ -1554,8 +1555,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         } break;
 
         case IHALT:
-            xpu->ip = vm->program.instructions_count;
-            exit(0);
+            vm->program.halted = true;
+            return;
             break;
         
         default:
@@ -1956,13 +1957,12 @@ void execute_program(OrtaVM *vm) {
     if (!find_label(&vm->program, OENTRY, &entry)) xpu->ip = 0;
     else xpu->ip = entry;
     int running = 1; 
-    while (running) {
+    while (running && !vm->program.halted) {
         if (vm->xpu.ip >= vm->program.instructions_count) {
             running = 0;
             break;
         }
         execute_instruction(vm, &vm->program.instructions[xpu->ip]);
-        //xpu->ip++;
     }
 }
 

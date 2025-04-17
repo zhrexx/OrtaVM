@@ -1,4 +1,4 @@
-;#include "std.x"
+#include "std.x"
 
 __entry:
     var a
@@ -6,5 +6,6 @@ __entry:
     setvar a
     getvar a
     print
+
     push "Hello, World"
     print
