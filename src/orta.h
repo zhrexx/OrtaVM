@@ -220,7 +220,8 @@ typedef enum {
     IRET, ILOAD, ISTORE, IPRINT, IDUP, ISWAP, IDROP, IROTL, IROTR,
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM, ISYSCALL,
-    IVAR, ISETVAR, IGETVAR, IFREE
+    IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE, 
+    IGETGLOBALVAR, ISETGLOBALVAR
 } Instruction;
 
 typedef enum {
@@ -263,7 +264,8 @@ static const InstructionInfo instructions[] = {
     {"cpymem", ICPYMEM, {ARG_EXACT, 0, 0}}, {"syscall", ISYSCALL, {ARG_MIN, 1, 1}},
     {"writemem", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
-    {"free", IFREE, {ARG_MIN, 0, 0}}
+    {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}}, 
+    {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}} 
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -300,6 +302,7 @@ typedef struct {
     void *dead_memory; // would be used to mark dead memory somewhere
     
     Vector variables;
+    Vector scope_stack;
     bool halted;
 } Program;
 
@@ -332,6 +335,9 @@ void program_init(Program *program, const char *filename) {
     program->memory_used = 0;
     program->dead_memory = malloc(1);
     vector_init(&program->variables, 5, sizeof(Variable));
+    vector_init(&program->scope_stack, 5, sizeof(Vector*));
+    Vector *global_scope = &program->variables;
+    vector_push(&program->scope_stack, &global_scope);
 }
 
 void add_label(Program *program, const char *name, size_t address) {
@@ -380,6 +386,21 @@ void program_free(Program *program) {
     free(program->dead_memory);
     program->dead_memory = NULL;
 
+    while (program->scope_stack.size > 1) {
+        Vector *local_scope = *(Vector**)vector_pop(&program->scope_stack);
+        VECTOR_FOR_EACH(Variable, var, local_scope) {
+            free(var->name);
+            if (var->value.type == WCHARP) {
+                free(var->value.as_string);
+            } else if (var->value.type == WPOINTER) {
+                free(var->value.as_pointer);
+            }
+        }
+        vector_free(local_scope);
+        free(local_scope);
+    }
+    vector_free(&program->scope_stack);
+
     VECTOR_FOR_EACH(Variable, var, &program->variables) {
         free(var->name);
         if (var->value.type == WCHARP) {
@@ -389,6 +410,7 @@ void program_free(Program *program) {
         }
     }
     vector_free(&program->variables);
+
 }
 
 OrtaVM ortavm_create(const char *filename) {
@@ -629,9 +651,20 @@ bool is_type_name(const char *s) {
     return get_type(s) != -1;
 }
 
+void setlocalscope(Vector *current) {
+    vector_init(current, 5, sizeof(Variable)); 
+}
+
+void unsetlocalscope(OrtaVM *vm, Vector *current) {
+    vector_free(current);
+    *current = vm->program.variables;
+}
+
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
     Word w1, w2, result;
+    Vector *current_scope = *(Vector**)vector_peek(&vm->program.scope_stack);
+
     XRegister *regs = xpu->registers;
     XRegister *rax = &regs[REG_RAX];
     XRegister *rbx = &regs[REG_RBX];
@@ -1481,6 +1514,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 				}
 			}
 		} break;
+
         case IVAR: {
             if (instr->operands.size < 1) {
                 fprintf(stderr, "Error: 'var' requires a name\n");
@@ -1491,8 +1525,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             var.name = strdup(name);
             var.value.type = WPOINTER;
             var.value.as_pointer = NULL;
-            vector_push(&vm->program.variables, &var);
+            vector_push(current_scope, &var);
         } break;
+
         case ISETVAR: {
             if (instr->operands.size < 1) {
                 fprintf(stderr, "Error: 'setvar' requires a variable name\n");
@@ -1501,6 +1536,85 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             char *var_name = vector_get_str(&instr->operands, 0);
             if (vm->xpu.stack.count == 0) {
                 fprintf(stderr, "Error: Stack underflow in 'setvar'\n");
+                break;
+            }
+            Word new_value = xstack_pop(&vm->xpu.stack);
+
+            Variable *target_var = NULL;
+            VECTOR_FOR_EACH(Variable, var, current_scope) {
+                if (strcmp(var->name, var_name) == 0) {
+                    target_var = var;
+                    break;
+                }
+            }
+
+            if (target_var) {
+                if (target_var->value.type == WCHARP)
+                    free(target_var->value.as_string);
+                else if (target_var->value.type == WPOINTER)
+                    free(target_var->value.as_pointer);
+
+                if (new_value.type == WCHARP) {
+                    target_var->value.type = WCHARP;
+                    target_var->value.as_string = strdup(new_value.as_string);
+                } else {
+                    target_var->value = new_value;
+                }
+            } else {
+                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+            }
+        } break;
+
+        case IGETVAR: {
+            if (instr->operands.size < 1) {
+                fprintf(stderr, "Error: 'getvar' requires a variable name\n");
+                break;
+            }
+            char *var_name = vector_get_str(&instr->operands, 0);
+            Variable *found_var = NULL;
+            VECTOR_FOR_EACH(Variable, var, current_scope) {
+                if (strcmp(var->name, var_name) == 0) {
+                    found_var = var;
+                    break;
+                }
+            }
+            if (found_var) {
+                Word value = found_var->value;
+                if (value.type == WCHARP)
+                    value.as_string = strdup(value.as_string);
+                xstack_push(&vm->xpu.stack, value);
+            } else {
+                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+            }
+        } break;
+
+        case ITOGGLELOCALSCOPE: {
+            if (vm->program.scope_stack.size == 1) {
+                Vector *local_scope = malloc(sizeof(Vector));
+                vector_init(local_scope, 5, sizeof(Variable));
+                vector_push(&vm->program.scope_stack, &local_scope);
+            } else {
+                Vector *local_scope = *(Vector**)vector_pop(&vm->program.scope_stack);
+                VECTOR_FOR_EACH(Variable, var, local_scope) {
+                    free(var->name);
+                    if (var->value.type == WCHARP)
+                        free(var->value.as_string);
+                    else if (var->value.type == WPOINTER)
+                        free(var->value.as_pointer);
+                }
+                vector_free(local_scope);
+                free(local_scope);
+            }
+        } break;
+
+        case ISETGLOBALVAR: {
+            if (instr->operands.size < 1) {
+                fprintf(stderr, "Error: 'setglobalvar' requires a variable name\n");
+                break;
+            }
+            char *var_name = vector_get_str(&instr->operands, 0);
+            if (vm->xpu.stack.count == 0) {
+                fprintf(stderr, "Error: Stack underflow in 'setglobalvar'\n");
                 break;
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
@@ -1527,13 +1641,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     target_var->value = new_value;
                 }
             } else {
-                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+                fprintf(stderr, "Error: Global Variable '%s' not found\n", var_name);
             }
         } break;
 
-        case IGETVAR: {
+        case IGETGLOBALVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'getvar' requires a variable name\n");
+                fprintf(stderr, "Error: 'getglobalvar' requires a variable name\n");
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
@@ -1551,10 +1665,11 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 }
                 xstack_push(&vm->xpu.stack, value);
             } else {
-                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+                fprintf(stderr, "Error: Global Variable '%s' not found\n", var_name);
             }
         } break;
-        
+
+
 		case IFREE: {
 				void *ptr_to_free = NULL;
 				

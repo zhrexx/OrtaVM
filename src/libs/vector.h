@@ -240,7 +240,14 @@ int vector_get_int(Vector *vector, size_t index) {
     return *(int *)pointer;
 }
 
+void *vector_peek(Vector *vector) {
+    if (vector->size == 0) {
+        fprintf(stderr, "Vector is empty\n");
+        exit(EXIT_FAILURE);
+    }
 
+    return vector_get(vector, vector->size - 1);
+}
 
 #endif
 

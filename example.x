@@ -1,6 +1,7 @@
 #include "std.x"
 
 __entry:
+    togglelocalscope
     var a
     push 10
     setvar a
@@ -12,3 +13,6 @@ __entry:
 
     alloc 10
     free
+    togglelocalscope 
+    getvar a 
+    print
