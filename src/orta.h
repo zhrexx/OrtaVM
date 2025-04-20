@@ -1,4 +1,4 @@
-// TODO: add named memory
+// DONE: add named memory | implemented variables now this isnt needed
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -256,13 +256,13 @@ static const InstructionInfo instructions[] = {
     {"print", IPRINT, {ARG_MIN, 0, 0}}, {"dup", IDUP, {ARG_EXACT, 0, 0}},
     {"swap", ISWAP, {ARG_EXACT, 0, 0}}, {"drop", IDROP, {ARG_EXACT, 0, 0}},
     {"rotl", IROTL, {ARG_EXACT, 1, 1}}, {"rotr", IROTR, {ARG_EXACT, 1, 1}},
-    {"alloc", IALLOC, {ARG_EXACT, 1, 1}}, {"halt", IHALT, {ARG_EXACT, 0, 0}},
+    {"alloc", IALLOC, {ARG_MIN, 0, 0}}, {"halt", IHALT, {ARG_EXACT, 0, 0}},
     {"merge", IMERGE, {ARG_MIN, 0, 0}}, {"xcall", IXCALL, {ARG_EXACT, 0, 0}},
     {"sizeof", ISIZEOF, {ARG_EXACT, 1, 1}}, {"dec", IDEC, {ARG_EXACT, 1, 1}},
     {"inc", IINC, {ARG_EXACT, 1, 1}}, {"eval", IEVAL, {ARG_MIN, 0, 0}},
-    {"cmp", ICMP, {ARG_MIN, 1, 1}}, {"readmem", IREADMEM, {ARG_MIN, 1, 1}},
+    {"cmp", ICMP, {ARG_MIN, 1, 1}}, {"@r", IREADMEM, {ARG_MIN, 1, 1}},
     {"cpymem", ICPYMEM, {ARG_EXACT, 0, 0}}, {"syscall", ISYSCALL, {ARG_MIN, 1, 1}},
-    {"writemem", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
+    {"@w", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}}, 
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}} 
