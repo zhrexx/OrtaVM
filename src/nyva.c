@@ -1,3 +1,5 @@
+// TODO: add functions
+// TODO: add negative numbers
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +15,7 @@ typedef enum {
     TOKEN_VAR,
     TOKEN_IF,
     TOKEN_PRINT,
+    TOKEN_ORTA,
     TOKEN_PARSE,
     TOKEN_EQUAL,       // =
     TOKEN_PLUS,        // +
@@ -26,7 +29,7 @@ typedef enum {
     TOKEN_RPAREN,      // )
     TOKEN_LBRACE,      // {
     TOKEN_RBRACE,      // }
-    TOKEN_COMMA        // ,
+    TOKEN_COMMA,       // ,
 } TokenType;
 
 typedef struct {
@@ -57,13 +60,14 @@ typedef enum {
     NODE_ASSIGNMENT,
     NODE_IF_STATEMENT,
     NODE_PRINT_STATEMENT,
+    NODE_ORTA_STATEMENT,
     NODE_PARSE_STATEMENT,
     NODE_BINARY_EXPRESSION,
     NODE_IDENTIFIER,
     NODE_NUMBER,
     NODE_STRING,
     NODE_FUNCTION_CALL,
-    NODE_ARGUMENT_LIST
+    NODE_ARGUMENT_LIST,
 } NodeType;
 
 typedef struct ASTNode {
@@ -89,6 +93,10 @@ typedef struct ASTNode {
             char *value;
         } print_statement;
         
+        struct {
+            char *value;
+        } orta_statement;
+
         struct {
             struct ASTNode *args;
         } parse_statement;
@@ -143,8 +151,56 @@ Keyword keywords[] = {
     {"if", TOKEN_IF},
     {"print", TOKEN_PRINT},
     {"parse", TOKEN_PARSE},
+    {"orta", TOKEN_ORTA},
     {NULL, 0}
 };
+
+char* escape_string(const char* src) {
+    if (src == NULL) {
+        return NULL;
+    }
+    
+    size_t src_len = strlen(src);
+    
+    char* dest = (char*)malloc(src_len * 2 + 1);
+    if (dest == NULL) {
+        return NULL;
+    }
+    
+    size_t j = 0;
+    for (size_t i = 0; i < src_len; i++) {
+        switch (src[i]) {
+            case '\\':
+                dest[j++] = '\\';
+                dest[j++] = '\\';
+                break;
+            case '"':
+                dest[j++] = '\\';
+                dest[j++] = '"';
+                break;
+            case '\n':
+                dest[j++] = '\\';
+                dest[j++] = 'n';
+                break;
+            case '\r':
+                dest[j++] = '\\';
+                dest[j++] = 'r';
+                break;
+            case '\t':
+                dest[j++] = '\\';
+                dest[j++] = 't';
+                break;
+            default:
+                dest[j++] = src[i];
+                break;
+        }
+    }
+    
+    dest[j] = '\0'; 
+    
+    char* result = (char*)realloc(dest, j + 1);
+    return result == NULL ? dest : result;
+}
 
 void lexer_advance(Lexer *lexer) {
     if (lexer->pos < lexer->input_len) {
@@ -325,7 +381,6 @@ Token lexer_get_next_token(Lexer *lexer) {
             token.type = TOKEN_COMMA;
             token.value = strdup(",");
             return token;
-            
         default:
             fprintf(stderr, "Unexpected character: %c at line %d, column %d\n", 
                     lexer->current_char, lexer->line, lexer->column);
@@ -611,6 +666,22 @@ ASTNode *parser_parse_print_statement(Parser *parser) {
     return node;
 }
 
+ASTNode *parser_parse_orta_statement(Parser *parser) {
+    parser_expect(parser, TOKEN_ORTA);
+    parser_expect(parser, TOKEN_LPAREN);
+    
+    Token string = parser_current_token(parser);
+    parser_expect(parser, TOKEN_STRING);
+    
+    parser_expect(parser, TOKEN_RPAREN);
+    
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_ORTA_STATEMENT;
+    node->data.orta_statement.value = strdup(string.value);
+    
+    return node;
+}
+
 ASTNode *parser_parse_parse_statement(Parser *parser) {
     parser_expect(parser, TOKEN_PARSE);
     parser_expect(parser, TOKEN_LPAREN);
@@ -635,6 +706,8 @@ ASTNode *parser_parse_statement(Parser *parser) {
         return parser_parse_if_statement(parser);
     } else if (token.type == TOKEN_PRINT) {
         return parser_parse_print_statement(parser);
+    } else if (token.type == TOKEN_ORTA) {
+        return parser_parse_orta_statement(parser);
     } else if (token.type == TOKEN_PARSE) {
         return parser_parse_parse_statement(parser);
     } else if (token.type == TOKEN_IDENTIFIER) {
@@ -767,6 +840,12 @@ void codegen_generate_print_statement(CodeGenerator *gen, ASTNode *node) {
     codegen_emit(gen, "print");
 }
 
+void codegen_generate_orta_statement(CodeGenerator *gen, ASTNode *node) {
+    char* escaped = escape_string(node->data.orta_statement.value);
+    codegen_emit(gen, "%s", escaped);
+    free(escaped);
+}
+
 void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
     for (int i = 0; i < node->data.parse_statement.args->data.argument_list.count; i++) {
         codegen_generate_expression(gen, node->data.parse_statement.args->data.argument_list.args[i]);
@@ -791,7 +870,9 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
         case NODE_PRINT_STATEMENT:
             codegen_generate_print_statement(gen, node);
             break;
-            
+        case NODE_ORTA_STATEMENT: 
+            codegen_generate_orta_statement(gen, node);
+            break;
         case NODE_PARSE_STATEMENT:
             codegen_generate_parse_statement(gen, node);
             break;
@@ -845,7 +926,9 @@ void free_ast(ASTNode *node) {
         case NODE_PRINT_STATEMENT:
             free(node->data.print_statement.value);
             break;
-            
+        case NODE_ORTA_STATEMENT: 
+            free(node->data.orta_statement.value);
+            break;
         case NODE_PARSE_STATEMENT:
             free_ast(node->data.parse_statement.args);
             break;

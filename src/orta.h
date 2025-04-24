@@ -1,4 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
+// TODO: make errors more informative
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -43,6 +44,12 @@
 #define ODEFAULT_ENTRY "__entry"
 #define MEMORY_CAPACITY 8192
 #define MAX_LINE_LENGTH 1024
+#define OLOG_PREFIX "[OVM] "
+
+#define OERROR(stream, fmt, ...) fprintf(stream, OLOG_PREFIX fmt, ##__VA_ARGS__)
+
+
+// ----------------- Preproc Config -------------------------
 #define MAX_INCLUDE_DEPTH 16
 #define MAX_DEFINES 100
 #define MAX_DEFINE_NAME 64
@@ -50,6 +57,8 @@
 #define MAX_ARGS 16
 #define MAX_ARG_LEN 256
 #define MAX_INCLUDE_PATHS 16
+
+
 
 static size_t OSTACK_SIZE = ODEFAULT_STACK_SIZE;
 static char *OENTRY = ODEFAULT_ENTRY;
@@ -215,7 +224,7 @@ void xpu_free(XPU *xpu) {
 }
 
 typedef enum {
-    IPUSH, IMOV, IPOP, IADD, ISUB, IMUL, IDIV, IMOD, IAND, IOR,
+    INOP, IPUSH, IMOV, IPOP, IADD, ISUB, IMUL, IDIV, IMOD, IAND, IOR,
     IXOR, INOT, IEQ, INE, ILT, IGT, ILE, IGE, IJMP, IJMPIF, ICALL,
     IRET, ILOAD, ISTORE, IPRINT, IDUP, ISWAP, IDROP, IROTL, IROTR,
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
@@ -265,7 +274,8 @@ static const InstructionInfo instructions[] = {
     {"@w", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}}, 
-    {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}} 
+    {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
+    {"nop", INOP, {ARG_EXACT, 0, 0}},
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -336,6 +346,15 @@ void program_init(Program *program, const char *filename) {
     vector_init(&program->variables, 5, sizeof(Variable));
 }
 
+void add_instruction(Program *program, InstructionData instr) {
+    if (program->instructions_count >= program->instructions_capacity) {
+        program->instructions_capacity *= 2;
+        program->instructions = realloc(program->instructions, 
+            sizeof(InstructionData) * program->instructions_capacity);
+    }
+    program->instructions[program->instructions_count++] = instr;
+}
+
 void add_label(Program *program, const char *name, size_t address) {
     if (program->labels_count >= program->labels_capacity) {
         program->labels_capacity *= 2;
@@ -344,6 +363,9 @@ void add_label(Program *program, const char *name, size_t address) {
     program->labels[program->labels_count].name = strdup(name);
     program->labels[program->labels_count].address = address;
     program->labels_count++;
+    Vector *nop_operands = malloc(sizeof(Vector));
+    vector_init(nop_operands, 1, sizeof(char *));
+    add_instruction(program, (InstructionData){INOP, nop_operands});
 }
 
 int find_label(Program *program, const char *name, size_t *address) {
@@ -484,15 +506,6 @@ int validateArgCount(ArgRequirement req, int actualArgCount) {
         case ARG_RANGE: return actualArgCount >= req.value && actualArgCount <= req.value2;
         default: return 0;
     }
-}
-
-void add_instruction(Program *program, InstructionData instr) {
-    if (program->instructions_count >= program->instructions_capacity) {
-        program->instructions_capacity *= 2;
-        program->instructions = realloc(program->instructions, 
-            sizeof(InstructionData) * program->instructions_capacity);
-    }
-    program->instructions[program->instructions_count++] = instr;
 }
 
 void microsleep(unsigned long usecs) {
@@ -1025,7 +1038,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IJMPIF: {
             w1 = xstack_pop(&xpu->stack);
-            if (w1.type == WINT && w1.as_int != 0) {
+            if (w1.type == WINT && w1.as_int == 1) {
                 char *operand = vector_get_str(&instr->operands, 0);
                 size_t target = 0;
                 if (is_number(operand)) target = atoi(operand);
@@ -1576,7 +1589,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'var' requires a name\n");
+                OERROR(stderr, "ERROR: 'IVAR' requires a variable name\n");
                 break;
             }
             char *name = vector_get_str(&instr->operands, 0);
@@ -1589,12 +1602,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case ISETVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'setvar' requires a variable name\n");
+                OERROR(stderr, "ERROR: 'ISETVAR' requires a variable name\n");
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
             if (vm->xpu.stack.count == 0) {
-                fprintf(stderr, "Error: Stack underflow in 'setvar'\n");
+                OERROR(stderr, "ERROR: ISETVAR: Stack underflow\n");
                 break;
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
@@ -1603,15 +1616,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IGETVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'getvar' requires a variable name\n");
+                OERROR(stderr, "ERROR: 'IGETVAR' requires a variable name\n");
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
             Word found_var = getvar(vm, var_name, current_scope);
-            if (found_var.as_pointer != NULL) {
-                xstack_push(&vm->xpu.stack, found_var);
+            if (found_var.type == WPOINTER && found_var.as_pointer == NULL) {
+                OERROR(stderr, "ERROR: IGETVAR: variable '%s' not found\n", var_name);
             } else {
-                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
+                xstack_push(&vm->xpu.stack, found_var);
             }
         } break;
         
@@ -1629,12 +1642,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case ISETGLOBALVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'setglobalvar' requires a variable name\n");
+                OERROR(stderr, "ERROR: 'ISETGLOBALVAR' requires a variable name\n");
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
             if (vm->xpu.stack.count == 0) {
-                fprintf(stderr, "Error: Stack underflow in 'setglobalvar'\n");
+                OERROR(stderr, "ERROR: ISETGLOBALVAR: Stack underflow\n");
                 break;
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
@@ -1643,15 +1656,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IGETGLOBALVAR: {
             if (instr->operands.size < 1) {
-                fprintf(stderr, "Error: 'getglobalvar' requires a variable name\n");
+                OERROR(stderr, "ERROR: 'IGETGLOBALVAR' requires a variable name\n");
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
             Word found_var = getvar(vm, var_name, &vm->program.variables);
-            if (found_var.as_pointer != NULL) {
-                xstack_push(&vm->xpu.stack, found_var);
+            if (found_var.type == WPOINTER && found_var.as_pointer == NULL) {
+                OERROR(stderr, "ERROR: IGETGLOBALVAR: variable '%s' not found\n", var_name);
             } else {
-                fprintf(stderr, "Error: Global Variable '%s' not found\n", var_name);
+                xstack_push(&vm->xpu.stack, found_var);            
             }
         } break;
 
@@ -1718,7 +1731,7 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
     Program *program = &vm->program;
     FILE *fp = fopen(output_filename, "wb");
     if (!fp) {
-        fprintf(stderr, "Error: Could not create bytecode file '%s'\n", output_filename);
+        OERROR(stderr, "ERROR: Could not create bytecode file '%s'\n", output_filename);
         return 0;
     }
     
@@ -1806,7 +1819,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     Program *program = &vm->program;
     FILE *fp = fopen(input_filename, "rb");
     if (!fp) {
-        fprintf(stderr, "Error: Could not open bytecode file '%s'\n", input_filename);
+        OERROR(stderr, "ERROR: Could not open bytecode file '%s'\n", input_filename);
         return 0;
     }
 
@@ -2103,7 +2116,10 @@ error_instructions:
 void execute_program(OrtaVM *vm) {
     XPU *xpu = &vm->xpu;
     size_t entry = 0;
-    if (!find_label(&vm->program, OENTRY, &entry)) xpu->ip = 0;
+    if (!find_label(&vm->program, OENTRY, &entry)) {
+        xpu->ip = 0;
+        OERROR(stderr, "Could not find label '%s' starting at 0\n", OENTRY);
+    }
     else xpu->ip = entry;
     int running = 1; 
     while (running && !vm->program.halted) {

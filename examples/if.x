@@ -1,4 +1,4 @@
-#define i 10
+#define i 100
 #define to_compare 10
 __entry:
 
@@ -11,7 +11,6 @@ __entry:
         push "i != 10"
         print
         jmp end_if
-
     if:
         push "i == 10"
         print
