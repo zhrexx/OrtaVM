@@ -16,4 +16,3 @@ __entry:
         push "i == 10"
         print
 end_if:
-    ret

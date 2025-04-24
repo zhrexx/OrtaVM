@@ -14,7 +14,6 @@ __entry:
     push $LOOPS
     lt
     jmpif loop
-    ret
 
 
 

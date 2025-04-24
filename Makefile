@@ -1,10 +1,10 @@
-CC = gcc
+CC := gcc
 # Windows: CC=x86_64-w64-mingw32-gcc
-# CFLAGS = -O2 -static  -Ofast -Os -s -g0 -flto
-CFLAGS = -g -ggdb 
+# CFLAGS = -O2 -static -Ofast -Os -s -g0 -flto
+CFLAGS = -g -ggdb
 LDFLAGS = -L. -lxlib -lm 
 SRCDIR = src
-BINDIR = bin
+BINDIR := bin
 TARGETS = orta fcfx xd repl xtoa
 
 PCOUNT = 0
@@ -34,6 +34,11 @@ repl: $(SRCDIR)/repl.c $(SRCDIR)/orta.h
 
 xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
 	$(COMPILE)
+
+nyva: $(SRCDIR)/nyva.c 
+	$(COMPILE)
+
+
 
 liborta.so: src/orta.h src/wrapper.c
 	gcc -fPIC -shared -o $(BINDIR)/liborta.so src/wrapper.c

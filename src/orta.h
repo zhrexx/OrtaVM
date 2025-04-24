@@ -302,7 +302,6 @@ typedef struct {
     void *dead_memory; // would be used to mark dead memory somewhere
     
     Vector variables;
-    Vector scope_stack;
     bool halted;
 } Program;
 
@@ -335,9 +334,6 @@ void program_init(Program *program, const char *filename) {
     program->memory_used = 0;
     program->dead_memory = malloc(1);
     vector_init(&program->variables, 5, sizeof(Variable));
-    vector_init(&program->scope_stack, 5, sizeof(Vector*));
-    Vector *global_scope = &program->variables;
-    vector_push(&program->scope_stack, &global_scope);
 }
 
 void add_label(Program *program, const char *name, size_t address) {
@@ -385,21 +381,6 @@ void program_free(Program *program) {
     program->memory = NULL;
     free(program->dead_memory);
     program->dead_memory = NULL;
-
-    while (program->scope_stack.size > 1) {
-        Vector *local_scope = *(Vector**)vector_pop(&program->scope_stack);
-        VECTOR_FOR_EACH(Variable, var, local_scope) {
-            free(var->name);
-            if (var->value.type == WCHARP) {
-                free(var->value.as_string);
-            } else if (var->value.type == WPOINTER) {
-                free(var->value.as_pointer);
-            }
-        }
-        vector_free(local_scope);
-        free(local_scope);
-    }
-    vector_free(&program->scope_stack);
 
     VECTOR_FOR_EACH(Variable, var, &program->variables) {
         free(var->name);
@@ -532,19 +513,34 @@ void microsleep(unsigned long usecs) {
 
 char *hmerge(InstructionData *instr) {
     char *string = calloc(1, 256);
+
     VECTOR_FOR_EACH(char *, elem, &instr->operands) {
         char *rcharp = *(char **)elem;
-        size_t len = strlen(rcharp);
-        if (len >= 1) {
-            char *temp = strdup(rcharp);
-            temp[len-1] = '\0';
-            strcat(string, temp + 1);
-            strcat(string, " ");
-            free(temp);
+
+        if (is_string(rcharp)) {
+            size_t len = strlen(rcharp);
+            if (len >= 2) {
+                char *temp = malloc(len - 1);
+                strncpy(temp, rcharp + 1, len - 2);
+                temp[len - 2] = '\0';
+                strcat(string, temp);
+                free(temp);
+            }
+        } else {
+            strcat(string, rcharp);
         }
+
+        strcat(string, " ");
     }
+
+    size_t len = strlen(string);
+    if (len > 0 && string[len - 1] == ' ') {
+        string[len - 1] = '\0';
+    }
+
     return string;
 }
+
 
 void xsleep(unsigned long milliseconds) {
     microsleep(milliseconds * 1000);
@@ -660,11 +656,74 @@ void unsetlocalscope(OrtaVM *vm, Vector *current) {
     *current = vm->program.variables;
 }
 
+Word getvar(OrtaVM *vm, char *var_name, Vector *scope) {
+    Variable *found_var = NULL;
+    Word empty_word = {.type = WPOINTER, .as_pointer = NULL};
+    
+    VECTOR_FOR_EACH(Variable, var, scope) {
+        if (strcmp(var->name, var_name) == 0) {
+            found_var = var;
+            break;
+        }
+    }
+    
+    if (found_var) {
+        Word value = found_var->value;
+        if (value.type == WCHARP) {
+            value.as_string = strdup(value.as_string);
+        }
+        return value;
+    }
+    
+    return empty_word;
+}
+
+void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
+    Variable *target_var = NULL;
+    
+    VECTOR_FOR_EACH(Variable, var, scope) {
+        if (strcmp(var->name, var_name) == 0) {
+            target_var = var;
+            break;
+        }
+    }
+    
+    if (!target_var) {
+        Variable var;
+        var.name = strdup(var_name);
+        var.value.type = WPOINTER;
+        var.value.as_pointer = NULL;
+        vector_push(scope, &var);
+        target_var = (Variable*)vector_get(scope, scope->size - 1);
+    }
+    
+    if (target_var->value.type == WCHARP) {
+        free(target_var->value.as_string);
+    } else if (target_var->value.type == WPOINTER && target_var->value.as_pointer != NULL) {
+        void *memory_start = vm->program.memory;
+        void *memory_end = (char*)memory_start + vm->program.memory_capacity;
+        if (!(target_var->value.as_pointer >= memory_start && 
+              target_var->value.as_pointer < memory_end)) {
+            free(target_var->value.as_pointer);
+        }
+    }
+    
+    if (new_value.type == WCHARP) {
+        target_var->value.type = WCHARP;
+        target_var->value.as_string = strdup(new_value.as_string);
+    } else {
+        target_var->value = new_value;
+    }
+}
+
+Vector *current_scope = NULL;
+
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
     Word w1, w2, result;
-    Vector *current_scope = *(Vector**)vector_peek(&vm->program.scope_stack);
-
+    if (current_scope == NULL) {
+        current_scope = &vm->program.variables;
+    } 
     XRegister *regs = xpu->registers;
     XRegister *rax = &regs[REG_RAX];
     XRegister *rbx = &regs[REG_RBX];
@@ -1539,30 +1598,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 break;
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
-
-            Variable *target_var = NULL;
-            VECTOR_FOR_EACH(Variable, var, current_scope) {
-                if (strcmp(var->name, var_name) == 0) {
-                    target_var = var;
-                    break;
-                }
-            }
-
-            if (target_var) {
-                if (target_var->value.type == WCHARP)
-                    free(target_var->value.as_string);
-                else if (target_var->value.type == WPOINTER)
-                    free(target_var->value.as_pointer);
-
-                if (new_value.type == WCHARP) {
-                    target_var->value.type = WCHARP;
-                    target_var->value.as_string = strdup(new_value.as_string);
-                } else {
-                    target_var->value = new_value;
-                }
-            } else {
-                fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
-            }
+            setvar(vm, var_name, current_scope, new_value);
         } break;
 
         case IGETVAR: {
@@ -1571,39 +1607,23 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
-            Variable *found_var = NULL;
-            VECTOR_FOR_EACH(Variable, var, current_scope) {
-                if (strcmp(var->name, var_name) == 0) {
-                    found_var = var;
-                    break;
-                }
-            }
-            if (found_var) {
-                Word value = found_var->value;
-                if (value.type == WCHARP)
-                    value.as_string = strdup(value.as_string);
-                xstack_push(&vm->xpu.stack, value);
+            Word found_var = getvar(vm, var_name, current_scope);
+            if (found_var.as_pointer != NULL) {
+                xstack_push(&vm->xpu.stack, found_var);
             } else {
                 fprintf(stderr, "Error: Variable '%s' not found\n", var_name);
             }
         } break;
-
+        
         case ITOGGLELOCALSCOPE: {
-            if (vm->program.scope_stack.size == 1) {
+            static int status = 1;
+            if (status) {
                 Vector *local_scope = malloc(sizeof(Vector));
                 vector_init(local_scope, 5, sizeof(Variable));
-                vector_push(&vm->program.scope_stack, &local_scope);
+                current_scope = local_scope;
             } else {
-                Vector *local_scope = *(Vector**)vector_pop(&vm->program.scope_stack);
-                VECTOR_FOR_EACH(Variable, var, local_scope) {
-                    free(var->name);
-                    if (var->value.type == WCHARP)
-                        free(var->value.as_string);
-                    else if (var->value.type == WPOINTER)
-                        free(var->value.as_pointer);
-                }
-                vector_free(local_scope);
-                free(local_scope);
+                vector_free(current_scope);
+                current_scope = &vm->program.variables;
             }
         } break;
 
@@ -1618,31 +1638,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 break;
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
-
-            Variable *target_var = NULL;
-            VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
-                if (strcmp(var->name, var_name) == 0) {
-                    target_var = var;
-                    break;
-                }
-            }
-
-            if (target_var) {
-                if (target_var->value.type == WCHARP) {
-                    free(target_var->value.as_string);
-                } else if (target_var->value.type == WPOINTER) {
-                    free(target_var->value.as_pointer);
-                }
-
-                if (new_value.type == WCHARP) {
-                    target_var->value.type = WCHARP;
-                    target_var->value.as_string = strdup(new_value.as_string);
-                } else {
-                    target_var->value = new_value;
-                }
-            } else {
-                fprintf(stderr, "Error: Global Variable '%s' not found\n", var_name);
-            }
+            setvar(vm, var_name, &vm->program.variables, new_value);
         } break;
 
         case IGETGLOBALVAR: {
@@ -1651,19 +1647,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 break;
             }
             char *var_name = vector_get_str(&instr->operands, 0);
-            Variable *found_var = NULL;
-            VECTOR_FOR_EACH(Variable, var, &vm->program.variables) {
-                if (strcmp(var->name, var_name) == 0) {
-                    found_var = var;
-                    break;
-                }
-            }
-            if (found_var) {
-                Word value = found_var->value;
-                if (value.type == WCHARP) {
-                    value.as_string = strdup(value.as_string);
-                }
-                xstack_push(&vm->xpu.stack, value);
+            Word found_var = getvar(vm, var_name, &vm->program.variables);
+            if (found_var.as_pointer != NULL) {
+                xstack_push(&vm->xpu.stack, found_var);
             } else {
                 fprintf(stderr, "Error: Global Variable '%s' not found\n", var_name);
             }

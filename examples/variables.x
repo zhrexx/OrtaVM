@@ -2,7 +2,9 @@
 
 __entry:
     togglelocalscope
+    var a
     push 10
-    setvar av
-    getvar av
+    setvar a
+    getvar a
     print
+    togglelocalscope 
