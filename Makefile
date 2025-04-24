@@ -1,11 +1,11 @@
 CC := gcc
-# Windows: CC=x86_64-w64-mingw32-gcc
+# CC=x86_64-w64-mingw32-gcc
 # CFLAGS = -O2 -static -Ofast -Os -s -g0 -flto
 CFLAGS = -g -ggdb
 LDFLAGS = -L. -lxlib -lm 
 SRCDIR = src
 BINDIR := bin
-TARGETS = orta fcfx xd repl xtoa
+TARGETS = orta fcfx xd repl xtoa nyva
 
 PCOUNT = 0
 GIT_HASH := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")

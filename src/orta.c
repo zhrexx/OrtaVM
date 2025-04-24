@@ -2,10 +2,17 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
 #include "orta.h"
 #include "std.h"
 #include "config.h"
 #include "asm.h"
+
+#ifdef WIN32 
+#include <windows.h>
+#else 
+#include <unistd.h> 
+#endif
 
 typedef struct {
     bool help;
@@ -13,6 +20,7 @@ typedef struct {
     bool disable_compile;
     bool show_version;
     bool debug;
+    bool notdeletepreprocessed;
     const char* input_file;
 } ProgramOptions;
 
@@ -24,6 +32,7 @@ void print_usage(const char *program_name) {
     printf("\n%s%sOPTIONS:%s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
     printf("  %s-h, --help%s           Display this help message\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--nopreproc%s          Disable source file preprocessing\n", COLOR_BLUE, COLOR_RESET);
+    printf("  %s--notdeletepreprocessed%s          Disable preprocessed file deletion\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--disable-compile%s    Disable bytecode creation\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--version%s            Display version information\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--debug%s              Show detailed execution information\n", COLOR_BLUE, COLOR_RESET);
@@ -105,6 +114,7 @@ ProgramOptions parse_arguments(int argc, char **argv) {
         .disable_compile = false,
         .show_version = false,
         .debug = false,
+        .notdeletepreprocessed = false,
         .input_file = NULL
     };
     
@@ -125,6 +135,8 @@ ProgramOptions parse_arguments(int argc, char **argv) {
             options.help = true;
         } else if (strcmp(argv[i], "--nopreproc") == 0) {
             options.no_preproc = true;
+        } else if (strcmp(argv[i], "--notdeletepreprocessed") == 0) {
+            options.notdeletepreprocessed = true;
         } else if (strcmp(argv[i], "--disable-compile") == 0) {
             options.disable_compile = true;
         } else if (strcmp(argv[i], "--version") == 0) {
@@ -208,6 +220,18 @@ int main(int argc, char **argv) {
                 print_error("Failed to parse preprocessed source");
                 ortavm_free(&vm);
                 return EXIT_FAILURE;
+            }
+            if (!options.notdeletepreprocessed) {
+#ifdef WIN32
+                char *resolved = malloc(PATH_MAX);
+                if (resolved && _fullpath(resolved, preprocessed_filename, PATH_MAX)) {
+                    _unlink(resolved);
+                }
+#else 
+                char *resolved = realpath(preprocessed_filename, NULL);
+                unlink(resolved);
+#endif
+                free(resolved);
             }
         } else {
             if (options.debug) {
