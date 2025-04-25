@@ -15,6 +15,7 @@ typedef enum {
     TOKEN_STRING,
     TOKEN_VAR,
     TOKEN_IF,
+    TOKEN_ELSE,
     TOKEN_PARSE,
     TOKEN_EQUAL,       // =
     TOKEN_PLUS,        // +
@@ -24,13 +25,18 @@ typedef enum {
     TOKEN_GT,          // >
     TOKEN_LT,          // <
     TOKEN_EQ,          // ==
+    TOKEN_NEQ,         // !=
     TOKEN_LPAREN,      // (
     TOKEN_RPAREN,      // )
     TOKEN_LBRACE,      // {
     TOKEN_RBRACE,      // }
     TOKEN_COMMA,       // ,
+    TOKEN_SEMICOLON,   // ;
+    TOKEN_COLON,       // :
     TOKEN_FN, 
     TOKEN_RETURN,
+    TOKEN_FOR,
+    TOKEN_AT,
 } TokenType;
 
 typedef struct {
@@ -70,6 +76,7 @@ typedef enum {
     NODE_FUNCTION_DEFINITION,
     NODE_PARAMETER_LIST,
     NODE_RETURN_STATEMENT,
+    NODE_FOR_STATEMENT,
 } NodeType;
 
 typedef struct ASTNode {
@@ -89,6 +96,8 @@ typedef struct ASTNode {
             struct ASTNode *condition;
             struct ASTNode **body;
             int body_count;
+            struct ASTNode **else_body;
+            int else_body_count;
         } if_statement;
         
         struct {
@@ -143,7 +152,14 @@ typedef struct ASTNode {
         struct {
             struct ASTNode *value;
         } return_statement;
-    
+        
+        struct {
+            struct ASTNode *init;
+            struct ASTNode *condition;
+            struct ASTNode *update;
+            struct ASTNode **body;
+            int body_count;
+        } for_statement; 
     } data;
 } ASTNode;
 
@@ -160,9 +176,11 @@ typedef struct {
 Keyword keywords[] = {
     {"var", TOKEN_VAR},
     {"if", TOKEN_IF},
+    {"else", TOKEN_ELSE},
     {"parse", TOKEN_PARSE},
     {"fn", TOKEN_FN},
     {"return", TOKEN_RETURN},
+    {"for", TOKEN_FOR},
     {NULL, 0}
 };
 
@@ -213,6 +231,17 @@ char* escape_string(const char* src) {
     return result == NULL ? dest : result;
 }
 
+void lexer_error(Lexer *lexer, char *msg, ...) {
+    va_list args;
+    va_start(args, msg);
+
+    fprintf(stderr, "%d:%d ERROR: ", lexer->line, lexer->column);
+    vfprintf(stderr, msg, args);
+    va_end(args);
+    exit(1);
+}
+
+
 void lexer_advance(Lexer *lexer) {
     if (lexer->pos < lexer->input_len) {
         lexer->current_char = lexer->input[lexer->pos++];
@@ -235,6 +264,11 @@ void lexer_skip_whitespace(Lexer *lexer) {
 char *lexer_collect_identifier(Lexer *lexer) {
     char *buffer = malloc(256);
     int i = 0;
+    
+    if (lexer->current_char == '@') {
+        buffer[i++] = lexer->current_char;
+        lexer_advance(lexer);
+    }
     
     while (lexer->current_char != '\0' && (isalnum(lexer->current_char) || lexer->current_char == '_')) {
         buffer[i++] = lexer->current_char;
@@ -295,6 +329,13 @@ Token lexer_get_next_token(Lexer *lexer) {
         return token;
     }
     
+    if (lexer->current_char == '@') {
+        char *identifier = lexer_collect_identifier(lexer);
+        token.type = TOKEN_IDENTIFIER;
+        token.value = identifier;
+        return token;
+    }
+
     if (isalpha(lexer->current_char) || lexer->current_char == '_') {
         char *identifier = lexer_collect_identifier(lexer);
         token.type = get_keyword_token(identifier);
@@ -326,7 +367,16 @@ Token lexer_get_next_token(Lexer *lexer) {
                 token.value = strdup("=");
             }
             return token;
-            
+        case '!': 
+            lexer_advance(lexer);
+            if (lexer->current_char == '=') {
+                lexer_advance(lexer);
+                token.type = TOKEN_NEQ;
+                token.value = strdup("!=");
+            } else {
+               lexer_error(lexer, "expected '=' got '%c'\n", lexer->current_char); 
+            }
+            return token;
         case '+':
             lexer_advance(lexer);
             token.type = TOKEN_PLUS;
@@ -392,9 +442,24 @@ Token lexer_get_next_token(Lexer *lexer) {
             token.type = TOKEN_COMMA;
             token.value = strdup(",");
             return token;
+        case ';': 
+            lexer_advance(lexer);
+            token.type = TOKEN_SEMICOLON;
+            token.value = strdup(";");
+            return token;
+        case ':':
+            lexer_advance(lexer);
+            token.type = TOKEN_COLON;
+            token.value = strdup(":");
+            return token;
+        case '@':
+            lexer_advance(lexer);
+            token.type = TOKEN_AT;
+            token.value = strdup("@");
+            return token;
         default:
-            fprintf(stderr, "Unexpected character: %c at line %d, column %d\n", 
-                    lexer->current_char, lexer->line, lexer->column);
+            lexer_error(lexer, "Unexpected character: %c\n", 
+                    lexer->current_char);
             exit(1);
     }
 }
@@ -579,7 +644,7 @@ ASTNode *parser_parse_condition(Parser *parser) {
     ASTNode *left = parser_parse_expression(parser);
     
     TokenType op_type = parser_current_token(parser).type;
-    if (op_type == TOKEN_GT || op_type == TOKEN_LT || op_type == TOKEN_EQ) {
+    if (op_type == TOKEN_GT || op_type == TOKEN_LT || op_type == TOKEN_EQ || op_type == TOKEN_NEQ) {
         parser_advance(parser);
         ASTNode *right = parser_parse_expression(parser);
         
@@ -657,6 +722,26 @@ ASTNode *parser_parse_if_statement(Parser *parser) {
     node->data.if_statement.condition = condition;
     node->data.if_statement.body = body;
     node->data.if_statement.body_count = body_count;
+    node->data.if_statement.else_body = NULL;
+    node->data.if_statement.else_body_count = 0;
+    
+    if (parser_current_token(parser).type == TOKEN_ELSE) {
+        parser_advance(parser);
+        parser_expect(parser, TOKEN_LBRACE);
+        
+        ASTNode **else_body = malloc(sizeof(ASTNode*) * 64);
+        int else_body_count = 0;
+        
+        while (parser_current_token(parser).type != TOKEN_RBRACE && 
+               parser_current_token(parser).type != TOKEN_EOF) {
+            else_body[else_body_count++] = parser_parse_statement(parser);
+        }
+        
+        parser_expect(parser, TOKEN_RBRACE);
+        
+        node->data.if_statement.else_body = else_body;
+        node->data.if_statement.else_body_count = else_body_count;
+    }
     
     return node;
 }
@@ -756,6 +841,51 @@ ASTNode *parser_parse_return_statement(Parser *parser) {
     return node;
 }
 
+ASTNode *parser_parse_for_statement(Parser *parser) {
+    parser_expect(parser, TOKEN_FOR);
+    parser_expect(parser, TOKEN_LPAREN);
+    
+    ASTNode *init = NULL;
+    if (parser_current_token(parser).type == TOKEN_VAR) {
+        init = parser_parse_var_declaration(parser);
+    } else if (parser_current_token(parser).type == TOKEN_IDENTIFIER) {
+        init = parser_parse_assignment(parser);
+    } else {
+        fprintf(stderr, "Expected var declaration or assignment in for loop initialization\n");
+        exit(1);
+    }
+    parser_expect(parser, TOKEN_SEMICOLON); 
+
+    ASTNode *condition = parser_parse_condition(parser);
+    
+    parser_expect(parser, TOKEN_SEMICOLON);
+    
+    ASTNode *update = parser_parse_assignment(parser);
+    
+    parser_expect(parser, TOKEN_RPAREN);
+    parser_expect(parser, TOKEN_LBRACE);
+    
+    ASTNode **body = malloc(sizeof(ASTNode*) * 64);
+    int body_count = 0;
+    
+    while (parser_current_token(parser).type != TOKEN_RBRACE && 
+           parser_current_token(parser).type != TOKEN_EOF) {
+        body[body_count++] = parser_parse_statement(parser);
+    }
+    
+    parser_expect(parser, TOKEN_RBRACE);
+    
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_FOR_STATEMENT;
+    node->data.for_statement.init = init;
+    node->data.for_statement.condition = condition;
+    node->data.for_statement.update = update;
+    node->data.for_statement.body = body;
+    node->data.for_statement.body_count = body_count;
+    
+    return node;
+}
+
 ASTNode *parser_parse_statement(Parser *parser) {
     Token token = parser_current_token(parser);
     
@@ -769,6 +899,8 @@ ASTNode *parser_parse_statement(Parser *parser) {
         return parser_parse_function_definition(parser);
     } else if (token.type == TOKEN_RETURN) {
         return parser_parse_return_statement(parser);
+    } else if (token.type == TOKEN_FOR) {
+        return parser_parse_for_statement(parser);
     } else if (token.type == TOKEN_IDENTIFIER) {
         if (parser->position + 1 < parser->count && 
             parser->tokens[parser->position + 1].type == TOKEN_EQUAL) {
@@ -878,7 +1010,10 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
         
         switch (node->data.binary_expression.operator) {
             case TOKEN_PLUS:
-                codegen_emit(gen, "add");
+                if (node->data.binary_expression.left->type == NODE_STRING)
+                    codegen_emit(gen, "merge");
+                else  
+                    codegen_emit(gen, "add");
                 break;
             case TOKEN_MINUS:
                 codegen_emit(gen, "sub");
@@ -897,6 +1032,10 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
                 break;
             case TOKEN_EQ:
                 codegen_emit(gen, "eq");
+                codegen_emit(gen, "not");
+                break;
+            case TOKEN_NEQ: 
+                codegen_emit(gen, "eq");
                 break;
             default:
                 fprintf(stderr, "Unknown operator in code generation\n");
@@ -908,24 +1047,12 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
             if (node->data.function_call.args->data.argument_list.count == 0) {
                 codegen_emit(gen, "print");
             } else {
-                StringBuilder sb = sb_init(10);
-                sb_append_str(&sb, "\"");
                 for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
-                    ASTNode *arg = node->data.function_call.args->data.argument_list.args[i];
-                    if (arg->type == NODE_STRING) {
-                        sb_append_str(&sb, arg->data.string.value); 
-                    } else if (arg->type == NODE_NUMBER) {
-                        char *a = itoa(arg->data.number.value);
-                        sb_append_str(&sb, a);
-                        free(a);
-                        sb_append(&sb, ' ');
-                    }
+                   codegen_generate_expression(gen, node->data.function_call.args->data.argument_list.args[i]);
                 }
-                sb_append_str(&sb, "\"");
-                codegen_emit(gen, "print %s", sb_to_cstr(&sb));
-                sb_destroy(&sb);
+                codegen_emit(gen, "print");
             }
-        } else if (strcmp(func_name, "orta") == 0) {
+        } else if (strcmp(func_name, "@orta") == 0) {
             if (node->data.function_call.args->data.argument_list.count != 1 || node->data.function_call.args->data.argument_list.args[0]->type != NODE_STRING) {
                 fprintf(stderr, "ERROR: 'orta' expects only one string argument\n");
             }
@@ -959,13 +1086,31 @@ void codegen_generate_assignment(CodeGenerator *gen, ASTNode *node) {
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node);
 
 void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
+    char *else_label = NULL;
     char *end_label = codegen_create_label(gen, "if_end");
     
     codegen_generate_expression(gen, node->data.if_statement.condition);
-    codegen_emit(gen, "jmpif %s", end_label);
+    
+    if (node->data.if_statement.else_body != NULL) {
+        else_label = codegen_create_label(gen, "else");
+        codegen_emit(gen, "jmpif %s", else_label);
+    } else {
+        codegen_emit(gen, "jmpif %s", end_label);
+    }
     
     for (int i = 0; i < node->data.if_statement.body_count; i++) {
         codegen_generate_statement(gen, node->data.if_statement.body[i]);
+    }
+    
+    if (node->data.if_statement.else_body != NULL) {
+        codegen_emit(gen, "jmp %s", end_label);
+        codegen_emit(gen, "%s:", else_label);
+        
+        for (int i = 0; i < node->data.if_statement.else_body_count; i++) {
+            codegen_generate_statement(gen, node->data.if_statement.else_body[i]);
+        }
+        
+        free(else_label);
     }
     
     codegen_emit(gen, "%s:", end_label);
@@ -1020,6 +1165,31 @@ void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
     codegen_emit(gen, "ret");
 }
 
+void codegen_generate_for_statement(CodeGenerator *gen, ASTNode *node) {
+    char *start_label = codegen_create_label(gen, "for_start");
+    char *end_label = codegen_create_label(gen, "for_end");
+    
+    codegen_generate_statement(gen, node->data.for_statement.init);
+    
+    codegen_emit(gen, "%s:", start_label);
+    
+    codegen_generate_expression(gen, node->data.for_statement.condition);
+    codegen_emit(gen, "jmpif %s", end_label);
+    
+    for (int i = 0; i < node->data.for_statement.body_count; i++) {
+        codegen_generate_statement(gen, node->data.for_statement.body[i]);
+    }
+    
+    codegen_generate_statement(gen, node->data.for_statement.update);
+    
+    codegen_emit(gen, "jmp %s", start_label);
+    
+    codegen_emit(gen, "%s:", end_label);
+    
+    free(start_label);
+    free(end_label);
+}
+
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
     switch (node->type) {
         case NODE_VAR_DECLARATION:
@@ -1050,7 +1220,9 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
             codegen_generate_expression(gen, node);
             // codegen_emit(gen, "pop");
             break;
-            
+        case NODE_FOR_STATEMENT:
+            codegen_generate_for_statement(gen, node);
+            break; 
         default:
             fprintf(stderr, "Unknown node type in code generation: %d\n", node->type);
             exit(1);
@@ -1098,6 +1270,12 @@ void free_ast(ASTNode *node) {
                 free_ast(node->data.if_statement.body[i]);
             }
             free(node->data.if_statement.body);
+            if (node->data.if_statement.else_body != NULL) {
+                for (int i = 0; i < node->data.if_statement.else_body_count; i++) {
+                    free_ast(node->data.if_statement.else_body[i]);
+                }
+                free(node->data.if_statement.else_body);
+            }
             break;
             
         case NODE_PARSE_STATEMENT:
@@ -1149,6 +1327,15 @@ void free_ast(ASTNode *node) {
             
         case NODE_RETURN_STATEMENT:
             free_ast(node->data.return_statement.value);
+            break;
+        case NODE_FOR_STATEMENT:
+            free_ast(node->data.for_statement.init);
+            free_ast(node->data.for_statement.condition);
+            free_ast(node->data.for_statement.update);
+            for (int i = 0; i < node->data.for_statement.body_count; i++) {
+                free_ast(node->data.for_statement.body[i]);
+            }
+            free(node->data.for_statement.body);
             break;
     }
     
