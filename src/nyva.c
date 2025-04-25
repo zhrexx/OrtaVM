@@ -1,11 +1,12 @@
-// TODO: add functions
 // TODO: add negative numbers
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include "libs/sb.h"
 
 typedef enum {
     TOKEN_EOF,
@@ -14,8 +15,6 @@ typedef enum {
     TOKEN_STRING,
     TOKEN_VAR,
     TOKEN_IF,
-    TOKEN_PRINT,
-    TOKEN_ORTA,
     TOKEN_PARSE,
     TOKEN_EQUAL,       // =
     TOKEN_PLUS,        // +
@@ -30,6 +29,8 @@ typedef enum {
     TOKEN_LBRACE,      // {
     TOKEN_RBRACE,      // }
     TOKEN_COMMA,       // ,
+    TOKEN_FN, 
+    TOKEN_RETURN,
 } TokenType;
 
 typedef struct {
@@ -59,8 +60,6 @@ typedef enum {
     NODE_VAR_DECLARATION,
     NODE_ASSIGNMENT,
     NODE_IF_STATEMENT,
-    NODE_PRINT_STATEMENT,
-    NODE_ORTA_STATEMENT,
     NODE_PARSE_STATEMENT,
     NODE_BINARY_EXPRESSION,
     NODE_IDENTIFIER,
@@ -68,6 +67,9 @@ typedef enum {
     NODE_STRING,
     NODE_FUNCTION_CALL,
     NODE_ARGUMENT_LIST,
+    NODE_FUNCTION_DEFINITION,
+    NODE_PARAMETER_LIST,
+    NODE_RETURN_STATEMENT,
 } NodeType;
 
 typedef struct ASTNode {
@@ -89,14 +91,6 @@ typedef struct ASTNode {
             int body_count;
         } if_statement;
         
-        struct {
-            char *value;
-        } print_statement;
-        
-        struct {
-            char *value;
-        } orta_statement;
-
         struct {
             struct ASTNode *args;
         } parse_statement;
@@ -133,6 +127,23 @@ typedef struct ASTNode {
             struct ASTNode **statements;
             int count;
         } program;
+
+        struct {
+            char *name;
+            struct ASTNode *params;
+            struct ASTNode **body;
+            int body_count;
+        } function_definition;
+
+        struct {
+            struct ASTNode **params;
+            int count;
+        } parameter_list;
+
+        struct {
+            struct ASTNode *value;
+        } return_statement;
+    
     } data;
 } ASTNode;
 
@@ -149,9 +160,9 @@ typedef struct {
 Keyword keywords[] = {
     {"var", TOKEN_VAR},
     {"if", TOKEN_IF},
-    {"print", TOKEN_PRINT},
     {"parse", TOKEN_PARSE},
-    {"orta", TOKEN_ORTA},
+    {"fn", TOKEN_FN},
+    {"return", TOKEN_RETURN},
     {NULL, 0}
 };
 
@@ -650,38 +661,6 @@ ASTNode *parser_parse_if_statement(Parser *parser) {
     return node;
 }
 
-ASTNode *parser_parse_print_statement(Parser *parser) {
-    parser_expect(parser, TOKEN_PRINT);
-    parser_expect(parser, TOKEN_LPAREN);
-    
-    Token string = parser_current_token(parser);
-    parser_expect(parser, TOKEN_STRING);
-    
-    parser_expect(parser, TOKEN_RPAREN);
-    
-    ASTNode *node = malloc(sizeof(ASTNode));
-    node->type = NODE_PRINT_STATEMENT;
-    node->data.print_statement.value = strdup(string.value);
-    
-    return node;
-}
-
-ASTNode *parser_parse_orta_statement(Parser *parser) {
-    parser_expect(parser, TOKEN_ORTA);
-    parser_expect(parser, TOKEN_LPAREN);
-    
-    Token string = parser_current_token(parser);
-    parser_expect(parser, TOKEN_STRING);
-    
-    parser_expect(parser, TOKEN_RPAREN);
-    
-    ASTNode *node = malloc(sizeof(ASTNode));
-    node->type = NODE_ORTA_STATEMENT;
-    node->data.orta_statement.value = strdup(string.value);
-    
-    return node;
-}
-
 ASTNode *parser_parse_parse_statement(Parser *parser) {
     parser_expect(parser, TOKEN_PARSE);
     parser_expect(parser, TOKEN_LPAREN);
@@ -697,6 +676,86 @@ ASTNode *parser_parse_parse_statement(Parser *parser) {
     return node;
 }
 
+ASTNode *parser_parse_parameter_list(Parser *parser) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_PARAMETER_LIST;
+    node->data.parameter_list.params = malloc(sizeof(ASTNode*) * 64);
+    node->data.parameter_list.count = 0;
+    
+    if (parser_current_token(parser).type != TOKEN_RPAREN) {
+        Token param = parser_current_token(parser);
+        parser_expect(parser, TOKEN_IDENTIFIER);
+        
+        ASTNode *param_node = malloc(sizeof(ASTNode));
+        param_node->type = NODE_IDENTIFIER;
+        param_node->data.identifier.name = strdup(param.value);
+        
+        node->data.parameter_list.params[node->data.parameter_list.count++] = param_node;
+        
+        while (parser_current_token(parser).type == TOKEN_COMMA) {
+            parser_advance(parser);
+            
+            param = parser_current_token(parser);
+            parser_expect(parser, TOKEN_IDENTIFIER);
+            
+            param_node = malloc(sizeof(ASTNode));
+            param_node->type = NODE_IDENTIFIER;
+            param_node->data.identifier.name = strdup(param.value);
+            
+            node->data.parameter_list.params[node->data.parameter_list.count++] = param_node;
+        }
+    }
+    
+    return node;
+}
+
+ASTNode *parser_parse_function_definition(Parser *parser) {
+    parser_expect(parser, TOKEN_FN);
+    
+    Token name = parser_current_token(parser);
+    parser_expect(parser, TOKEN_IDENTIFIER);
+    
+    parser_expect(parser, TOKEN_LPAREN);
+    ASTNode *params = parser_parse_parameter_list(parser);
+    parser_expect(parser, TOKEN_RPAREN);
+    
+    parser_expect(parser, TOKEN_LBRACE);
+    
+    ASTNode **body = malloc(sizeof(ASTNode*) * 256);
+    int body_count = 0;
+    
+    while (parser_current_token(parser).type != TOKEN_RBRACE && 
+           parser_current_token(parser).type != TOKEN_EOF) {
+        body[body_count++] = parser_parse_statement(parser);
+    }
+    
+    parser_expect(parser, TOKEN_RBRACE);
+    
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_FUNCTION_DEFINITION;
+    node->data.function_definition.name = strdup(name.value);
+    node->data.function_definition.params = params;
+    node->data.function_definition.body = body;
+    node->data.function_definition.body_count = body_count;
+    
+    return node;
+}
+
+ASTNode *parser_parse_return_statement(Parser *parser) {
+    parser_expect(parser, TOKEN_RETURN);
+    
+    ASTNode *value = NULL;
+    if (parser_current_token(parser).type != TOKEN_RBRACE) {
+        value = parser_parse_expression(parser);
+    }
+    
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_RETURN_STATEMENT;
+    node->data.return_statement.value = value;
+    
+    return node;
+}
+
 ASTNode *parser_parse_statement(Parser *parser) {
     Token token = parser_current_token(parser);
     
@@ -704,12 +763,12 @@ ASTNode *parser_parse_statement(Parser *parser) {
         return parser_parse_var_declaration(parser);
     } else if (token.type == TOKEN_IF) {
         return parser_parse_if_statement(parser);
-    } else if (token.type == TOKEN_PRINT) {
-        return parser_parse_print_statement(parser);
-    } else if (token.type == TOKEN_ORTA) {
-        return parser_parse_orta_statement(parser);
     } else if (token.type == TOKEN_PARSE) {
         return parser_parse_parse_statement(parser);
+    } else if (token.type == TOKEN_FN) {
+        return parser_parse_function_definition(parser);
+    } else if (token.type == TOKEN_RETURN) {
+        return parser_parse_return_statement(parser);
     } else if (token.type == TOKEN_IDENTIFIER) {
         if (parser->position + 1 < parser->count && 
             parser->tokens[parser->position + 1].type == TOKEN_EQUAL) {
@@ -719,7 +778,8 @@ ASTNode *parser_parse_statement(Parser *parser) {
             return expr;
         }
     } else {
-        fprintf(stderr, "Unexpected token in statement: %s\n", token.value);
+        fprintf(stderr, "Unexpected token in statement: %s at line %d, column %d\n", 
+                token.value, token.line, token.column);
         exit(1);
     }
 }
@@ -757,6 +817,52 @@ char *codegen_create_label(CodeGenerator *gen, const char *prefix) {
     char *label = malloc(64);
     sprintf(label, "__%s_%d", prefix, gen->label_counter++);
     return label;
+}
+
+char* itoa(int value) {
+    int base = 10;
+    if (value == 0) {
+        char* result = (char*)malloc(2); 
+        if (result) {
+            result[0] = '0';
+            result[1] = '\0';
+        }
+        return result;
+    }
+
+    int isNegative = 0;
+    if (base == 10 && value < 0) {
+        isNegative = 1;
+        value = -value;
+    }
+
+    int len = 0;
+    int temp = value;
+    while (temp) {
+        len++;
+        temp /= base;
+    }
+
+    int resultLength = len + (isNegative && base == 10 ? 1 : 0) + 1;
+    char* result = (char*)malloc(resultLength);
+    if (!result) {
+        return NULL; 
+    }
+
+    result[resultLength - 1] = '\0';
+
+    int i = resultLength - 2;
+    while (value) {
+        int digit = value % base;
+        result[i--] = (digit < 10) ? ('0' + digit) : ('a' + (digit - 10));
+        value /= base;
+    }
+
+    if (isNegative) {
+        result[0] = '-';
+    }
+
+    return result;
 }
 
 void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
@@ -797,11 +903,42 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
                 exit(1);
         }
     } else if (node->type == NODE_FUNCTION_CALL) {
-        for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
-            codegen_generate_expression(gen, node->data.function_call.args->data.argument_list.args[i]);
+        char *func_name = node->data.function_call.name;
+        if (strcmp(func_name, "print") == 0) {
+            if (node->data.function_call.args->data.argument_list.count == 0) {
+                codegen_emit(gen, "print");
+            } else {
+                StringBuilder sb = sb_init(10);
+                sb_append_str(&sb, "\"");
+                for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
+                    ASTNode *arg = node->data.function_call.args->data.argument_list.args[i];
+                    if (arg->type == NODE_STRING) {
+                        sb_append_str(&sb, arg->data.string.value); 
+                    } else if (arg->type == NODE_NUMBER) {
+                        char *a = itoa(arg->data.number.value);
+                        sb_append_str(&sb, a);
+                        free(a);
+                        sb_append(&sb, ' ');
+                    }
+                }
+                sb_append_str(&sb, "\"");
+                codegen_emit(gen, "print %s", sb_to_cstr(&sb));
+                sb_destroy(&sb);
+            }
+        } else if (strcmp(func_name, "orta") == 0) {
+            if (node->data.function_call.args->data.argument_list.count != 1 || node->data.function_call.args->data.argument_list.args[0]->type != NODE_STRING) {
+                fprintf(stderr, "ERROR: 'orta' expects only one string argument\n");
+            }
+            codegen_emit(gen, node->data.function_call.args->data.argument_list.args[0]->data.string.value);
+        } else {
+            codegen_emit(gen, "; ------- Function call %s -------", func_name);
+            for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
+                codegen_generate_expression(gen, node->data.function_call.args->data.argument_list.args[i]);
+            }
+            codegen_emit(gen, "push %d ; args count", node->data.function_call.args->data.argument_list.count);
+            codegen_emit(gen, "call %s", func_name);
+            codegen_emit(gen, "; ------- Function call %s end -------", func_name);
         }
-        codegen_emit(gen, "call %s %d", node->data.function_call.name, 
-                     node->data.function_call.args->data.argument_list.count);
     }
 }
 
@@ -835,22 +972,52 @@ void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
-void codegen_generate_print_statement(CodeGenerator *gen, ASTNode *node) {
-    codegen_emit(gen, "push \"%s\"", node->data.print_statement.value);
-    codegen_emit(gen, "print");
-}
-
-void codegen_generate_orta_statement(CodeGenerator *gen, ASTNode *node) {
-    char* escaped = escape_string(node->data.orta_statement.value);
-    codegen_emit(gen, "%s", escaped);
-    free(escaped);
-}
-
 void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
     for (int i = 0; i < node->data.parse_statement.args->data.argument_list.count; i++) {
         codegen_generate_expression(gen, node->data.parse_statement.args->data.argument_list.args[i]);
     }
     codegen_emit(gen, "parse %d", node->data.parse_statement.args->data.argument_list.count);
+}
+
+void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {}
+
+char *error_not_enough_args = NULL;
+
+void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "%s:", node->data.function_definition.name);
+    if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) { 
+        codegen_emit(gen, "push %d", node->data.function_definition.params->data.parameter_list.count);
+        codegen_emit(gen, "eq");
+        codegen_emit(gen, "not");
+        codegen_emit(gen, "jmpif %s", error_not_enough_args); 
+    }
+    codegen_emit(gen, "togglelocalscope"); 
+    ASTNode *params = node->data.function_definition.params;
+    for (int i = params->data.parameter_list.count - 1; i >= 0; i--) {
+        ASTNode *param = params->data.parameter_list.params[i];
+        codegen_emit(gen, "setvar %s", param->data.identifier.name);
+    }
+    
+    for (int i = 0; i < node->data.function_definition.body_count; i++) {
+        codegen_generate_statement(gen, node->data.function_definition.body[i]);
+    }
+    
+    codegen_emit(gen, "togglelocalscope"); 
+    if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) { 
+        codegen_emit(gen, "push 0");
+        codegen_emit(gen, "ret");
+    } else {
+        codegen_emit(gen, "halt");
+    }
+}
+
+void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
+    if (node->data.return_statement.value != NULL) {
+        codegen_generate_expression(gen, node->data.return_statement.value);
+    } else {
+        codegen_emit(gen, "push 0");
+    }
+    codegen_emit(gen, "ret");
 }
 
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
@@ -867,31 +1034,41 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
             codegen_generate_if_statement(gen, node);
             break;
             
-        case NODE_PRINT_STATEMENT:
-            codegen_generate_print_statement(gen, node);
-            break;
-        case NODE_ORTA_STATEMENT: 
-            codegen_generate_orta_statement(gen, node);
-            break;
         case NODE_PARSE_STATEMENT:
             codegen_generate_parse_statement(gen, node);
             break;
             
+        case NODE_FUNCTION_DEFINITION:
+            codegen_generate_function_definition(gen, node);
+            break;
+            
+        case NODE_RETURN_STATEMENT:
+            codegen_generate_return_statement(gen, node);
+            break;
+            
         case NODE_FUNCTION_CALL:
             codegen_generate_expression(gen, node);
-            codegen_emit(gen, "pop");
+            // codegen_emit(gen, "pop");
             break;
             
         default:
-            fprintf(stderr, "Unknown node type in code generation\n");
+            fprintf(stderr, "Unknown node type in code generation: %d\n", node->type);
             exit(1);
     }
 }
 
 void codegen_generate_program(CodeGenerator *gen, ASTNode *program) {
+    error_not_enough_args = codegen_create_label(gen, "error_not_enough_args");
     for (int i = 0; i < program->data.program.count; i++) {
         codegen_generate_statement(gen, program->data.program.statements[i]);
     }
+    
+    codegen_emit(gen, "%s:", error_not_enough_args);
+    codegen_emit(gen, "push \"ERROR: not enough arguments\"");
+    codegen_emit(gen, "print");
+    codegen_emit(gen, "halt 1");
+
+    free(error_not_enough_args);
 }
 
 void free_ast(ASTNode *node) {
@@ -923,12 +1100,6 @@ void free_ast(ASTNode *node) {
             free(node->data.if_statement.body);
             break;
             
-        case NODE_PRINT_STATEMENT:
-            free(node->data.print_statement.value);
-            break;
-        case NODE_ORTA_STATEMENT: 
-            free(node->data.orta_statement.value);
-            break;
         case NODE_PARSE_STATEMENT:
             free_ast(node->data.parse_statement.args);
             break;
@@ -959,6 +1130,25 @@ void free_ast(ASTNode *node) {
             
         case NODE_STRING:
             free(node->data.string.value);
+            break;
+        case NODE_FUNCTION_DEFINITION:
+            free(node->data.function_definition.name);
+            free_ast(node->data.function_definition.params);
+            for (int i = 0; i < node->data.function_definition.body_count; i++) {
+                free_ast(node->data.function_definition.body[i]);
+            }
+            free(node->data.function_definition.body);
+            break;
+            
+        case NODE_PARAMETER_LIST:
+            for (int i = 0; i < node->data.parameter_list.count; i++) {
+                free_ast(node->data.parameter_list.params[i]);
+            }
+            free(node->data.parameter_list.params);
+            break;
+            
+        case NODE_RETURN_STATEMENT:
+            free_ast(node->data.return_statement.value);
             break;
     }
     
@@ -1003,7 +1193,24 @@ void compile(const char *input_file, const char *output_file) {
     
     Token *tokens = tokenize(source);
     ASTNode *ast = parse(tokens);
-    
+
+    int has_entry = 0;
+    for (int i = 0; i < ast->data.program.count; i++) {
+        ASTNode *stmt = ast->data.program.statements[i];
+        if (stmt->type == NODE_FUNCTION_DEFINITION && 
+            strcmp(stmt->data.function_definition.name, "__entry") == 0) {
+            has_entry = 1;
+            break;
+        }
+    }
+    if (!has_entry) {
+        fprintf(stderr, "Error: __entry function not defined\n");
+        free_ast(ast);
+        free_tokens(tokens);
+        free(source);
+        exit(1);
+    }
+
     FILE *output = fopen(output_file, "w");
     if (output == NULL) {
         fprintf(stderr, "Could not open output file %s\n", output_file);

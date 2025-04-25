@@ -1,5 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: make errors more informative
+// TODO: make a getstacksize instruction maybe
 #ifndef ORTA_H 
 #define ORTA_H
 
@@ -230,7 +230,7 @@ typedef enum {
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM, ISYSCALL,
     IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE, 
-    IGETGLOBALVAR, ISETGLOBALVAR
+    IGETGLOBALVAR, ISETGLOBALVAR, IOVM,
 } Instruction;
 
 typedef enum {
@@ -265,7 +265,7 @@ static const InstructionInfo instructions[] = {
     {"print", IPRINT, {ARG_MIN, 0, 0}}, {"dup", IDUP, {ARG_EXACT, 0, 0}},
     {"swap", ISWAP, {ARG_EXACT, 0, 0}}, {"drop", IDROP, {ARG_EXACT, 0, 0}},
     {"rotl", IROTL, {ARG_EXACT, 1, 1}}, {"rotr", IROTR, {ARG_EXACT, 1, 1}},
-    {"alloc", IALLOC, {ARG_MIN, 0, 0}}, {"halt", IHALT, {ARG_EXACT, 0, 0}},
+    {"alloc", IALLOC, {ARG_MIN, 0, 0}}, {"halt", IHALT, {ARG_MIN, 0, 0}},
     {"merge", IMERGE, {ARG_MIN, 0, 0}}, {"xcall", IXCALL, {ARG_EXACT, 0, 0}},
     {"sizeof", ISIZEOF, {ARG_EXACT, 1, 1}}, {"dec", IDEC, {ARG_EXACT, 1, 1}},
     {"inc", IINC, {ARG_EXACT, 1, 1}}, {"eval", IEVAL, {ARG_MIN, 0, 0}},
@@ -275,7 +275,7 @@ static const InstructionInfo instructions[] = {
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}}, 
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
-    {"nop", INOP, {ARG_EXACT, 0, 0}},
+    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}},
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -313,6 +313,7 @@ typedef struct {
     
     Vector variables;
     bool halted;
+    int exit_code;
 } Program;
 
 typedef enum {
@@ -344,6 +345,7 @@ void program_init(Program *program, const char *filename) {
     program->memory_used = 0;
     program->dead_memory = malloc(1);
     vector_init(&program->variables, 5, sizeof(Variable));
+    program->exit_code = 0;
 }
 
 void add_instruction(Program *program, InstructionData instr) {
@@ -929,7 +931,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             w1 = xstack_pop(&xpu->stack);
             if (w1.type == WINT) {
                 result.type = WINT;
-                result.as_int = ~w1.as_int;
+                result.as_int = !w1.as_int;
                 xstack_push(&xpu->stack, result);
             }
             break;
@@ -1715,8 +1717,18 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 				}
 				break;
 		}
+        
+        case IOVM: 
+            char *arg = vector_get_str(&instr->operands, 0);
+            if (strcmp(arg, "stack") == 0) {
+                xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
+            }
+            break;
 
         case IHALT:
+            if (instr->operands.size == 1) {
+                vm->program.exit_code = atoi(vector_get_str(&instr->operands, 0));
+            }
             vm->program.halted = true;
             return;
             break;

@@ -6,3 +6,5 @@ __entry:
     setvar av
     getvar av
     print
+
+    halt 10

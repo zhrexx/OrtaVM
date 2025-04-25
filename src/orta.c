@@ -284,8 +284,8 @@ int main(int argc, char **argv) {
             print_error("Failed to create bytecode file");
         }
     }
-    
+    int exit_code = vm.program.exit_code;
     ortavm_free(&vm);
     
-    return EXIT_SUCCESS;
+    return exit_code;
 }
