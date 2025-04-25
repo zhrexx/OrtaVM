@@ -1,12 +1,9 @@
-// TODO: add negative numbers
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <ctype.h>
-#include "libs/sb.h"
 
 typedef enum {
     TOKEN_EOF,
@@ -33,10 +30,13 @@ typedef enum {
     TOKEN_COMMA,       // ,
     TOKEN_SEMICOLON,   // ;
     TOKEN_COLON,       // :
+    TOKEN_AND,         // &
+
     TOKEN_FN, 
     TOKEN_RETURN,
     TOKEN_FOR,
-    TOKEN_AT,
+    TOKEN_AT,          // @ 
+    TOKEN_IMPORT,
 } TokenType;
 
 typedef struct {
@@ -77,6 +77,7 @@ typedef enum {
     NODE_PARAMETER_LIST,
     NODE_RETURN_STATEMENT,
     NODE_FOR_STATEMENT,
+    NODE_IMPORT,
 } NodeType;
 
 typedef struct ASTNode {
@@ -159,7 +160,10 @@ typedef struct ASTNode {
             struct ASTNode *update;
             struct ASTNode **body;
             int body_count;
-        } for_statement; 
+        } for_statement;
+        struct {
+            char *file;
+        } import_statement;
     } data;
 } ASTNode;
 
@@ -181,8 +185,32 @@ Keyword keywords[] = {
     {"fn", TOKEN_FN},
     {"return", TOKEN_RETURN},
     {"for", TOKEN_FOR},
+    {"import", TOKEN_IMPORT},
     {NULL, 0}
 };
+
+typedef struct {
+    char **files;
+    int count;
+} ImportTracker;
+
+ImportTracker imported_files = {NULL, 0};
+
+int is_file_imported(const char *filename) {
+    for (int i = 0; i < imported_files.count; i++) {
+        if (strcmp(imported_files.files[i], filename) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void add_imported_file(const char *filename) {
+    if (imported_files.files == NULL) {
+        imported_files.files = malloc(sizeof(char*) * 64);
+    }
+    imported_files.files[imported_files.count++] = strdup(filename);
+}
 
 char* escape_string(const char* src) {
     if (src == NULL) {
@@ -282,6 +310,11 @@ char *lexer_collect_number(Lexer *lexer) {
     char *buffer = malloc(256);
     int i = 0;
     
+    if (lexer->current_char == '-') {
+        buffer[i++] = lexer->current_char;
+        lexer_advance(lexer);
+    }
+
     while (lexer->current_char != '\0' && isdigit(lexer->current_char)) {
         buffer[i++] = lexer->current_char;
         lexer_advance(lexer);
@@ -323,6 +356,14 @@ Token lexer_get_next_token(Lexer *lexer) {
     
     lexer_skip_whitespace(lexer);
     
+    if (lexer->current_char == '-' && 
+        lexer->pos < lexer->input_len && 
+        isdigit(lexer->input[lexer->pos])) {
+        token.type = TOKEN_NUMBER;
+        token.value = lexer_collect_number(lexer);
+        return token;
+    }
+
     if (lexer->current_char == '\0') {
         token.type = TOKEN_EOF;
         token.value = NULL;
@@ -457,6 +498,10 @@ Token lexer_get_next_token(Lexer *lexer) {
             token.type = TOKEN_AT;
             token.value = strdup("@");
             return token;
+        case '&': 
+            lexer_advance(lexer);
+            token.type = TOKEN_AND;
+            token.value = strdup("&");
         default:
             lexer_error(lexer, "Unexpected character: %c\n", 
                     lexer->current_char);
@@ -886,6 +931,20 @@ ASTNode *parser_parse_for_statement(Parser *parser) {
     return node;
 }
 
+ASTNode *parser_parse_import_statement(Parser *parser) {
+    parser_expect(parser, TOKEN_IMPORT);
+    parser_expect(parser, TOKEN_LPAREN);
+    char *file = strdup(parser_current_token(parser).value);
+    parser_expect(parser, TOKEN_STRING);
+    parser_expect(parser, TOKEN_RPAREN);
+    
+    ASTNode *node = malloc(sizeof(ASTNode));
+    node->type = NODE_IMPORT;
+    node->data.import_statement.file = file;
+        
+    return node; 
+}
+
 ASTNode *parser_parse_statement(Parser *parser) {
     Token token = parser_current_token(parser);
     
@@ -909,6 +968,8 @@ ASTNode *parser_parse_statement(Parser *parser) {
             ASTNode *expr = parser_parse_expression(parser);
             return expr;
         }
+    } else if (token.type == TOKEN_IMPORT) {
+      return parser_parse_import_statement(parser);  
     } else {
         fprintf(stderr, "Unexpected token in statement: %s at line %d, column %d\n", 
                 token.value, token.line, token.column);
@@ -1121,7 +1182,7 @@ void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
     for (int i = 0; i < node->data.parse_statement.args->data.argument_list.count; i++) {
         codegen_generate_expression(gen, node->data.parse_statement.args->data.argument_list.args[i]);
     }
-    codegen_emit(gen, "parse %d", node->data.parse_statement.args->data.argument_list.count);
+    codegen_emit(gen, "eval %d", node->data.parse_statement.args->data.argument_list.count);
 }
 
 void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {}
@@ -1190,6 +1251,8 @@ void codegen_generate_for_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
+void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node);
+
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
     switch (node->type) {
         case NODE_VAR_DECLARATION:
@@ -1222,7 +1285,10 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
             break;
         case NODE_FOR_STATEMENT:
             codegen_generate_for_statement(gen, node);
-            break; 
+            break;
+        case NODE_IMPORT:
+            codegen_generate_import_statement(gen, node);
+            break;
         default:
             fprintf(stderr, "Unknown node type in code generation: %d\n", node->type);
             exit(1);
@@ -1337,6 +1403,9 @@ void free_ast(ASTNode *node) {
             }
             free(node->data.for_statement.body);
             break;
+        case NODE_IMPORT: 
+            free(node->data.import_statement.file);
+            break;
     }
     
     free(node);
@@ -1373,6 +1442,52 @@ char *read_file(const char *filename) {
     
     fclose(file);
     return buffer;
+}
+
+void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
+    char *filename = node->data.import_statement.file;
+    
+    if (filename[0] == '"' && filename[strlen(filename)-1] == '"') {
+        filename = strndup(filename + 1, strlen(filename) - 2);
+    }
+    
+    if (is_file_imported(filename)) {
+        codegen_emit(gen, "; Skipping already imported file: %s", filename);
+        return;
+    }
+    
+    add_imported_file(filename);
+    
+    char *source = read_file(filename);
+    if (!source) {
+        fprintf(stderr, "Error: Could not import file %s\n", filename);
+        exit(1);
+    }
+    
+    char temp_filename[256];
+    sprintf(temp_filename, "%s.tmp", filename);
+    
+    Token *tokens = tokenize(source);
+    ASTNode *imported_ast = parse(tokens);
+    
+    codegen_emit(gen, "; --- Begin imported file: %s ---", filename);
+    
+    for (int i = 0; i < imported_ast->data.program.count; i++) {
+        ASTNode *stmt = imported_ast->data.program.statements[i];
+        
+        if (stmt->type == NODE_FUNCTION_DEFINITION && 
+            strcmp(stmt->data.function_definition.name, "__entry") == 0) {
+            continue;
+        }
+        
+        codegen_generate_statement(gen, stmt);
+    }
+    
+    codegen_emit(gen, "; --- End imported file: %s ---", filename);
+    
+    free_ast(imported_ast);
+    free_tokens(tokens);
+    free(source);
 }
 
 void compile(const char *input_file, const char *output_file) {
@@ -1417,6 +1532,13 @@ void compile(const char *input_file, const char *output_file) {
     free(source);
 }
 
+void cleanup_imports() {
+    for (int i = 0; i < imported_files.count; i++) {
+        free(imported_files.files[i]);
+    }
+    free(imported_files.files);
+}
+
 int main(int argc, char **argv) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -1424,6 +1546,7 @@ int main(int argc, char **argv) {
     }
     
     compile(argv[1], argv[2]);
+    cleanup_imports();
     return 0;
 }
 

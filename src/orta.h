@@ -1,6 +1,7 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: make a getstacksize instruction maybe
-#ifndef ORTA_H 
+// TODO: test new xcalls 4-6 they can dont work 
+
+#ifndef ORTA_H
 #define ORTA_H
 
 #include <stdio.h>
@@ -12,7 +13,7 @@
 
 #ifdef _WIN32
     #include <windows.h>
-    #include <dirent.h> 
+    #include <dirent.h>
     #include <sys/stat.h>
     #define mkdir(path, skip) mkdir(path);
     #define stat _stat
@@ -32,7 +33,7 @@
 #else
     #include <unistd.h>
     #include <time.h>
-    #include <sys/stat.h> 
+    #include <sys/stat.h>
     #include <sys/types.h>
     #include <sys/wait.h>
 #endif
@@ -66,7 +67,7 @@ static char *OENTRY = ODEFAULT_ENTRY;
 typedef enum {
     WINT,
     WFLOAT,
-    WCHARP, 
+    WCHARP,
     W_CHAR,
     WPOINTER,
     WBOOL,
@@ -85,7 +86,7 @@ typedef struct {
 } Word;
 
 typedef struct {
-    Word reg_value; 
+    Word reg_value;
     size_t reg_size;
 } XRegister;
 
@@ -203,7 +204,7 @@ XPU xpu_init() {
     xpu.stack = xstack_create(OSTACK_SIZE);
     xpu.registers = malloc(sizeof(XRegister) * REG_COUNT);
     xpu.ip = 0;
-    
+
     for (int i = 0; i < REG_COUNT; i++) {
         xpu.registers[i].reg_size = register_table[i].size;
         xpu.registers[i].reg_value.type = WPOINTER;
@@ -229,7 +230,7 @@ typedef enum {
     IRET, ILOAD, ISTORE, IPRINT, IDUP, ISWAP, IDROP, IROTL, IROTR,
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM, ISYSCALL,
-    IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE, 
+    IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE,
     IGETGLOBALVAR, ISETGLOBALVAR, IOVM,
 } Instruction;
 
@@ -273,7 +274,7 @@ static const InstructionInfo instructions[] = {
     {"cpymem", ICPYMEM, {ARG_EXACT, 0, 0}}, {"syscall", ISYSCALL, {ARG_MIN, 1, 1}},
     {"@w", IWRITEMEM, {ARG_MIN, 1, 1}}, {"memcmp", IMEMCMP, {ARG_MIN, 1, 1}},
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
-    {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}}, 
+    {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}},
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
     {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}},
 };
@@ -291,17 +292,17 @@ typedef struct {
 } Label;
 
 typedef struct {
-    char *name; 
+    char *name;
     Word value;
 } Variable;
 
 typedef struct {
     char *filename;
-   
+
     InstructionData *instructions;
     size_t instructions_count;
     size_t instructions_capacity;
-    
+
     Label *labels;
     size_t labels_count;
     size_t labels_capacity;
@@ -310,7 +311,7 @@ typedef struct {
     size_t memory_used;
     size_t memory_capacity;
     void *dead_memory; // would be used to mark dead memory somewhere
-    
+
     Vector variables;
     bool halted;
     int exit_code;
@@ -351,7 +352,7 @@ void program_init(Program *program, const char *filename) {
 void add_instruction(Program *program, InstructionData instr) {
     if (program->instructions_count >= program->instructions_capacity) {
         program->instructions_capacity *= 2;
-        program->instructions = realloc(program->instructions, 
+        program->instructions = realloc(program->instructions,
             sizeof(InstructionData) * program->instructions_capacity);
     }
     program->instructions[program->instructions_count++] = instr;
@@ -580,9 +581,9 @@ int eval(char *s) {
                 case '+': values[v_idx-1] += val; break;
                 case '-': values[v_idx-1] -= val; break;
                 case '*': values[v_idx-1] *= val; break;
-                case '/': 
+                case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val; 
+                    values[v_idx-1] /= val;
                     break;
             }
         }
@@ -612,9 +613,9 @@ int eval(char *s) {
             char op = ops[--o_idx];
             switch(op) {
                 case '*': values[v_idx-1] *= val; break;
-                case '/': 
+                case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val; 
+                    values[v_idx-1] /= val;
                     break;
             }
         }
@@ -637,9 +638,9 @@ int eval(char *s) {
                 case '+': values[v_idx-1] += val; break;
                 case '-': values[v_idx-1] -= val; break;
                 case '*': values[v_idx-1] *= val; break;
-                case '/': 
+                case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val; 
+                    values[v_idx-1] /= val;
                     break;
             }
         }
@@ -663,7 +664,7 @@ bool is_type_name(const char *s) {
 }
 
 void setlocalscope(Vector *current) {
-    vector_init(current, 5, sizeof(Variable)); 
+    vector_init(current, 5, sizeof(Variable));
 }
 
 void unsetlocalscope(OrtaVM *vm, Vector *current) {
@@ -674,14 +675,14 @@ void unsetlocalscope(OrtaVM *vm, Vector *current) {
 Word getvar(OrtaVM *vm, char *var_name, Vector *scope) {
     Variable *found_var = NULL;
     Word empty_word = {.type = WPOINTER, .as_pointer = NULL};
-    
+
     VECTOR_FOR_EACH(Variable, var, scope) {
         if (strcmp(var->name, var_name) == 0) {
             found_var = var;
             break;
         }
     }
-    
+
     if (found_var) {
         Word value = found_var->value;
         if (value.type == WCHARP) {
@@ -689,20 +690,20 @@ Word getvar(OrtaVM *vm, char *var_name, Vector *scope) {
         }
         return value;
     }
-    
+
     return empty_word;
 }
 
 void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
     Variable *target_var = NULL;
-    
+
     VECTOR_FOR_EACH(Variable, var, scope) {
         if (strcmp(var->name, var_name) == 0) {
             target_var = var;
             break;
         }
     }
-    
+
     if (!target_var) {
         Variable var;
         var.name = strdup(var_name);
@@ -711,18 +712,18 @@ void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
         vector_push(scope, &var);
         target_var = (Variable*)vector_get(scope, scope->size - 1);
     }
-    
+
     if (target_var->value.type == WCHARP) {
         free(target_var->value.as_string);
     } else if (target_var->value.type == WPOINTER && target_var->value.as_pointer != NULL) {
         void *memory_start = vm->program.memory;
         void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-        if (!(target_var->value.as_pointer >= memory_start && 
+        if (!(target_var->value.as_pointer >= memory_start &&
               target_var->value.as_pointer < memory_end)) {
             free(target_var->value.as_pointer);
         }
     }
-    
+
     if (new_value.type == WCHARP) {
         target_var->value.type = WCHARP;
         target_var->value.as_string = strdup(new_value.as_string);
@@ -738,13 +739,14 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     Word w1, w2, result;
     if (current_scope == NULL) {
         current_scope = &vm->program.variables;
-    } 
+    }
     XRegister *regs = xpu->registers;
     XRegister *rax = &regs[REG_RAX];
     XRegister *rbx = &regs[REG_RBX];
     XRegister *rcx = &regs[REG_RCX];
     XRegister *rsi = &regs[REG_RSI];
     XRegister *rdx = &regs[REG_RDX];
+    XRegister *rdi = &regs[REG_RDI];
 
     switch (instr->opcode) {
         case IPUSH: {
@@ -1164,7 +1166,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		    if (instr->operands.size >= 1) {
 		        char *size_str = vector_get_str(&instr->operands, 0);
 		        size_t size = 0;
-		        
+
 		        if (is_type_name(size_str)) {
 		            WordType type = get_type(size_str);
 		            switch(type) {
@@ -1175,7 +1177,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                case WPOINTER: size = sizeof(void*); break;
 		                default: size = 1; break;
 		            }
-		            
+
 		            if (instr->operands.size >= 2) {
 		                char *count_str = vector_get_str(&instr->operands, 1);
 		                if (is_number(count_str)) {
@@ -1199,13 +1201,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                size = regs[reg].reg_value.as_int;
 		            }
 		        }
-		        
+
 		        if (size > 0) {
 		            void *mem = (char*)vm->program.memory + vm->program.memory_used;
 		            vm->program.memory_used += size;
-		            
+
 		            memset(mem, 0, size);
-		            
+
 		            if (instr->operands.size >= 3) {
 		                char *dest_reg = vector_get_str(&instr->operands, 2);
 		                if (is_register(dest_reg)) {
@@ -1248,13 +1250,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case IXCALL: {
             if (rax->reg_value.type == WINT) {
                 switch(rax->reg_value.as_int) {
-                    case 1: 
+                    case 1:
                         if (rbx->reg_value.type == WINT) xsleep(rbx->reg_value.as_int);
                         break;
-                    case 2: 
+                    case 2:
                         if (rbx->reg_value.type == WCHARP) system(rbx->reg_value.as_string);
                         break;
-                    case 3: 
+                    case 3:
                         if (rbx->reg_value.type == WCHARP) {
                             Word w = xstack_pop(&xpu->stack);
                             w.type = get_type(rbx->reg_value.as_string);
@@ -1262,7 +1264,79 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         }
                         break;
 
-                    case 7: 
+					case 4: {
+						if (rbx->reg_value.type == WCHARP) {
+							XLib_Handle* handle = XLib_open(rbx->reg_value.as_string);
+							if (handle) {
+								rcx->reg_value.type = WPOINTER;
+								rcx->reg_value.as_pointer = handle;
+								rax->reg_value.as_int = XLIB_OK;
+							} else {
+								rax->reg_value.as_int = XLIB_ERROR_OPEN;
+							}
+						} else {
+							rax->reg_value.as_int = XLIB_ERROR_INVALID;
+						}
+						break;
+					}
+
+					case 5: {
+						if (rcx->reg_value.type == WPOINTER && rdx->reg_value.type == WCHARP) {
+							XLib_Handle* handle = (XLib_Handle*)rcx->reg_value.as_pointer;
+							void* sym = XLib_sym(handle, rdx->reg_value.as_string);
+							if (sym) {
+								rdi->reg_value.type = WPOINTER;
+								rdi->reg_value.as_pointer = sym;
+								rax->reg_value.as_int = XLIB_OK;
+							} else {
+								rax->reg_value.as_int = XLIB_ERROR_SYMBOL;
+							}
+						} else {
+							rax->reg_value.as_int = XLIB_ERROR_INVALID;
+						}
+						break;
+					}
+
+					case 6: {
+						if (rdi->reg_value.type == WPOINTER && rbx->reg_value.type == WINT) {
+							void (*func)() = rdi->reg_value.as_pointer;
+							int argc = rbx->reg_value.as_int;
+							Word* args = malloc(argc * sizeof(Word));
+							for (int i = 0; i < argc; i++) {
+								args[i] = xstack_pop(&xpu->stack);
+							}
+
+							int result = 0;
+							switch (argc) {
+								case 0:
+									result = ((int (*)())func)();
+									break;
+								case 1:
+									result = ((int (*)(int))func)(args[0].as_int);
+									break;
+								case 2:
+									result = ((int (*)(int, int))func)(args[1].as_int, args[0].as_int);
+									break;
+								case 3:
+									result = ((int (*)(int, int, int))func)(args[2].as_int, args[1].as_int, args[0].as_int);
+									break;
+								default:
+									OERROR(stderr, "Unsupported argument count: %d\n", argc);
+									result = -1;
+									break;
+							}
+
+							xstack_push(&xpu->stack, (Word){ .type = WINT, .as_int = result });
+							free(args);
+						} else {
+							rax->reg_value.as_int = XLIB_ERROR_INVALID;
+						}
+						break;
+					}
+
+
+                    case 7:
+
                         xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = NULL});
                         break;
                 }
@@ -1276,7 +1350,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		    size_t offset = 0;
 		    Word value;
 		    WordType write_type = WINT;
-		    
+
 		    if (instr->operands.size >= 1) {
 		        char *dest = vector_get_str(&instr->operands, 0);
 		        if (is_register(dest)) {
@@ -1286,7 +1360,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            }
 		        }
 		    }
-		    
+
 		    if (instr->operands.size >= 2) {
 		        char *off = vector_get_str(&instr->operands, 1);
 		        if (is_number(off)) {
@@ -1299,12 +1373,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            }
 		        }
 		    }
-		    
+
 		    if (instr->operands.size >= 3) {
 		        char *type_str = vector_get_str(&instr->operands, 2);
 		        write_type = get_type(type_str);
 		    }
-		    
+
 		    if (instr->operands.size >= 4) {
 		        char *val_str = vector_get_str(&instr->operands, 3);
 		        if (is_register(val_str)) {
@@ -1331,21 +1405,21 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		    } else {
 		        value = xstack_pop(&xpu->stack);
 		    }
-		    
+
 		    if (dest_addr) {
 		        void *write_addr = (char*)dest_addr + offset;
-		        
+
 		        switch (write_type) {
 		            case WINT:
-		                *(int*)write_addr = (value.type == WINT) ? value.as_int : 
+		                *(int*)write_addr = (value.type == WINT) ? value.as_int :
 		                                    (value.type == WFLOAT) ? (int)value.as_float : 0;
 		                break;
 		            case WFLOAT:
-		                *(float*)write_addr = (value.type == WFLOAT) ? value.as_float : 
+		                *(float*)write_addr = (value.type == WFLOAT) ? value.as_float :
 		                                     (value.type == WINT) ? (float)value.as_int : 0.0f;
 		                break;
 		            case W_CHAR:
-		                *(char*)write_addr = (value.type == W_CHAR) ? value.as_char : 
+		                *(char*)write_addr = (value.type == W_CHAR) ? value.as_char :
 		                                     (value.type == WINT) ? (char)value.as_int : 0;
 		                break;
 		            case WCHARP:
@@ -1360,7 +1434,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                break;
 		        }
 		    }
-		    
+
 		    if (instr->operands.size < 4 && value.type == WCHARP) {
 		        free(value.as_string);
 		    }
@@ -1385,7 +1459,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case IDEC: {
             char *operand = vector_get_str(&instr->operands, 0);
             XRegisters reg = register_name_to_enum(operand);
-            if (reg != -1 && regs[reg].reg_value.type == WINT) 
+            if (reg != -1 && regs[reg].reg_value.type == WINT)
                 regs[reg].reg_value.as_int--;
             break;
         }
@@ -1393,7 +1467,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case IINC: {
             char *operand = vector_get_str(&instr->operands, 0);
             XRegisters reg = register_name_to_enum(operand);
-            if (reg != -1 && regs[reg].reg_value.type == WINT) 
+            if (reg != -1 && regs[reg].reg_value.type == WINT)
                 regs[reg].reg_value.as_int++;
             break;
         }
@@ -1410,7 +1484,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 char *op1 = vector_get_str(&instr->operands, 0);
                 char *op2 = vector_get_str(&instr->operands, 1);
                 Word w1, w2;
-                
+
                 if (is_register(op1)) {
                     XRegisters reg = register_name_to_enum(op1);
                     w1 = regs[reg].reg_value;
@@ -1419,7 +1493,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     w1.type = WINT;
                     w1.as_int = atoi(op1);
                 }
-                
+
                 if (is_register(op2)) {
                     XRegisters reg = register_name_to_enum(op2);
                     w2 = regs[reg].reg_value;
@@ -1428,7 +1502,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     w2.type = WINT;
                     w2.as_int = atoi(op2);
                 }
-                
+
                 int cmp = 0;
                 if (w1.type == w2.type) {
                     switch(w1.type) {
@@ -1446,7 +1520,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		    void *src_addr = NULL;
 		    size_t offset = 0;
 		    WordType read_type = WINT;
-		    
+
 		    if (instr->operands.size >= 1) {
 		        char *src = vector_get_str(&instr->operands, 0);
 		        if (is_register(src)) {
@@ -1456,7 +1530,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            }
 		        }
 		    }
-		    
+
 		    if (instr->operands.size >= 2) {
 		        char *off = vector_get_str(&instr->operands, 1);
 		        if (is_number(off)) {
@@ -1469,16 +1543,16 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            }
 		        }
 		    }
-		    
+
 		    if (instr->operands.size >= 3) {
 		        char *type_str = vector_get_str(&instr->operands, 2);
 		        read_type = get_type(type_str);
 		    }
-		    
+
 		    if (src_addr) {
 		        void *read_addr = (char*)src_addr + offset;
 		        Word result;
-		        
+
 		        switch (read_type) {
 		            case WINT:
 		                result.type = WINT;
@@ -1505,7 +1579,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                result.as_int = 0;
 		                break;
 		        }
-		        
+
 		        if (instr->operands.size >= 4) {
 		            char *dest = vector_get_str(&instr->operands, 3);
 		            if (is_register(dest)) {
@@ -1536,7 +1610,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 			void *addr1 = NULL;
 			void *addr2 = NULL;
 			size_t size = 0;
-			
+
 			if (instr->operands.size >= 1) {
 				char *ptr1 = vector_get_str(&instr->operands, 0);
 				if (is_register(ptr1)) {
@@ -1546,7 +1620,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 					}
 				}
 			}
-			
+
 			if (instr->operands.size >= 2) {
 				char *ptr2 = vector_get_str(&instr->operands, 1);
 				if (is_register(ptr2)) {
@@ -1556,7 +1630,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 					}
 				}
 			}
-			
+
 			if (instr->operands.size >= 3) {
 				char *sz = vector_get_str(&instr->operands, 2);
 				if (is_number(sz)) {
@@ -1568,10 +1642,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 					}
 				}
 			}
-			
+
 			if (addr1 && addr2 && size > 0) {
 				int result = memcmp(addr1, addr2, size);
-				
+
 				if (instr->operands.size >= 4) {
 					char *dest = vector_get_str(&instr->operands, 3);
 					if (is_register(dest)) {
@@ -1629,7 +1703,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 xstack_push(&vm->xpu.stack, found_var);
             }
         } break;
-        
+
         case ITOGGLELOCALSCOPE: {
             static int status = 1;
             if (status) {
@@ -1666,25 +1740,25 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (found_var.type == WPOINTER && found_var.as_pointer == NULL) {
                 OERROR(stderr, "ERROR: IGETGLOBALVAR: variable '%s' not found\n", var_name);
             } else {
-                xstack_push(&vm->xpu.stack, found_var);            
+                xstack_push(&vm->xpu.stack, found_var);
             }
         } break;
 
 
 		case IFREE: {
 				void *ptr_to_free = NULL;
-				
+
 				if (instr->operands.size >= 1) {
 						char *operand = vector_get_str(&instr->operands, 0);
-						
+
 						if (is_register(operand)) {
 								XRegisters reg = register_name_to_enum(operand);
 								if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
 										ptr_to_free = regs[reg].reg_value.as_pointer;
-										
+
 										void *memory_start = vm->program.memory;
 										void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-										
+
 										if (ptr_to_free >= memory_start && ptr_to_free < memory_end) {
 												regs[reg].reg_value.as_pointer = NULL;
 										} else {
@@ -1694,10 +1768,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 								}
 						} else if (is_pointer(operand)) {
 								ptr_to_free = get_pointer(operand);
-								
+
 								void *memory_start = vm->program.memory;
 								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-								
+
 								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
 										free(ptr_to_free);
 								}
@@ -1706,10 +1780,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 						Word w = xstack_pop(&xpu->stack);
 						if (w.type == WPOINTER) {
 								ptr_to_free = w.as_pointer;
-								
+
 								void *memory_start = vm->program.memory;
 								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-								
+
 								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
 										free(ptr_to_free);
 								}
@@ -1717,8 +1791,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 				}
 				break;
 		}
-        
-        case IOVM: 
+
+        case IOVM:
             char *arg = vector_get_str(&instr->operands, 0);
             if (strcmp(arg, "stack") == 0) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
@@ -1732,7 +1806,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             vm->program.halted = true;
             return;
             break;
-        
+
         default:
             break;
     }
@@ -1746,14 +1820,14 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
         OERROR(stderr, "ERROR: Could not create bytecode file '%s'\n", output_filename);
         return 0;
     }
-    
+
     if (fwrite(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
         goto error;
 
     size_t filename_len = strlen(program->filename);
     if (fwrite(&filename_len, sizeof(size_t), 1, fp) != 1)
         goto error;
-    
+
     if (fwrite(program->filename, 1, filename_len, fp) != filename_len)
         goto error;
 
@@ -1763,7 +1837,7 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
 
     for (size_t i = 0; i < instructions_count; i++) {
         InstructionData *instr = &program->instructions[i];
-        
+
         if (fwrite(&instr->opcode, sizeof(Instruction), 1, fp) != 1)
             goto error;
 
@@ -1774,10 +1848,10 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
         for (size_t j = 0; j < operands_count; j++) {
             char *operand = *(char **)vector_get(&instr->operands, j);
             size_t operand_len = strlen(operand);
-            
+
             if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1)
                 goto error;
-            
+
             if (fwrite(operand, 1, operand_len, fp) != operand_len)
                 goto error;
         }
@@ -1789,14 +1863,14 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
 
     for (size_t i = 0; i < labels_count; i++) {
         Label *label = &program->labels[i];
-        
+
         size_t name_len = strlen(label->name);
         if (fwrite(&name_len, sizeof(size_t), 1, fp) != 1)
             goto error;
-        
+
         if (fwrite(label->name, 1, name_len, fp) != name_len)
             goto error;
-        
+
         if (fwrite(&label->address, sizeof(size_t), 1, fp) != 1)
             goto error;
     }
@@ -1847,11 +1921,11 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     size_t filename_len;
     if (fread(&filename_len, sizeof(size_t), 1, fp) != 1)
         goto error_close;
-    
+
     char *filename = (char *)malloc(filename_len + 1);
     if (!filename)
         goto error_close;
-    
+
     if (fread(filename, 1, filename_len, fp) != filename_len) {
         free(filename);
         goto error_close;
@@ -1867,7 +1941,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
     if (!program->instructions)
         goto error_close;
-    
+
     program->instructions_count = instructions_count;
     program->instructions_capacity = instructions_count;
 
@@ -1883,7 +1957,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 
         Vector operands;
         vector_init(&operands, 10, sizeof(char*));
-        
+
         size_t j;
         for (j = 0; j < operands_count; j++) {
             size_t operand_len;
@@ -1891,27 +1965,27 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             char *temp_operand = (char *)malloc(operand_len + 1);
             if (!temp_operand) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             if (fread(temp_operand, 1, operand_len, fp) != operand_len) {
                 free(temp_operand);
                 vector_free(&operands);
                 goto error_instructions;
             }
             temp_operand[operand_len] = '\0';
-            
+
             char *persistent_operand = strdup(temp_operand);
             if (!persistent_operand) {
                 free(temp_operand);
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             vector_push(&operands, &persistent_operand);
             free(temp_operand);
         }
@@ -1927,7 +2001,7 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
     program->labels = (Label *)malloc(sizeof(Label) * labels_count);
     if (!program->labels)
         goto error_instructions;
-    
+
     program->labels_count = labels_count;
     program->labels_capacity = labels_count;
 
@@ -1935,11 +2009,11 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
         size_t name_len;
         if (fread(&name_len, sizeof(size_t), 1, fp) != 1)
             goto error_labels;
-        
+
         char *name = (char *)malloc(name_len + 1);
         if (!name)
             goto error_labels;
-        
+
         if (fread(name, 1, name_len, fp) != name_len) {
             free(name);
             goto error_labels;
@@ -1962,10 +2036,10 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 
 error_labels:
     free_program_labels(program, i);
-    
+
 error_instructions:
     free_program_instructions(program, i);
-    
+
 error_close:
     fclose(fp);
     return 0;
@@ -1974,7 +2048,7 @@ error_close:
 int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data_size) {
     Program *program = &vm->program;
     size_t offset = 0;
-    
+
     program_free(program);
     program->memory = malloc(MEMORY_CAPACITY);
     program->memory_capacity = MEMORY_CAPACITY;
@@ -1990,7 +2064,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
         return 0;
     memcpy(&filename_len, data + offset, sizeof(size_t));
     offset += sizeof(size_t);
-    
+
     if (offset + filename_len > data_size)
         return 0;
     char *filename = (char *)malloc(filename_len + 1);
@@ -2011,7 +2085,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
     if (!program->instructions)
         return 0;
-    
+
     program->instructions_count = instructions_count;
     program->instructions_capacity = instructions_count;
 
@@ -2031,7 +2105,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
         Vector operands;
         vector_init(&operands, 10, sizeof(char*));
-        
+
         size_t j;
         for (j = 0; j < operands_count; j++) {
             size_t operand_len;
@@ -2041,7 +2115,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             }
             memcpy(&operand_len, data + offset, sizeof(size_t));
             offset += sizeof(size_t);
-            
+
             if (offset + operand_len > data_size) {
                 vector_free(&operands);
                 goto error_instructions;
@@ -2051,18 +2125,18 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             memcpy(temp_operand, data + offset, operand_len);
             temp_operand[operand_len] = '\0';
             offset += operand_len;
-            
+
             char *persistent_operand = strdup(temp_operand);
             if (!persistent_operand) {
                 free(temp_operand);
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             vector_push(&operands, &persistent_operand);
             free(temp_operand);
         }
@@ -2080,7 +2154,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     program->labels = (Label *)malloc(sizeof(Label) * labels_count);
     if (!program->labels)
         goto error_instructions;
-    
+
     program->labels_count = labels_count;
     program->labels_capacity = labels_count;
 
@@ -2090,13 +2164,13 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             goto error_labels;
         memcpy(&name_len, data + offset, sizeof(size_t));
         offset += sizeof(size_t);
-        
+
         if (offset + name_len > data_size)
             goto error_labels;
         char *name = (char *)malloc(name_len + 1);
         if (!name)
             goto error_labels;
-        
+
         memcpy(name, data + offset, name_len);
         name[name_len] = '\0';
         offset += name_len;
@@ -2118,10 +2192,10 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
 error_labels:
     free_program_labels(program, i);
-    
+
 error_instructions:
     free_program_instructions(program, i);
-    
+
     return 0;
 }
 
@@ -2133,7 +2207,7 @@ void execute_program(OrtaVM *vm) {
         OERROR(stderr, "Could not find label '%s' starting at 0\n", OENTRY);
     }
     else xpu->ip = entry;
-    int running = 1; 
+    int running = 1;
     while (running && !vm->program.halted) {
         if (vm->xpu.ip >= vm->program.instructions_count) {
             running = 0;
