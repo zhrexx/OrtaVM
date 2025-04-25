@@ -1115,7 +1115,7 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
             }
         } else if (strcmp(func_name, "@orta") == 0) {
             if (node->data.function_call.args->data.argument_list.count != 1 || node->data.function_call.args->data.argument_list.args[0]->type != NODE_STRING) {
-                fprintf(stderr, "ERROR: 'orta' expects only one string argument\n");
+                fprintf(stderr, "ERROR: '@orta' expects only one string argument\n");
             }
             codegen_emit(gen, node->data.function_call.args->data.argument_list.args[0]->data.string.value);
         } else {

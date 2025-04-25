@@ -811,8 +811,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             char *operand = vector_get_str(&instr->operands, 0);
             XRegisters reg = register_name_to_enum(operand);
             if (reg != -1) {
-                if (regs[reg].reg_value.type == WCHARP)
-                    //free(regs[reg].reg_value.as_string);
+                if (regs[reg].reg_value.type == WCHARP) {
+                    free(regs[reg].reg_value.as_string);
+                    regs[reg].reg_value.as_string = NULL;
+                }
                 regs[reg].reg_value = xstack_pop(&xpu->stack);
             }
             break;
