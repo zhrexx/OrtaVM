@@ -21,6 +21,7 @@ typedef struct {
     bool show_version;
     bool debug;
     bool notdeletepreprocessed;
+    bool only_compile;
     const char* input_file;
 } ProgramOptions;
 
@@ -34,6 +35,7 @@ void print_usage(const char *program_name) {
     printf("  %s--nopreproc%s          Disable source file preprocessing\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--notdeletepreprocessed%s          Disable preprocessed file deletion\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--disable-compile%s    Disable bytecode creation\n", COLOR_BLUE, COLOR_RESET);
+    printf("  %s--only-compile%s       Only compiles no run\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--version%s            Display version information\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--debug%s              Show detailed execution information\n", COLOR_BLUE, COLOR_RESET);
     
@@ -115,6 +117,7 @@ ProgramOptions parse_arguments(int argc, char **argv) {
         .show_version = false,
         .debug = false,
         .notdeletepreprocessed = false,
+        .only_compile = false,
         .input_file = NULL
     };
     
@@ -139,6 +142,8 @@ ProgramOptions parse_arguments(int argc, char **argv) {
             options.notdeletepreprocessed = true;
         } else if (strcmp(argv[i], "--disable-compile") == 0) {
             options.disable_compile = true;
+        } else if (strcmp(argv[i], "--only-compile") == 0) {
+            options.only_compile = true;
         } else if (strcmp(argv[i], "--version") == 0) {
             options.show_version = true;
         } else if (strcmp(argv[i], "--debug") == 0) {
@@ -172,8 +177,6 @@ int main(int argc, char **argv) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }
-    
-    time_t start = time(NULL);
     
     if (options.debug) {
         print_progress("INIT", "Initializing virtual machine");
@@ -253,20 +256,21 @@ int main(int argc, char **argv) {
     if (options.debug) {
         print_progress("EXEC", "Executing program instructions");
     }
+    if (!options.only_compile) {
+        time_t start = time(NULL);
+        execute_program(&vm);
+        time_t end = time(NULL);
     
-    execute_program(&vm);
-    time_t end = time(NULL);
-    
-    printf("EXECUTION COMPLETED IN %ds\n", (int)(end - start));
-    
-    if (options.debug) {
-        printf("\nSTACK STATE\n");
-        print_stack(&vm.xpu);
+        printf("EXECUTION COMPLETED IN %ds\n", (int)(end - start));
+
+        if (options.debug) {
+            printf("\nSTACK STATE\n");
+            print_stack(&vm.xpu);
         
-        printf("\nREGISTERS STATE\n");
-        print_registers(&vm.xpu);
+            printf("\nREGISTERS STATE\n");
+            print_registers(&vm.xpu);
+        }
     }
-    
     if (!is_bytecode && !options.disable_compile) {
         char bytecode_filename[256];
         snprintf(bytecode_filename, sizeof(bytecode_filename), "%.*s.xbin", (int)(len - 2), filename);

@@ -18,7 +18,7 @@ const char* short_to_flag(short flag) {
     switch (flag) {
         case FLAG_MEMORY:  return "MEMORY";
         case FLAG_STACK:   return "STACK";
-        case FLAG_CMD:     return "CMD";
+        case FLAG_XCALL:   return "XCALL";
         default:           return "INVALID";
     }
 }
@@ -28,7 +28,7 @@ const char* short_to_flag_minimized(short flag) {
         case FLAG_NOTHING: return "U";
         case FLAG_MEMORY:  return "M";
         case FLAG_STACK:   return "S";
-        case FLAG_CMD:     return "C";
+        case FLAG_XCALL:     return "X";
         default:           return "I";
     }
 }

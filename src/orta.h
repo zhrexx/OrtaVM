@@ -253,8 +253,8 @@ typedef struct {
 
 static const InstructionInfo instructions[] = {
     {"push", IPUSH, {ARG_EXACT, 1, 1}}, {"mov", IMOV, {ARG_EXACT, 2, 2}},
-    {"pop", IPOP, {ARG_EXACT, 1, 1}}, {"add", IADD, {ARG_MIN, 0, 0}},
-    {"sub", ISUB, {ARG_MIN, 0, 0}}, {"mul", IMUL, {ARG_MIN, 0, 0}},
+    {"pop", IPOP, {ARG_EXACT, 1, 1}}, {"add", IADD, {ARG_RANGE, 0, 2}},
+    {"sub", ISUB, {ARG_RANGE, 0, 2}}, {"mul", IMUL, {ARG_MIN, 0, 0}},
     {"div", IDIV, {ARG_MIN, 0, 0}}, {"mod", IMOD, {ARG_EXACT, 0, 0}},
     {"and", IAND, {ARG_EXACT, 0, 0}}, {"or", IOR, {ARG_EXACT, 0, 0}},
     {"xor", IXOR, {ARG_EXACT, 2, 2}}, {"not", INOT, {ARG_EXACT, 0, 0}},
@@ -319,7 +319,7 @@ typedef struct {
 } Program;
 
 typedef enum {
-    FLAG_NOTHING = 0, FLAG_STACK = 1, FLAG_MEMORY = 2, FLAG_CMD = 3,
+    FLAG_NOTHING = 0, FLAG_STACK = 1, FLAG_MEMORY = 2, FLAG_XCALL = 3,
 } Flags;
 
 typedef struct {
@@ -834,39 +834,121 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
         }
 
-        case IADD: {
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            if (w1.type == WINT && w2.type == WINT) {
-                result.type = WINT;
-                result.as_int = w2.as_int + w1.as_int;
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                result.type = WFLOAT;
-                result.as_float = w2.as_float + w1.as_float;
-            } else if (w1.type == WINT && w2.type == WPOINTER) {
-                w2.as_pointer += w1.as_int;
-            }
-
-            xstack_push(&xpu->stack, result);
-            break;
-        }
-
-        case ISUB: {
-            w1 = xstack_pop(&xpu->stack);
-            w2 = xstack_pop(&xpu->stack);
-            if (w1.type == WINT && w2.type == WINT) {
-                result.type = WINT;
-                result.as_int = w2.as_int - w1.as_int;
-            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
-                result.type = WFLOAT;
-                result.as_float = w2.as_float - w1.as_float;
-            } else if (w1.type == WINT && w2.type == WPOINTER) {
-                w2.as_pointer -= w1.as_int;
-            }
-
-            xstack_push(&xpu->stack, result);
-            break;
-        }
+		case IADD: {
+		    if (instr->operands.size >= 2) {
+		        char *dest_str = vector_get_str(&instr->operands, 0);
+		        char *src_str = vector_get_str(&instr->operands, 1);
+		        XRegisters dest_reg = register_name_to_enum(dest_str);
+		        Word src_val;
+		
+		        if (is_register(src_str)) {
+		            XRegisters src_reg = register_name_to_enum(src_str);
+		            if (src_reg != -1) src_val = regs[src_reg].reg_value;
+		        } else if (is_number(src_str)) {
+		            src_val.type = WINT;
+		            src_val.as_int = atoi(src_str);
+		        } else if (is_float(src_str)) {
+		            src_val.type = WFLOAT;
+		            src_val.as_float = atof(src_str);
+		        } else {
+		            break; 
+		        }
+		
+		        if (dest_reg != -1) {
+		            XRegister *dest = &regs[dest_reg];
+		            if (dest->reg_value.type == src_val.type) {
+		                switch (dest->reg_value.type) {
+		                    case WINT:   dest->reg_value.as_int += src_val.as_int; break;
+		                    case WFLOAT: dest->reg_value.as_float += src_val.as_float; break;
+		                    case WPOINTER: 
+		                        if (src_val.type == WINT)
+		                            dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer + src_val.as_int;
+		                        break;
+		                    case W_CHAR: dest->reg_value.as_char += src_val.as_char; break;
+		                    default: break;
+		                }
+		            } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
+		                dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer + src_val.as_int;
+		            } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
+		                dest->reg_value.type = WFLOAT;
+		                dest->reg_value.as_float = (float)dest->reg_value.as_int + src_val.as_float;
+		            }
+		        }
+		    } else if (instr->operands.size == 1) {
+		        char *src_str = vector_get_str(&instr->operands, 0);
+		        Word w = xstack_peek(&xpu->stack, 0);
+		        if (is_number(src_str)) {
+		            int imm = atoi(src_str);
+		            if (w.type == WINT) w.as_int += imm;
+		            else if (w.type == WFLOAT) w.as_float += (float)imm;
+		            else if (w.type == WPOINTER) w.as_pointer += imm;
+		        }
+		        xstack_push(&xpu->stack, w);
+		    } else {
+		        w1 = xstack_pop(&xpu->stack);
+		        w2 = xstack_pop(&xpu->stack);
+		        xstack_push(&xpu->stack, result);
+		    }
+		    break;
+		}
+		
+		case ISUB: {
+		    if (instr->operands.size >= 2) {
+		        char *dest_str = vector_get_str(&instr->operands, 0);
+		        char *src_str = vector_get_str(&instr->operands, 1);
+		        XRegisters dest_reg = register_name_to_enum(dest_str);
+		        Word src_val;
+		
+		        if (is_register(src_str)) {
+		            XRegisters src_reg = register_name_to_enum(src_str);
+		            if (src_reg != -1) src_val = regs[src_reg].reg_value;
+		        } else if (is_number(src_str)) {
+		            src_val.type = WINT;
+		            src_val.as_int = atoi(src_str);
+		        } else if (is_float(src_str)) {
+		            src_val.type = WFLOAT;
+		            src_val.as_float = atof(src_str);
+		        } else {
+		            break;
+		        }
+		
+		        if (dest_reg != -1) {
+		            XRegister *dest = &regs[dest_reg];
+		            if (dest->reg_value.type == src_val.type) {
+		                switch (dest->reg_value.type) {
+		                    case WINT:   dest->reg_value.as_int -= src_val.as_int; break;
+		                    case WFLOAT: dest->reg_value.as_float -= src_val.as_float; break;
+		                    case WPOINTER:
+		                        if (src_val.type == WINT)
+		                            dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer - src_val.as_int;
+		                        break;
+		                    case W_CHAR: dest->reg_value.as_char -= src_val.as_char; break;
+		                    default: break;
+		                }
+		            } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
+		                dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer - src_val.as_int;
+		            } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
+		                dest->reg_value.type = WFLOAT;
+		                dest->reg_value.as_float = (float)dest->reg_value.as_int - src_val.as_float;
+		            }
+		        }
+		    } else if (instr->operands.size == 1) {
+		        char *src_str = vector_get_str(&instr->operands, 0);
+		        Word w = xstack_peek(&xpu->stack, 0);
+		        if (is_number(src_str)) {
+		            int imm = atoi(src_str);
+		            if (w.type == WINT) w.as_int -= imm;
+		            else if (w.type == WFLOAT) w.as_float -= (float)imm;
+		            else if (w.type == WPOINTER) w.as_pointer -= imm;
+		        }
+		        xstack_push(&xpu->stack, w);
+		    } else {
+		        w1 = xstack_pop(&xpu->stack);
+		        w2 = xstack_pop(&xpu->stack);
+		        xstack_push(&xpu->stack, result);
+		    }
+		    break;
+		}
 
         case IMUL: {
             w1 = xstack_pop(&xpu->stack);
@@ -1867,6 +1949,26 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     xpu->ip++;
 }
 
+void set_flags(OrtaVM *vm) {
+    for (size_t i = 0; i < vm->program.instructions_count; i++) {
+        Instruction instr = vm->program.instructions[i].opcode;
+        switch (instr) {
+            case IPUSH: 
+            case IPOP: 
+                add_flag(vm, FLAG_STACK);
+                break;
+            case IALLOC:
+            case IREADMEM:
+            case IWRITEMEM: 
+                add_flag(vm, FLAG_MEMORY);
+                break;
+            case IXCALL: 
+                add_flag(vm, FLAG_XCALL);
+                break;
+        }
+    }
+}
+
 int create_bytecode(OrtaVM *vm, const char *output_filename) {
     Program *program = &vm->program;
     FILE *fp = fopen(output_filename, "wb");
@@ -1874,7 +1976,7 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
         OERROR(stderr, "ERROR: Could not create bytecode file '%s'\n", output_filename);
         return 0;
     }
-
+    set_flags(vm);
     if (fwrite(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
         goto error;
 
