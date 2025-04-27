@@ -1,5 +1,6 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: test new xcalls 4-6 they can dont work 
+// TODO: test new xcalls 4-6 they can dont work
+// TODO: add support for add and sub be used in ptr
 
 #ifndef ORTA_H
 #define ORTA_H
@@ -694,6 +695,19 @@ Word getvar(OrtaVM *vm, char *var_name, Vector *scope) {
     return empty_word;
 }
 
+bool is_variable(char *var_name, Vector *scope) {
+    bool found_var = false;
+
+    VECTOR_FOR_EACH(Variable, var, scope) {
+        if (strcmp(var->name, var_name) == 0) {
+            found_var = true;
+            break;
+        }
+    }
+
+    return found_var;
+}
+
 void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
     Variable *target_var = NULL;
 
@@ -826,11 +840,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (w1.type == WINT && w2.type == WINT) {
                 result.type = WINT;
                 result.as_int = w2.as_int + w1.as_int;
-            }
-            else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
                 result.type = WFLOAT;
                 result.as_float = w2.as_float + w1.as_float;
+            } else if (w1.type == WINT && w2.type == WPOINTER) {
+                w2.as_pointer += w1.as_int;
             }
+
             xstack_push(&xpu->stack, result);
             break;
         }
@@ -841,11 +857,13 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (w1.type == WINT && w2.type == WINT) {
                 result.type = WINT;
                 result.as_int = w2.as_int - w1.as_int;
-            }
-            else if (w1.type == WFLOAT && w2.type == WFLOAT) {
+            } else if (w1.type == WFLOAT && w2.type == WFLOAT) {
                 result.type = WFLOAT;
                 result.as_float = w2.as_float - w1.as_float;
+            } else if (w1.type == WINT && w2.type == WPOINTER) {
+                w2.as_pointer -= w1.as_int;
             }
+
             xstack_push(&xpu->stack, result);
             break;
         }
@@ -1191,7 +1209,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
 		                        size *= regs[reg].reg_value.as_int;
 		                    }
-		                }
+		                } else if (is_variable(count_str, current_scope)) {
+							Word variable = getvar(vm, count_str, current_scope);
+							size *= variable.as_int;
+						}
 		            }
 		        }
 		        else if (is_number(size_str)) {
@@ -1425,9 +1446,27 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                                     (value.type == WINT) ? (char)value.as_int : 0;
 		                break;
 		            case WCHARP:
-		                if (value.type == WCHARP) {
-		                    *(char**)write_addr = strdup(value.as_string);
-		                }
+                        if (value.type == WCHARP) {
+                            if (*(char**)write_addr != NULL) {
+                                void *memory_start = vm->program.memory;
+                                void *memory_end = (char*)memory_start + vm->program.memory_capacity;
+                                if (*(void**)write_addr < memory_start || *(void**)write_addr >= memory_end) {
+                                    free(*(char**)write_addr);
+                                }
+                            }
+                    
+                            if (value.as_string != NULL) {
+                                *(char**)write_addr = strdup(value.as_string);
+                                if (*(char**)write_addr == NULL) {
+                                    OERROR(stderr, "Failed to duplicate string in WRITEMEM\n");
+                                    vm->xpu.ip = vm->program.instructions_count;
+                                    vm->program.exit_code = 1;
+                                    return;
+                                }
+                            } else {
+                                *(char**)write_addr = NULL;
+                            }
+                        }
 		                break;
 		            case WPOINTER:
 		                if (value.type == WPOINTER) {
@@ -1570,7 +1609,20 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                break;
 		            case WCHARP:
 		                result.type = WCHARP;
-		                result.as_string = strdup(*(char**)read_addr);
+                        if (*(char **)read_addr != NULL) {
+		                    result.as_string = strdup(*(char**)read_addr);
+                            if (!result.as_string) {
+                                OERROR(stderr, "ERROR: Failed to allocate memory for string\n");
+                                vm->xpu.ip = vm->program.instructions_count;
+                                vm->program.exit_code = 1;
+                                return;
+                            }
+                        } else {
+                            OERROR(stderr, "ERROR: could not read memory at %p\n", read_addr);
+                            vm->xpu.ip = vm->program.instructions_count;
+                            vm->program.exit_code = 1;
+                        }
+
 		                break;
 		            case WPOINTER:
 		                result.type = WPOINTER;

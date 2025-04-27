@@ -1,10 +1,5 @@
 #include "std.x"
-
 __entry:
-    togglelocalscope
-    push 10
-    setvar av
-    getvar av
+    push "Hello"    
     print
-
     halt 10

@@ -6,8 +6,9 @@ __entry:
     print
     free rax
     
-    alloc int 1 rax 
-    @w rax 0 int 42
+    alloc int 1 rax
+    push 42
+    @w rax 0 int 
     @r rax 0 int
     print
     free rax

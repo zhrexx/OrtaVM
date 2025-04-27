@@ -17,30 +17,30 @@ int parse_program(OrtaVM *vm, const char *filename) {
         fprintf(stderr, "Error: Failed to open file '%s'\n", filename);
         return 0;
     }
-    
+
     char buffer[8192];
     size_t bytes_read = fread(buffer, sizeof(char), 8191, fp);
     buffer[bytes_read] = '\0';
     fclose(fp);
-    
+
     Vector lines = split_to_vector(buffer, "\n");
-    
+
     VECTOR_FOR_EACH(char *, line, &lines) {
         if (*line == NULL) continue;
-        
+
         char *trimmed = trim_left(*line);
         if (trimmed == NULL || strlen(trimmed) == 0 || starts_with(";", trimmed)) {
             free(trimmed);
             continue;
         }
-        
+
         Vector tokens = split_to_vector(trimmed, " ");
         free(trimmed);
         if (tokens.size < 1) {
             vector_free(&tokens);
             continue;
         }
-        
+
         for (size_t i = 0; i < tokens.size; i++) {
             char *token = vector_get_str(&tokens, i);
             if (token != NULL && starts_with(";", token)) {
@@ -50,12 +50,12 @@ int parse_program(OrtaVM *vm, const char *filename) {
                 break;
             }
         }
-        
+
         if (tokens.size == 0) {
             vector_free(&tokens);
             continue;
         }
-        
+
         char *first_token = vector_get_str(&tokens, 0);
         if (first_token != NULL && is_label_declaration(first_token)) {
             size_t label_len = strlen(first_token);
@@ -63,37 +63,36 @@ int parse_program(OrtaVM *vm, const char *filename) {
             label_name[label_len - 1] = '\0';
 
             add_label(&vm->program, label_name, vm->program.instructions_count);
-            //printf("Adding label: '%s' at address %zu\n", label_name, vm->program.instructions_count);
             free(label_name);
-            
+
             vector_remove(&tokens, 0);
-            
+
             if (tokens.size == 0) {
                 vector_free(&tokens);
                 continue;
             }
-            
+
             first_token = vector_get_str(&tokens, 0);
         }
-        
+
         if (first_token == NULL) {
             vector_free(&tokens);
             continue;
         }
-        
+
         char *instruction_name = strdup(first_token);
         vector_remove(&tokens, 0);
-        
+
         Instruction parsed_instruction = parse_instruction(instruction_name);
         free(instruction_name);
-        
+
         if (parsed_instruction == -1) {
             fprintf(stderr, "Error: Unknown instruction '%s'\n", first_token);
             vector_free(&tokens);
             vector_free(&lines);
             return 0;
         }
-        
+
         ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
         if (!validateArgCount(expected_args, tokens.size)) {
             fprintf(stderr, "Error: Expected %d arguments for instruction '%s', but got %zu\n",
@@ -102,13 +101,14 @@ int parse_program(OrtaVM *vm, const char *filename) {
             vector_free(&lines);
             return 0;
         }
-        
+
+
         InstructionData instr;
         instr.opcode = parsed_instruction;
         instr.operands = tokens;
         add_instruction(&vm->program, instr);
     }
-    
+
     vector_free(&lines);
     return 1;
 }
@@ -166,16 +166,16 @@ void add_simple_define(const char *name, const char *value) {
         fprintf(stderr, "Warning: Too many #define directives\n");
         return;
     }
-    
+
     strncpy(defines[define_count].name, name, MAX_DEFINE_NAME - 1);
     defines[define_count].name[MAX_DEFINE_NAME - 1] = '\0';
-    
+
     strncpy(defines[define_count].value, value, MAX_DEFINE_VALUE - 1);
     defines[define_count].value[MAX_DEFINE_VALUE - 1] = '\0';
-    
+
     defines[define_count].is_function_macro = 0;
     defines[define_count].argc = 0;
-    
+
     define_count++;
 }
 
@@ -184,37 +184,37 @@ void add_function_macro(const char *name, const char *args_str, const char *valu
         fprintf(stderr, "Warning: Too many #define directives\n");
         return;
     }
-    
+
     Define *d = &defines[define_count];
-    
+
     strncpy(d->name, name, MAX_DEFINE_NAME - 1);
     d->name[MAX_DEFINE_NAME - 1] = '\0';
-    
+
     strncpy(d->value, value, MAX_DEFINE_VALUE - 1);
     d->value[MAX_DEFINE_VALUE - 1] = '\0';
-    
+
     d->is_function_macro = 1;
     d->argc = 0;
-    
+
     char arg_buffer[MAX_LINE_LENGTH];
     strncpy(arg_buffer, args_str, MAX_LINE_LENGTH - 1);
     arg_buffer[MAX_LINE_LENGTH - 1] = '\0';
-    
+
     char *token = strtok(arg_buffer, ",");
     while (token && d->argc < MAX_ARGS) {
         while (isspace(*token)) token++;
-        
+
         char *end = token + strlen(token) - 1;
         while (end > token && isspace(*end)) end--;
         *(end + 1) = '\0';
-        
+
         strncpy(d->args[d->argc], token, MAX_ARG_LEN - 1);
         d->args[d->argc][MAX_ARG_LEN - 1] = '\0';
         d->argc++;
-        
+
         token = strtok(NULL, ",");
     }
-    
+
     define_count++;
 }
 
@@ -222,14 +222,14 @@ char *replace_args_in_macro(Define *d, char args_values[MAX_ARGS][MAX_ARG_LEN]) 
     static char result[MAX_DEFINE_VALUE];
     char *p = d->value;
     int i = 0;
-    
+
     while (*p && i < MAX_DEFINE_VALUE - 1) {
         int replaced = 0;
-        
+
         for (int j = 0; j < d->argc; j++) {
             if (strncmp(p, d->args[j], strlen(d->args[j])) == 0 &&
                 (!isalnum(p[strlen(d->args[j])]) && p[strlen(d->args[j])] != '_')) {
-                
+
                 strcpy(result + i, args_values[j]);
                 i += strlen(args_values[j]);
                 p += strlen(d->args[j]);
@@ -237,12 +237,12 @@ char *replace_args_in_macro(Define *d, char args_values[MAX_ARGS][MAX_ARG_LEN]) 
                 break;
             }
         }
-        
+
         if (!replaced) {
             result[i++] = *p++;
         }
     }
-    
+
     result[i] = '\0';
     return result;
 }
@@ -252,9 +252,9 @@ char *parse_macro_args(char *p, Define *d, char args_values[MAX_ARGS][MAX_ARG_LE
     int paren_depth = 1;
     char arg_buffer[MAX_ARG_LEN];
     int buffer_idx = 0;
-    
+
     p++;
-    
+
     while (*p && paren_depth > 0 && arg_count < MAX_ARGS) {
         if (*p == '(' && *(p-1) != '\\') {
             paren_depth++;
@@ -287,12 +287,12 @@ char *parse_macro_args(char *p, Define *d, char args_values[MAX_ARGS][MAX_ARG_LE
             p++;
         }
     }
-    
+
     if (arg_count != d->argc) {
-        fprintf(stderr, "Warning: Macro %s expects %d arguments, got %d\n", 
+        fprintf(stderr, "Warning: Macro %s expects %d arguments, got %d\n",
                 d->name, d->argc, arg_count);
     }
-    
+
     return p;
 }
 
@@ -300,20 +300,20 @@ char *process_defines(char *line) {
     static char result[MAX_LINE_LENGTH];
     char *p = line;
     int i = 0;
-    
+
     while (*p && i < MAX_LINE_LENGTH - 1) {
         int replaced = 0;
-        
+
         for (int j = 0; j < define_count; j++) {
             Define *d = &defines[j];
-            
+
             if (strncmp(p, d->name, strlen(d->name)) == 0) {
                 char next_char = p[strlen(d->name)];
-                
+
                 if (d->is_function_macro && next_char == '(') {
                     char args_values[MAX_ARGS][MAX_ARG_LEN];
                     char *new_p = parse_macro_args(p + strlen(d->name), d, args_values);
-                    
+
                     char *expanded = replace_args_in_macro(d, args_values);
                     strcpy(result + i, expanded);
                     i += strlen(expanded);
@@ -329,12 +329,12 @@ char *process_defines(char *line) {
                 }
             }
         }
-        
+
         if (!replaced) {
             result[i++] = *p++;
         }
     }
-    
+
     result[i] = '\0';
     return result;
 }
@@ -342,49 +342,49 @@ char *process_defines(char *line) {
 int parse_define_directive(char *line) {
     char *p = line + 7;
     while (isspace(*p)) p++;
-    
+
     char define_name[MAX_DEFINE_NAME];
     int name_idx = 0;
-    
+
     while (*p && !isspace(*p) && *p != '(' && name_idx < MAX_DEFINE_NAME - 1) {
         define_name[name_idx++] = *p++;
     }
     define_name[name_idx] = '\0';
-    
+
     if (*p == '(') {
         p++;
         char args_str[MAX_LINE_LENGTH];
         int args_idx = 0;
         int paren_depth = 1;
-        
+
         while (*p && paren_depth > 0 && args_idx < MAX_LINE_LENGTH - 1) {
             if (*p == '(') paren_depth++;
             else if (*p == ')') paren_depth--;
-            
+
             if (paren_depth > 0) {
                 args_str[args_idx++] = *p;
             }
             p++;
         }
         args_str[args_idx] = '\0';
-        
+
         while (isspace(*p)) p++;
-        
+
         add_function_macro(define_name, args_str, p);
     } else {
         while (isspace(*p)) p++;
         add_simple_define(define_name, p);
     }
-    
+
     return 0;
 }
 
 FILE *find_include_file(const char *filename) {
     FILE *file = NULL;
-    
+
     file = fopen(filename, "r");
     if (file) return file;
-    
+
     char full_path[MAX_LINE_LENGTH];
     for (int i = 0; i < include_path_count; i++) {
         snprintf(full_path, MAX_LINE_LENGTH, "%s/%s", include_paths[i], filename);
@@ -393,7 +393,7 @@ FILE *find_include_file(const char *filename) {
             return file;
         }
     }
-    
+
     return NULL;
 }
 
@@ -402,13 +402,13 @@ int process_include(const char *filename, FILE *output, int depth) {
         fprintf(stderr, "Error: Maximum include depth exceeded for %s\n", filename);
         return 0;
     }
-    
+
     FILE *include_fp = find_include_file(filename);
     if (!include_fp) {
         fprintf(stderr, "Warning: Cannot include file %s\n", filename);
         return 0;
     }
-    
+
     char include_line[MAX_LINE_LENGTH];
     while (fgets(include_line, MAX_LINE_LENGTH, include_fp)) {
         char trimmed_line[MAX_LINE_LENGTH] = {0};
@@ -446,7 +446,7 @@ int process_include(const char *filename, FILE *output, int depth) {
             }
         }
     }
-    
+
     fclose(include_fp);
     return 1;
 }
@@ -460,7 +460,7 @@ int orta_preprocess(char *filename, char *output_file) {
     for (int i = 0; i < path_count && i < MAX_INCLUDE_PATHS; i++) {
         add_include_path(dpaths[i]);
     }
-    
+
     FILE *input = fopen(filename, "r");
     if (!input) {
         fprintf(stderr, "Error: Cannot open input file %s\n", filename);
@@ -515,7 +515,7 @@ int orta_preprocess(char *filename, char *output_file) {
             }
         }
     }
-    
+
     free(SNULL);
     fclose(input);
     fclose(output);
