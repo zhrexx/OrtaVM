@@ -1,6 +1,4 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: test new xcalls 4-6 they can dont work
-// TODO: add support for add and sub be used in ptr
 
 #ifndef ORTA_H
 #define ORTA_H
@@ -1417,7 +1415,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 									result = ((int (*)())func)();
 									break;
 								case 1:
-									result = ((int (*)(int))func)(args[0].as_int);
+									result = ((int (*)(void *))func)(args[0].as_pointer);
 									break;
 								case 2:
 									result = ((int (*)(int, int))func)(args[1].as_int, args[0].as_int);
@@ -1969,7 +1967,7 @@ void set_flags(OrtaVM *vm) {
     }
 }
 
-int create_bytecode(OrtaVM *vm, const char *output_filename) {
+int create_xbin(OrtaVM *vm, const char *output_filename) {
     Program *program = &vm->program;
     FILE *fp = fopen(output_filename, "wb");
     if (!fp) {
@@ -2003,13 +2001,37 @@ int create_bytecode(OrtaVM *vm, const char *output_filename) {
 
         for (size_t j = 0; j < operands_count; j++) {
             char *operand = *(char **)vector_get(&instr->operands, j);
-            size_t operand_len = strlen(operand);
+            
+            if (is_register(operand)) {
+                char type = 'R'; 
+                if (fwrite(&type, sizeof(char), 1, fp) != 1)
+                    goto error;
+                
+                XRegisters reg_id = register_name_to_enum(operand);
+                if (fwrite(&reg_id, sizeof(XRegisters), 1, fp) != 1)
+                    goto error;
+            }
+            else if (is_number(operand)) {
+                char type = 'N';
+                if (fwrite(&type, sizeof(char), 1, fp) != 1)
+                    goto error;
+                
+                int value = atoi(operand);
+                if (fwrite(&value, sizeof(int), 1, fp) != 1)
+                    goto error;
+            }
+            else {
+                char type = 'S'; 
+                if (fwrite(&type, sizeof(char), 1, fp) != 1)
+                    goto error;
+                
+                size_t operand_len = strlen(operand);
+                if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1)
+                    goto error;
 
-            if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1)
-                goto error;
-
-            if (fwrite(operand, 1, operand_len, fp) != operand_len)
-                goto error;
+                if (fwrite(operand, 1, operand_len, fp) != operand_len)
+                    goto error;
+            }
         }
     }
 
@@ -2057,7 +2079,7 @@ void free_program_labels(Program *program, size_t count) {
     free(program->labels);
 }
 
-int load_bytecode(OrtaVM *vm, const char *input_filename) {
+int load_xbin(OrtaVM *vm, const char *input_filename) {
     Program *program = &vm->program;
     FILE *fp = fopen(input_filename, "rb");
     if (!fp) {
@@ -2116,34 +2138,69 @@ int load_bytecode(OrtaVM *vm, const char *input_filename) {
 
         size_t j;
         for (j = 0; j < operands_count; j++) {
-            size_t operand_len;
-            if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
+            char type;
+            if (fread(&type, sizeof(char), 1, fp) != 1) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-
-            char *temp_operand = (char *)malloc(operand_len + 1);
-            if (!temp_operand) {
-                vector_free(&operands);
-                goto error_instructions;
+            
+            char *persistent_operand = NULL;
+            
+            if (type == 'R') {
+                XRegisters reg_id;
+                if (fread(&reg_id, sizeof(XRegisters), 1, fp) != 1) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                
+                for (int k = 0; k < REG_COUNT; k++) {
+                    if (register_table[k].id == reg_id) {
+                        persistent_operand = strdup(register_table[k].name);
+                        break;
+                    }
+                }
             }
+            else if (type == 'N') {
+                int value;
+                if (fread(&value, sizeof(int), 1, fp) != 1) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                
+                char num_str[32];
+                snprintf(num_str, sizeof(num_str), "%d", value);
+                persistent_operand = strdup(num_str);
+            }
+            else if (type == 'S') {
+                size_t operand_len;
+                if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
 
-            if (fread(temp_operand, 1, operand_len, fp) != operand_len) {
+                char *temp_operand = (char *)malloc(operand_len + 1);
+                if (!temp_operand) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+
+                if (fread(temp_operand, 1, operand_len, fp) != operand_len) {
+                    free(temp_operand);
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                temp_operand[operand_len] = '\0';
+                
+                persistent_operand = strdup(temp_operand);
                 free(temp_operand);
-                vector_free(&operands);
-                goto error_instructions;
             }
-            temp_operand[operand_len] = '\0';
-
-            char *persistent_operand = strdup(temp_operand);
+            
             if (!persistent_operand) {
-                free(temp_operand);
                 vector_free(&operands);
                 goto error_instructions;
             }
-
+            
             vector_push(&operands, &persistent_operand);
-            free(temp_operand);
         }
 
         program->instructions[i].opcode = opcode;
@@ -2209,6 +2266,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     program->memory = malloc(MEMORY_CAPACITY);
     program->memory_capacity = MEMORY_CAPACITY;
     program->memory_used = 0;
+    vector_init(&program->variables, 5, sizeof(Variable));
 
     if (offset + sizeof(OrtaMeta) > data_size)
         return 0;
@@ -2264,37 +2322,80 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
         size_t j;
         for (j = 0; j < operands_count; j++) {
-            size_t operand_len;
-            if (offset + sizeof(size_t) > data_size) {
+            char type;
+            if (offset + sizeof(char) > data_size) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            memcpy(&operand_len, data + offset, sizeof(size_t));
-            offset += sizeof(size_t);
-
-            if (offset + operand_len > data_size) {
-                vector_free(&operands);
-                goto error_instructions;
+            memcpy(&type, data + offset, sizeof(char));
+            offset += sizeof(char);
+            
+            char *persistent_operand = NULL;
+            
+            if (type == 'R') {  // Register
+                XRegisters reg_id;
+                if (offset + sizeof(XRegisters) > data_size) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                memcpy(&reg_id, data + offset, sizeof(XRegisters));
+                offset += sizeof(XRegisters);
+                
+                // Convert register ID back to name
+                for (int k = 0; k < REG_COUNT; k++) {
+                    if (register_table[k].id == reg_id) {
+                        persistent_operand = strdup(register_table[k].name);
+                        break;
+                    }
+                }
             }
-            char *temp_operand = (char *)malloc(operand_len + 1);
-            if (!temp_operand) {
-                vector_free(&operands);
-                goto error_instructions;
+            else if (type == 'N') {  // Number
+                int value;
+                if (offset + sizeof(int) > data_size) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                memcpy(&value, data + offset, sizeof(int));
+                offset += sizeof(int);
+                
+                // Convert number to string
+                char num_str[32];
+                snprintf(num_str, sizeof(num_str), "%d", value);
+                persistent_operand = strdup(num_str);
             }
+            else if (type == 'S') {  // String
+                size_t operand_len;
+                if (offset + sizeof(size_t) > data_size) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                memcpy(&operand_len, data + offset, sizeof(size_t));
+                offset += sizeof(size_t);
 
-            memcpy(temp_operand, data + offset, operand_len);
-            temp_operand[operand_len] = '\0';
-            offset += operand_len;
+                if (offset + operand_len > data_size) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                char *temp_operand = (char *)malloc(operand_len + 1);
+                if (!temp_operand) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
 
-            char *persistent_operand = strdup(temp_operand);
-            if (!persistent_operand) {
+                memcpy(temp_operand, data + offset, operand_len);
+                temp_operand[operand_len] = '\0';
+                offset += operand_len;
+                
+                persistent_operand = strdup(temp_operand);
                 free(temp_operand);
+            }
+            
+            if (!persistent_operand) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-
+            
             vector_push(&operands, &persistent_operand);
-            free(temp_operand);
         }
 
         program->instructions[i].opcode = opcode;

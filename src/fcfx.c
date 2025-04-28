@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
     }
     
     OrtaVM vm = ortavm_create(options.input_file);
-    if (!load_bytecode(&vm, options.input_file)) {
+    if (!load_xbin(&vm, options.input_file)) {
         fprintf(stderr, "Error: Failed to load xbin file '%s'\n", options.input_file);
         exit(EXIT_FAILURE);
     }

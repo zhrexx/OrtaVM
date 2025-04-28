@@ -12,3 +12,10 @@ __entry:
     @r rax 0 int
     print
     free rax
+
+    alloc char 4 rax  
+    push 22 
+    @w rax 0 int 
+    @r rax 0 int 
+    print
+    free rax

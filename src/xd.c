@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
     }
 
     vm = ortavm_create("debug");
-    if (!load_bytecode(&vm, argv[1])) {
+    if (!load_xbin(&vm, argv[1])) {
         fprintf(stderr, "%sError:%s Failed to load bytecode\n", COLOR_RED, COLOR_RESET);
         return 1;
     }

@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
             print_progress("LOAD", "Loading compiled bytecode");
         }
         
-        if (!load_bytecode(&vm, filename)) {
+        if (!load_xbin(&vm, filename)) {
             print_error("Failed to load bytecode file");
             ortavm_free(&vm);
             return EXIT_FAILURE;
@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
             printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
         }
         
-        if (create_bytecode(&vm, bytecode_filename)) {
+        if (create_xbin(&vm, bytecode_filename)) {
             if (options.debug) {
                 print_success("Bytecode created successfully");
             }

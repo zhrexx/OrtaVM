@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
             display_help();
         }
         else if (strcmp(line, "save") == 0) {
-            create_bytecode(&vm, output);
+            create_xbin(&vm, output);
         }
         else if (strlen(line) > 0) {
             if (!parse_line(&vm, line)) {
