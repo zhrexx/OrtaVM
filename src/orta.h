@@ -8,6 +8,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
+#include <inttypes.h>
 #include "xlib.h"
 
 #ifdef _WIN32
@@ -1926,6 +1928,29 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 				break;
 		}
 
+unsigned char optimal_size(int64_t x) {
+    if (x < 0) { // Negative → signed types
+        if (x >= SCHAR_MIN && x <= SCHAR_MAX) {
+            return (unsigned char)sizeof(signed char);
+        } else if (x >= SHRT_MIN && x <= SHRT_MAX) {
+            return (unsigned char)sizeof(short);
+        } else if (x >= INT_MIN && x <= INT_MAX) {
+            return (unsigned char)sizeof(int);
+        } else {
+            return (unsigned char)sizeof(int64_t);
+        }
+    } else { // Non-negative → unsigned types
+        if (x <= UCHAR_MAX) {
+            return (unsigned char)sizeof(unsigned char);
+        } else if (x <= USHRT_MAX) {
+            return (unsigned char)sizeof(unsigned short);
+        } else if (x <= UINT_MAX) {
+            return (unsigned char)sizeof(unsigned int);
+        } else {
+            return (unsigned char)sizeof(uint64_t);
+        }
+    }
+}
         case IOVM:
             char *arg = vector_get_str(&instr->operands, 0);
             if (strcmp(arg, "stack") == 0) {
@@ -1946,6 +1971,31 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     }
     xpu->ip++;
 }
+
+unsigned char optimal_size(int64_t x) {
+    if (x < 0) { 
+        if (x >= SCHAR_MIN && x <= SCHAR_MAX) {
+            return (unsigned char)sizeof(signed char);
+        } else if (x >= SHRT_MIN && x <= SHRT_MAX) {
+            return (unsigned char)sizeof(short);
+        } else if (x >= INT_MIN && x <= INT_MAX) {
+            return (unsigned char)sizeof(int);
+        } else {
+            return (unsigned char)sizeof(int64_t);
+        }
+    } else { 
+        if (x <= UCHAR_MAX) {
+            return (unsigned char)sizeof(unsigned char);
+        } else if (x <= USHRT_MAX) {
+            return (unsigned char)sizeof(unsigned short);
+        } else if (x <= UINT_MAX) {
+            return (unsigned char)sizeof(unsigned int);
+        } else {
+            return (unsigned char)sizeof(uint64_t);
+        }
+    }
+}
+
 
 void set_flags(OrtaVM *vm) {
     for (size_t i = 0; i < vm->program.instructions_count; i++) {
@@ -2011,15 +2061,55 @@ int create_xbin(OrtaVM *vm, const char *output_filename) {
                 if (fwrite(&reg_id, sizeof(XRegisters), 1, fp) != 1)
                     goto error;
             }
-            else if (is_number(operand)) {
-                char type = 'N';
-                if (fwrite(&type, sizeof(char), 1, fp) != 1)
-                    goto error;
-                
-                int value = atoi(operand);
-                if (fwrite(&value, sizeof(int), 1, fp) != 1)
-                    goto error;
-            }
+			else if (is_number(operand)) {
+			    char type = 'N';
+			    if (fwrite(&type, sizeof(char), 1, fp) != 1)
+			        goto error;
+			    
+			    int64_t value = atoll(operand);  
+			    
+			    unsigned char size = optimal_size(value);
+			    if (fwrite(&size, sizeof(unsigned char), 1, fp) != 1)
+			        goto error;
+			    
+			    switch (size) {
+			        case sizeof(signed char):
+			            if (value < 0) {
+			                signed char sval = (signed char)value;
+			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
+			            } else {
+			                unsigned char uval = (unsigned char)value;
+			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
+			            }
+			            break;
+			        case sizeof(short):
+			            if (value < 0) {
+			                short sval = (short)value;
+			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
+			            } else {
+			                unsigned short uval = (unsigned short)value;
+			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
+			            }
+			            break;
+			        case sizeof(int):
+			            if (value < 0) {
+			                int sval = (int)value;
+			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
+			            } else {
+			                unsigned int uval = (unsigned int)value;
+			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
+			            }
+			            break;
+			        case sizeof(int64_t):
+			            if (value < 0) {
+			                if (fwrite(&value, size, 1, fp) != 1) goto error;
+			            } else {
+			                uint64_t uval = (uint64_t)value;
+			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
+			            }
+			            break;
+			    }
+			}                        
             else {
                 char type = 'S'; 
                 if (fwrite(&type, sizeof(char), 1, fp) != 1)
@@ -2160,17 +2250,59 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
                     }
                 }
             }
-            else if (type == 'N') {
-                int value;
-                if (fread(&value, sizeof(int), 1, fp) != 1) {
-                    vector_free(&operands);
-                    goto error_instructions;
-                }
-                
-                char num_str[32];
-                snprintf(num_str, sizeof(num_str), "%d", value);
-                persistent_operand = strdup(num_str);
-            }
+			else if (type == 'N') {
+			    unsigned char size;
+			    if (fread(&size, sizeof(unsigned char), 1, fp) != 1) {
+			        vector_free(&operands);
+			        goto error_instructions;
+			    }
+			    
+			    int64_t value = 0;
+			    
+			    switch (size) {
+			        case sizeof(signed char): {
+			            if (fread(&value, size, 1, fp) != 1) {
+			                vector_free(&operands);
+			                goto error_instructions;
+			            }
+			            if (value & 0x80) { 
+			                value |= ~0xFF; 
+			            }
+			            break;
+			        }
+			        case sizeof(short): {
+			            if (fread(&value, size, 1, fp) != 1) {
+			                vector_free(&operands);
+			                goto error_instructions;
+			            }
+			            if (value & 0x8000) {
+			                value |= ~0xFFFF;
+			            }
+			            break;
+			        }
+			        case sizeof(int): {
+			            if (fread(&value, size, 1, fp) != 1) {
+			                vector_free(&operands);
+			                goto error_instructions;
+			            }
+			            if (value & 0x80000000) {
+			                value |= ~0xFFFFFFFF;
+			            }
+			            break;
+			        }
+			        case sizeof(int64_t): {
+			            if (fread(&value, size, 1, fp) != 1) {
+			                vector_free(&operands);
+			                goto error_instructions;
+			            }
+			            break;
+			        }
+			    }
+			    
+			    char num_str[32];
+			    snprintf(num_str, sizeof(num_str), "%" PRId64, value);  
+			    persistent_operand = strdup(num_str);
+			}
             else if (type == 'S') {
                 size_t operand_len;
                 if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
@@ -2332,7 +2464,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             
             char *persistent_operand = NULL;
             
-            if (type == 'R') {  // Register
+            if (type == 'R') { 
                 XRegisters reg_id;
                 if (offset + sizeof(XRegisters) > data_size) {
                     vector_free(&operands);
@@ -2341,7 +2473,6 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                 memcpy(&reg_id, data + offset, sizeof(XRegisters));
                 offset += sizeof(XRegisters);
                 
-                // Convert register ID back to name
                 for (int k = 0; k < REG_COUNT; k++) {
                     if (register_table[k].id == reg_id) {
                         persistent_operand = strdup(register_table[k].name);
@@ -2349,21 +2480,79 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                     }
                 }
             }
-            else if (type == 'N') {  // Number
-                int value;
-                if (offset + sizeof(int) > data_size) {
+            else if (type == 'N') {
+                unsigned char size;
+                if (offset + sizeof(unsigned char) > data_size) {
                     vector_free(&operands);
                     goto error_instructions;
                 }
-                memcpy(&value, data + offset, sizeof(int));
-                offset += sizeof(int);
+                memcpy(&size, data + offset, sizeof(unsigned char));
+                offset += sizeof(unsigned char);
                 
-                // Convert number to string
+                int64_t value = 0;
+                
+                if (offset + size > data_size) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+                
+                switch (size) {
+                    case sizeof(signed char): {
+                        if (offset + size > data_size) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        signed char sval = 0;
+                        unsigned char uval = 0;
+                        memcpy(&sval, data + offset, size);
+                        memcpy(&uval, data + offset, size);
+                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        break;
+                    }
+                    case sizeof(short): {
+                        if (offset + size > data_size) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        short sval = 0;
+                        unsigned short uval = 0;
+                        memcpy(&sval, data + offset, size);
+                        memcpy(&uval, data + offset, size);
+                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        break;
+                    }
+                    case sizeof(int): {
+                        if (offset + size > data_size) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        int sval = 0;
+                        unsigned int uval = 0;
+                        memcpy(&sval, data + offset, size);
+                        memcpy(&uval, data + offset, size);
+                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        break;
+                    }
+                    case sizeof(int64_t): {
+                        if (offset + size > data_size) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        int64_t sval = 0;
+                        uint64_t uval = 0;
+                        memcpy(&sval, data + offset, size);
+                        memcpy(&uval, data + offset, size);
+                        value = (sval < 0) ? sval : (int64_t)uval;
+                        break;
+                    }
+                }
+                offset += size;
+                
                 char num_str[32];
-                snprintf(num_str, sizeof(num_str), "%d", value);
+                snprintf(num_str, sizeof(num_str), "%" PRId64, value);
                 persistent_operand = strdup(num_str);
             }
-            else if (type == 'S') {  // String
+            else if (type == 'S') { 
                 size_t operand_len;
                 if (offset + sizeof(size_t) > data_size) {
                     vector_free(&operands);
