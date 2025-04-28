@@ -322,8 +322,8 @@ typedef enum {
 
 typedef struct {
     char magic[4];
-    short flags_count;
-    short flags[4];
+    char flags_count;
+    char flags[4];
 } OrtaMeta;
 
 typedef struct {
@@ -1992,7 +1992,7 @@ int create_xbin(OrtaVM *vm, const char *output_filename) {
     for (size_t i = 0; i < instructions_count; i++) {
         InstructionData *instr = &program->instructions[i];
 
-        if (fwrite(&instr->opcode, sizeof(Instruction), 1, fp) != 1)
+        if (fwrite(&instr->opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error;
 
         size_t operands_count = instr->operands.size;
@@ -2126,7 +2126,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
     size_t i;
     for (i = 0; i < instructions_count; i++) {
         Instruction opcode;
-        if (fread(&opcode, sizeof(Instruction), 1, fp) != 1)
+        if (fread(&opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error_instructions;
 
         size_t operands_count;
@@ -2306,10 +2306,10 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     size_t i;
     for (i = 0; i < instructions_count; i++) {
         Instruction opcode;
-        if (offset + sizeof(Instruction) > data_size)
+        if (offset + sizeof(unsigned char) > data_size)
             goto error_instructions;
-        memcpy(&opcode, data + offset, sizeof(Instruction));
-        offset += sizeof(Instruction);
+        memcpy(&opcode, data + offset, sizeof(unsigned char));
+        offset += sizeof(unsigned char);
 
         size_t operands_count;
         if (offset + sizeof(size_t) > data_size)
