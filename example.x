@@ -8,8 +8,4 @@ __entry:
     @r rax 1 int
     print
     free rax
-    
-    add 10 10 
-    print
-
     halt 10

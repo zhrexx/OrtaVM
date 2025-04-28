@@ -38,10 +38,16 @@ xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
 nyva: $(SRCDIR)/nyva.c 
 	$(COMPILE)
 
+liborta: bin/liborta.so bin/liborta.a
 
+bin/orta.o: $(SRCDIR)/orta.h 
+	gcc -fPIC -x c -c $(SRCDIR)/orta.h -o $(BINDIR)/orta.o
 
-liborta.so: src/orta.h src/wrapper.c
-	gcc -fPIC -shared -o $(BINDIR)/liborta.so src/wrapper.c
+bin/liborta.so: bin/orta.o
+	gcc -shared -o bin/liborta.so bin/orta.o
+
+bin/liborta.a: bin/orta.o
+	ar rcs bin/liborta.a bin/orta.o
 
 clean:
 	rm -rf $(BINDIR)
