@@ -1,7 +1,10 @@
 
 __entry:
-    mov 10 rax
-    mov "aboba" rbx 
-    push rbx 
+    push "Hello"
+    add 1 
+    print 
+    sub 1
+    print
+
     print
     halt 10

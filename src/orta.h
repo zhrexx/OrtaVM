@@ -308,11 +308,6 @@ typedef struct {
     size_t labels_count;
     size_t labels_capacity;
 
-    void *memory;
-    size_t memory_used;
-    size_t memory_capacity;
-    void *dead_memory; // would be used to mark dead memory somewhere
-
     Vector variables;
     bool halted;
     int exit_code;
@@ -342,10 +337,6 @@ void program_init(Program *program, const char *filename) {
     program->labels_capacity = 32;
     program->labels_count = 0;
     program->labels = malloc(sizeof(Label) * program->labels_capacity);
-    program->memory = malloc(MEMORY_CAPACITY);
-    program->memory_capacity = MEMORY_CAPACITY;
-    program->memory_used = 0;
-    program->dead_memory = malloc(1);
     vector_init(&program->variables, 5, sizeof(Variable));
     program->exit_code = 0;
 }
@@ -402,11 +393,6 @@ void program_free(Program *program) {
     program->labels = NULL;
     program->labels_count = 0;
     program->labels_capacity = 0;
-
-    free(program->memory);
-    program->memory = NULL;
-    free(program->dead_memory);
-    program->dead_memory = NULL;
 
     VECTOR_FOR_EACH(Variable, var, &program->variables) {
         free(var->name);
@@ -730,12 +716,7 @@ void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
     if (target_var->value.type == WCHARP) {
         free(target_var->value.as_string);
     } else if (target_var->value.type == WPOINTER && target_var->value.as_pointer != NULL) {
-        void *memory_start = vm->program.memory;
-        void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-        if (!(target_var->value.as_pointer >= memory_start &&
-              target_var->value.as_pointer < memory_end)) {
-            free(target_var->value.as_pointer);
-        }
+        free(target_var->value.as_pointer);
     }
 
     if (new_value.type == WCHARP) {
@@ -881,7 +862,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            int imm = atoi(src_str);
 		            if (w.type == WINT) w.as_int += imm;
 		            else if (w.type == WFLOAT) w.as_float += (float)imm;
-		            else if (w.type == WPOINTER) w.as_pointer += imm;
+		            else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer += imm;
 		        }
 		        xstack_push(&xpu->stack, w);
 		    } else {
@@ -939,7 +920,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            int imm = atoi(src_str);
 		            if (w.type == WINT) w.as_int -= imm;
 		            else if (w.type == WFLOAT) w.as_float -= (float)imm;
-		            else if (w.type == WPOINTER) w.as_pointer -= imm;
+		            else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer -= imm;
 		        }
 		        xstack_push(&xpu->stack, w);
 		    } else {
@@ -1308,8 +1289,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		        }
 
 		        if (size > 0) {
-		            void *mem = (char*)vm->program.memory + vm->program.memory_used;
-		            vm->program.memory_used += size;
+		            void *mem = malloc(size);
 
 		            memset(mem, 0, size);
 
@@ -1530,11 +1510,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		            case WCHARP:
                         if (value.type == WCHARP) {
                             if (*(char**)write_addr != NULL) {
-                                void *memory_start = vm->program.memory;
-                                void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-                                if (*(void**)write_addr < memory_start || *(void**)write_addr >= memory_end) {
-                                    free(*(char**)write_addr);
-                                }
+                                free(*(char**)write_addr);
                             }
                     
                             if (value.as_string != NULL) {
@@ -1892,37 +1868,20 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 								if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
 										ptr_to_free = regs[reg].reg_value.as_pointer;
 
-										void *memory_start = vm->program.memory;
-										void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-
-										if (ptr_to_free >= memory_start && ptr_to_free < memory_end) {
-												regs[reg].reg_value.as_pointer = NULL;
-										} else {
-												free(ptr_to_free);
-												regs[reg].reg_value.as_pointer = NULL;
-										}
+										free(ptr_to_free);
+										regs[reg].reg_value.as_pointer = NULL;
 								}
 						} else if (is_pointer(operand)) {
 								ptr_to_free = get_pointer(operand);
 
-								void *memory_start = vm->program.memory;
-								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-
-								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
-										free(ptr_to_free);
-								}
+								free(ptr_to_free);
 						}
 				} else {
 						Word w = xstack_pop(&xpu->stack);
 						if (w.type == WPOINTER) {
 								ptr_to_free = w.as_pointer;
 
-								void *memory_start = vm->program.memory;
-								void *memory_end = (char*)memory_start + vm->program.memory_capacity;
-
-								if (!(ptr_to_free >= memory_start && ptr_to_free < memory_end)) {
-										free(ptr_to_free);
-								}
+								free(ptr_to_free);
 						}
 				}
 				break;
@@ -2178,9 +2137,6 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
     }
 
     program_free(program);
-    program->memory = malloc(MEMORY_CAPACITY);
-    program->memory_capacity = MEMORY_CAPACITY;
-    program->memory_used = 0;
     vector_init(&program->variables, 5, sizeof(Variable));
 
     if (fread(&vm->meta, sizeof(OrtaMeta), 1, fp) != 1)
@@ -2395,9 +2351,6 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     size_t offset = 0;
 
     program_free(program);
-    program->memory = malloc(MEMORY_CAPACITY);
-    program->memory_capacity = MEMORY_CAPACITY;
-    program->memory_used = 0;
     vector_init(&program->variables, 5, sizeof(Variable));
 
     if (offset + sizeof(OrtaMeta) > data_size)
