@@ -1,7 +1,7 @@
 CC := gcc
 # CC=x86_64-w64-mingw32-gcc
 # CFLAGS = -O2 -static -Ofast -Os -s -g0 -flto
-CFLAGS = -g -ggdb
+CFLAGS = -g -ggdb 
 LDFLAGS = -L. -lxlib -lm 
 SRCDIR = src
 BINDIR := bin

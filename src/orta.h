@@ -232,7 +232,7 @@ typedef enum {
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM, ISYSCALL,
     IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE,
-    IGETGLOBALVAR, ISETGLOBALVAR, IOVM,
+    IGETGLOBALVAR, ISETGLOBALVAR, IOVM, ICAST,
 } Instruction;
 
 typedef enum {
@@ -277,7 +277,7 @@ static const InstructionInfo instructions[] = {
     {"var", IVAR, {ARG_EXACT, 1, 0}}, {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}},
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
-    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}},
+    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}}, {"cast", ICAST, {ARG_EXACT, 1, 1}},
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -1341,13 +1341,6 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     case 2:
                         if (rbx->reg_value.type == WCHARP) system(rbx->reg_value.as_string);
                         break;
-                    case 3:
-                        if (rbx->reg_value.type == WCHARP) {
-                            Word w = xstack_pop(&xpu->stack);
-                            w.type = get_type(rbx->reg_value.as_string);
-                            xstack_push(&xpu->stack, w);
-                        }
-                        break;
 
 					case 4: {
 						if (rbx->reg_value.type == WCHARP) {
@@ -1887,35 +1880,18 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 				break;
 		}
 
-unsigned char optimal_size(int64_t x) {
-    if (x < 0) { // Negative → signed types
-        if (x >= SCHAR_MIN && x <= SCHAR_MAX) {
-            return (unsigned char)sizeof(signed char);
-        } else if (x >= SHRT_MIN && x <= SHRT_MAX) {
-            return (unsigned char)sizeof(short);
-        } else if (x >= INT_MIN && x <= INT_MAX) {
-            return (unsigned char)sizeof(int);
-        } else {
-            return (unsigned char)sizeof(int64_t);
-        }
-    } else { // Non-negative → unsigned types
-        if (x <= UCHAR_MAX) {
-            return (unsigned char)sizeof(unsigned char);
-        } else if (x <= USHRT_MAX) {
-            return (unsigned char)sizeof(unsigned short);
-        } else if (x <= UINT_MAX) {
-            return (unsigned char)sizeof(unsigned int);
-        } else {
-            return (unsigned char)sizeof(uint64_t);
-        }
-    }
-}
-        case IOVM:
+        case IOVM: {
             char *arg = vector_get_str(&instr->operands, 0);
             if (strcmp(arg, "stack") == 0) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
             }
-            break;
+                   } break;
+        
+        case ICAST: {
+                    Word w = xstack_pop(&xpu->stack);
+                    w.type = get_type(vector_get_str(&instr->operands, 0));
+                    xstack_push(&xpu->stack, w);
+                    } break;
 
         case IHALT:
             if (instr->operands.size == 1) {

@@ -1,10 +1,8 @@
 
 __entry:
-    push "Hello"
-    add 1 
+    push 10
+    cast char
     print 
-    sub 1
-    print
 
     print
     halt 10
