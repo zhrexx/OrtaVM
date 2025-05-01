@@ -4,6 +4,15 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
+
+typedef enum {
+    TARGET_ORTA,
+    TARGET_JS,
+} Target;
+
+//Target current_target = TARGET_ORTA;
+Target current_target = TARGET_JS;
 
 typedef enum {
     TOKEN_EOF,
@@ -1088,8 +1097,8 @@ void codegen_emit(CodeGenerator *gen, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     vfprintf(gen->out, fmt, args);
+    if (current_target == TARGET_ORTA) fprintf(gen->out, "\n");
     va_end(args);
-    fprintf(gen->out, "\n");
 }
 
 char *codegen_create_label(CodeGenerator *gen, const char *prefix) {
@@ -1144,7 +1153,7 @@ char* itoa(int value) {
     return result;
 }
 
-void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
     if (node->type == NODE_NUMBER) {
         codegen_emit(gen, "push %d", node->data.number.value);
     } else if (node->type == NODE_STRING) {
@@ -1152,8 +1161,8 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
     } else if (node->type == NODE_IDENTIFIER) {
         codegen_emit(gen, "getvar %s", node->data.identifier.name);
     } else if (node->type == NODE_BINARY_EXPRESSION) {
-        codegen_generate_expression(gen, node->data.binary_expression.left);
-        codegen_generate_expression(gen, node->data.binary_expression.right);
+        codegen_generate_expression_orta(gen, node->data.binary_expression.left);
+        codegen_generate_expression_orta(gen, node->data.binary_expression.right);
 
         switch (node->data.binary_expression.operator) {
             case TOKEN_PLUS:
@@ -1198,7 +1207,7 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
                 codegen_emit(gen, "print");
             } else {
                 for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
-                   codegen_generate_expression(gen, node->data.function_call.args->data.argument_list.args[i]);
+                   codegen_generate_expression_orta(gen, node->data.function_call.args->data.argument_list.args[i]);
                 }
                 codegen_emit(gen, "print");
             }
@@ -1217,7 +1226,7 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
                 fprintf(stderr, "ERROR: Not enough arguments for @push\n");
                 exit(1);
             }
-            codegen_generate_expression(gen,node->data.function_call.args->data.argument_list.args[0]);
+            codegen_generate_expression_orta(gen,node->data.function_call.args->data.argument_list.args[0]);
         } else if (strcmp(func_name, "@pop") == 0) {
             if (node->data.function_call.args->data.argument_list.count != 1) {
                 fprintf(stderr, "ERROR: Not enough arguments for @pop\n");
@@ -1227,7 +1236,7 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
         } else {
             codegen_emit(gen, "; ------- Function call %s -------", func_name);
             for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
-                codegen_generate_expression(gen, node->data.function_call.args->data.argument_list.args[i]);
+                codegen_generate_expression_orta(gen, node->data.function_call.args->data.argument_list.args[i]);
             }
             codegen_emit(gen, "push %d ; args count", node->data.function_call.args->data.argument_list.count);
             codegen_emit(gen, "call %s", func_name);
@@ -1236,7 +1245,79 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
     }
 }
 
-void codegen_generate_var_declaration(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_expression_js(CodeGenerator *gen, ASTNode *node) {
+    if (node == NULL) return;
+
+    switch (node->type) {
+        case NODE_NUMBER:
+            codegen_emit(gen, "%d", node->data.number.value);
+            break;
+        case NODE_STRING: {
+            char *escaped = escape_string(node->data.string.value);
+            codegen_emit(gen, "\"%s\"", escaped);
+            free(escaped);
+            break;
+        }
+        case NODE_IDENTIFIER:
+            codegen_emit(gen, "%s", node->data.identifier.name);
+            break;
+        case NODE_BINARY_EXPRESSION: {
+            codegen_emit(gen, "(");
+            codegen_generate_expression_js(gen, node->data.binary_expression.left);
+            const char *op;
+            switch (node->data.binary_expression.operator) {
+                case TOKEN_PLUS: op = "+"; break;
+                case TOKEN_MINUS: op = "-"; break;
+                case TOKEN_MULTIPLY: op = "*"; break;
+                case TOKEN_DIVIDE: op = "/"; break;
+                case TOKEN_GT: op = ">"; break;
+                case TOKEN_LT: op = "<"; break;
+                case TOKEN_EQ: op = "==="; break;
+                case TOKEN_NEQ: op = "!=="; break;
+                default:
+                    fprintf(stderr, "Unsupported operator in JS codegen: %d\n",
+                            node->data.binary_expression.operator);
+                    exit(1);
+            }
+            codegen_emit(gen, " %s ", op);
+            codegen_generate_expression_js(gen, node->data.binary_expression.right);
+            codegen_emit(gen, ")");
+            break;
+        }
+        case NODE_FUNCTION_CALL: {
+            char *func_name = node->data.function_call.name;
+            if (strcmp(func_name, "print") == 0) {
+                codegen_emit(gen, "console.log(");
+                for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
+                    if (i > 0) codegen_emit(gen, ", ");
+                    codegen_generate_expression_js(gen, node->data.function_call.args->data.argument_list.args[i]);
+                }
+                codegen_emit(gen, ")\n");
+            } else {
+                codegen_emit(gen, "%s(", func_name);
+                for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
+                    if (i > 0) codegen_emit(gen, ", ");
+                    codegen_generate_expression_js(gen, node->data.function_call.args->data.argument_list.args[i]);
+                }
+                codegen_emit(gen, ")");
+            }
+            break;
+        }
+        default:
+            fprintf(stderr, "Unsupported node type in JS expression: %d\n", node->type);
+            exit(1);
+    }
+}
+
+void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_expression_orta(gen, node);
+    } else {
+        codegen_generate_expression_js(gen, node);
+    } 
+}
+
+void codegen_generate_var_declaration_orta(CodeGenerator *gen, ASTNode *node) {
     if (node->data.var_declaration.value != NULL) {
         codegen_generate_expression(gen, node->data.var_declaration.value);
         codegen_emit(gen, "setvar %s", node->data.var_declaration.name);
@@ -1245,9 +1326,40 @@ void codegen_generate_var_declaration(CodeGenerator *gen, ASTNode *node) {
     }
 }
 
-void codegen_generate_assignment(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_var_declaration_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "let %s", node->data.var_declaration.name);
+    if (node->data.var_declaration.value != NULL) {
+        codegen_emit(gen, " = ");
+        codegen_generate_expression_js(gen, node->data.var_declaration.value);
+    }
+    codegen_emit(gen, ";\n");
+}
+
+void codegen_generate_var_declaration(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_var_declaration_orta(gen, node); 
+    } else {
+        codegen_generate_var_declaration_js(gen, node);
+    }
+}
+
+void codegen_generate_assignment_orta(CodeGenerator *gen, ASTNode *node) {
     codegen_generate_expression(gen, node->data.assignment.value);
     codegen_emit(gen, "setvar %s", node->data.assignment.name);
+}
+
+void codegen_generate_assignment_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "%s = ", node->data.assignment.name);
+    codegen_generate_expression_js(gen, node->data.assignment.value);
+    codegen_emit(gen, ";\n");
+}
+
+void codegen_generate_assignment(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_assignment_orta(gen, node);
+    } else {
+        codegen_generate_assignment_js(gen, node);
+    }
 }
 
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node);
@@ -1255,7 +1367,7 @@ void codegen_generate_statement_with_break(CodeGenerator *gen, ASTNode *node, ch
 
 char *current_break_label = NULL;
 
-void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_if_statement_orta(CodeGenerator *gen, ASTNode *node) {
     char *else_label = NULL;
     char *end_label = codegen_create_label(gen, "if_end");
 
@@ -1287,18 +1399,53 @@ void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
-void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_if_statement_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "if (");
+    codegen_generate_expression_js(gen, node->data.if_statement.condition);
+    codegen_emit(gen, ") {\n");
+    for (int i = 0; i < node->data.if_statement.body_count; i++) {
+        codegen_generate_statement(gen, node->data.if_statement.body[i]);
+    }
+    codegen_emit(gen, "}");
+    if (node->data.if_statement.else_body != NULL) {
+        codegen_emit(gen, " else {\n");
+        for (int i = 0; i < node->data.if_statement.else_body_count; i++) {
+            codegen_generate_statement(gen, node->data.if_statement.else_body[i]);
+        }
+        codegen_emit(gen, "}\n");
+    } else {
+        codegen_emit(gen, "\n");
+    }
+}
+
+void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_if_statement_orta(gen, node);
+    } else {
+        codegen_generate_if_statement_js(gen, node);
+    }
+}
+
+void codegen_generate_parse_statement_orta(CodeGenerator *gen, ASTNode *node) {
     for (int i = 0; i < node->data.parse_statement.args->data.argument_list.count; i++) {
         codegen_generate_expression(gen, node->data.parse_statement.args->data.argument_list.args[i]);
     }
     codegen_emit(gen, "eval %d", node->data.parse_statement.args->data.argument_list.count);
 }
 
+void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_parse_statement_orta(gen, node);
+    } else {
+        assert(0 && "Not Implemented\n");
+    }
+}
+
 void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {}
 
 char *error_not_enough_args = NULL;
 
-void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_function_definition_orta(CodeGenerator *gen, ASTNode *node) {
     codegen_emit(gen, "%s:", node->data.function_definition.name);
     if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
         codegen_emit(gen, "push %d", node->data.function_definition.params->data.parameter_list.count);
@@ -1326,7 +1473,29 @@ void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
     }
 }
 
-void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_function_definition_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "function %s(", node->data.function_definition.name);
+    ASTNode *params = node->data.function_definition.params;
+    for (int i = 0; i < params->data.parameter_list.count; i++) {
+        if (i > 0) codegen_emit(gen, ", ");
+        codegen_emit(gen, "%s", params->data.parameter_list.params[i]->data.identifier.name);
+    }
+    codegen_emit(gen, ") {\n");
+    for (int i = 0; i < node->data.function_definition.body_count; i++) {
+        codegen_generate_statement(gen, node->data.function_definition.body[i]);
+    }
+    codegen_emit(gen, "}\n");
+}
+
+void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_function_definition_orta(gen, node);
+    } else {
+        codegen_generate_function_definition_js(gen, node);
+    }
+}
+
+void codegen_generate_return_statement_orta(CodeGenerator *gen, ASTNode *node) {
     if (node->data.return_statement.value != NULL) {
         codegen_generate_expression(gen, node->data.return_statement.value);
     } else {
@@ -1336,7 +1505,24 @@ void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
     codegen_emit(gen, "ret");
 }
 
-void codegen_generate_for_statement(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_return_statement_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "return");
+    if (node->data.return_statement.value != NULL) {
+        codegen_emit(gen, " ");
+        codegen_generate_expression_js(gen, node->data.return_statement.value);
+    }
+    codegen_emit(gen, ";\n");
+}
+
+void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_return_statement_orta(gen, node);
+    } else {
+        codegen_generate_return_statement_js(gen, node);
+    }
+}
+
+void codegen_generate_for_statement_orta(CodeGenerator *gen, ASTNode *node) {
     char *start_label = codegen_create_label(gen, "for_start");
     char *end_label = codegen_create_label(gen, "for_end");
 
@@ -1362,7 +1548,35 @@ void codegen_generate_for_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
-void codegen_generate_while_statement(CodeGenerator *gen, ASTNode *node) {
+void codegen_generate_for_statement_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "for (");
+    // Init
+    if (node->data.for_statement.init->type == NODE_VAR_DECLARATION) {
+        codegen_generate_var_declaration_js(gen, node->data.for_statement.init);
+    } else if (node->data.for_statement.init->type == NODE_ASSIGNMENT) {
+        codegen_generate_assignment_js(gen, node->data.for_statement.init);
+    }
+    codegen_emit(gen, "; ");
+    codegen_generate_expression_js(gen, node->data.for_statement.condition);
+    codegen_emit(gen, "; ");
+    codegen_generate_expression_js(gen, node->data.for_statement.update);
+    codegen_emit(gen, ") {\n");
+    for (int i = 0; i < node->data.for_statement.body_count; i++) {
+        codegen_generate_statement(gen, node->data.for_statement.body[i]);
+    }
+    codegen_emit(gen, "}\n");
+}
+
+
+void codegen_generate_for_statement(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_for_statement_orta(gen, node);
+    } else {
+        codegen_generate_for_statement_js(gen, node);
+    }
+}
+
+void codegen_generate_while_statement_orta(CodeGenerator *gen, ASTNode *node) {
     char *start_label = codegen_create_label(gen, "while_start");
     char *end_label = codegen_create_label(gen, "while_end");
 
@@ -1384,6 +1598,24 @@ void codegen_generate_while_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
+void codegen_generate_while_statement_js(CodeGenerator *gen, ASTNode *node) {
+    codegen_emit(gen, "while (");
+    codegen_generate_expression_js(gen, node->data.while_statement.condition);
+    codegen_emit(gen, ") {\n");
+    for (int i = 0; i < node->data.while_statement.body_count; i++) {
+        codegen_generate_statement(gen, node->data.while_statement.body[i]);
+    }
+    codegen_emit(gen, "}\n");
+}
+
+
+void codegen_generate_while_statement(CodeGenerator *gen, ASTNode *node) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_while_statement_orta(gen, node);
+    } else {
+        codegen_generate_while_statement_js(gen, node);
+    }
+}
 
 void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node);
 
@@ -1433,7 +1665,7 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
     }
 }
 
-void codegen_generate_statement_with_break(CodeGenerator *gen, ASTNode *node, char *break_label) {
+void codegen_generate_statement_with_break_orta(CodeGenerator *gen, ASTNode *node, char *break_label) {
     if (node->type == NODE_BREAK_STATEMENT) {
         if (break_label == NULL) {
             fprintf(stderr, "Error: 'break' statement outside of loop\n");
@@ -1445,7 +1677,27 @@ void codegen_generate_statement_with_break(CodeGenerator *gen, ASTNode *node, ch
     }
 }
 
-void codegen_generate_program(CodeGenerator *gen, ASTNode *program) {
+void codegen_generate_statement_with_break_js(CodeGenerator *gen, ASTNode *node, char *break_label) {
+    if (node->type == NODE_BREAK_STATEMENT) {
+        if (break_label == NULL) {
+            fprintf(stderr, "Error: 'break' statement outside of loop\n");
+            exit(1);
+        }
+        codegen_emit(gen, "break;");
+    } else {
+        codegen_generate_statement(gen, node);
+    }
+}
+
+void codegen_generate_statement_with_break(CodeGenerator *gen, ASTNode *node, char *break_label) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_statement_with_break_orta(gen, node, break_label);
+    } else {
+        codegen_generate_statement_with_break_js(gen, node, break_label);
+    }
+}
+
+void codegen_generate_program_orta(CodeGenerator *gen, ASTNode *program) {
     error_not_enough_args = codegen_create_label(gen, "error_not_enough_args");
     for (int i = 0; i < program->data.program.count; i++) {
         codegen_generate_statement(gen, program->data.program.statements[i]);
@@ -1457,6 +1709,21 @@ void codegen_generate_program(CodeGenerator *gen, ASTNode *program) {
     codegen_emit(gen, "halt 1");
 
     free(error_not_enough_args);
+}
+
+void codegen_generate_program_js(CodeGenerator *gen, ASTNode *program) {
+    for (int i = 0; i < program->data.program.count; i++) {
+        codegen_generate_statement(gen, program->data.program.statements[i]);
+    }
+    codegen_emit(gen, "__entry();\n");
+}
+
+void codegen_generate_program(CodeGenerator *gen, ASTNode *program) {
+    if (current_target == TARGET_ORTA) {
+        codegen_generate_program_orta(gen, program);
+    } else {
+        codegen_generate_program_js(gen, program);
+    }
 }
 
 void free_ast(ASTNode *node) {
