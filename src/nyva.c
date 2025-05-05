@@ -11,8 +11,7 @@ typedef enum {
     TARGET_JS,
 } Target;
 
-//Target current_target = TARGET_ORTA;
-Target current_target = TARGET_JS;
+Target current_target = TARGET_ORTA;
 
 typedef enum {
     TOKEN_EOF,
@@ -1211,28 +1210,8 @@ void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
                 }
                 codegen_emit(gen, "print");
             }
-        } else if (strcmp(func_name, "@orta") == 0) {
+        } else if (strcmp(func_name, "@inline") == 0) {
             for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) codegen_emit(gen, node->data.function_call.args->data.argument_list.args[i]->data.string.value);
-        } else if (strcmp(func_name, "@cast") == 0) {
-            if (node->data.function_call.args->data.argument_list.count != 1) {
-                fprintf(stderr, "ERROR: Not enough arguments for @cast\n");
-                exit(1);
-            }
-            codegen_emit(gen, "mov 3 rax");
-            codegen_emit(gen, "mov \"%s\" rbx", node->data.function_call.args->data.argument_list.args[0]->data.string.value);
-            codegen_emit(gen, "xcall");
-        } else if (strcmp(func_name, "@push") == 0) {
-            if (node->data.function_call.args->data.argument_list.count != 1) {
-                fprintf(stderr, "ERROR: Not enough arguments for @push\n");
-                exit(1);
-            }
-            codegen_generate_expression_orta(gen,node->data.function_call.args->data.argument_list.args[0]);
-        } else if (strcmp(func_name, "@pop") == 0) {
-            if (node->data.function_call.args->data.argument_list.count != 1) {
-                fprintf(stderr, "ERROR: Not enough arguments for @pop\n");
-                exit(1);
-            }
-            codegen_emit(gen, "setvar %s", node->data.function_call.args->data.argument_list.args[0]->data.identifier.name);
         } else {
             codegen_emit(gen, "; ------- Function call %s -------", func_name);
             for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
@@ -1293,6 +1272,11 @@ void codegen_generate_expression_js(CodeGenerator *gen, ASTNode *node) {
                     codegen_generate_expression_js(gen, node->data.function_call.args->data.argument_list.args[i]);
                 }
                 codegen_emit(gen, ")\n");
+            } else if (strcmp(func_name, "@inline") == 0) {
+                for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
+                    codegen_emit(gen, node->data.function_call.args->data.argument_list.args[i]->data.string.value);
+                    codegen_emit(gen, "\n");
+                }
             } else {
                 codegen_emit(gen, "%s(", func_name);
                 for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
@@ -1994,6 +1978,8 @@ char* preprocess(const char* source) {
     return final_result ? final_result : result;
 }
 
+bool is_lib = false;
+
 void compile(const char *input_file, const char *output_file) {
     char *source = preprocess(read_file(input_file));
 
@@ -2009,7 +1995,7 @@ void compile(const char *input_file, const char *output_file) {
             break;
         }
     }
-    if (!has_entry) {
+    if (!is_lib && !has_entry) {
         fprintf(stderr, "Error: __entry function not defined\n");
         free_ast(ast);
         free_tokens(tokens);
@@ -2044,9 +2030,15 @@ void cleanup_imports() {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <input_file> <output_file>\n", argv[0]);
-        return 1;
+    if (argc == 4 && strncmp(argv[3], "--target=", 9) == 0) {
+        if (strcmp(argv[3]+9, "js") == 0) {
+            current_target = TARGET_JS;
+        }
+    } else if (argc == 4 && strcmp(argv[3], "--library") == 0) {
+        is_lib = true;
+    } else if (argc == 3) {} else {
+        fprintf(stderr, "%s <input_file> <output_file> [--target=js|--library]\n", argv[0]);
+        exit(1);
     }
 
     compile(argv[1], argv[2]);

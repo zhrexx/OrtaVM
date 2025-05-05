@@ -19,65 +19,84 @@ int parse_program(OrtaVM *vm, const char *filename) {
     }
 
     char buffer[8192];
-    size_t bytes_read = fread(buffer, sizeof(char), 8191, fp);
+    size_t bytes_read = fread(buffer, 1, 8191, fp);
     buffer[bytes_read] = '\0';
     fclose(fp);
 
     Vector lines = split_to_vector(buffer, "\n");
 
+    size_t cline = 0;
     VECTOR_FOR_EACH(char *, line, &lines) {
-        if (*line == NULL) continue;
-
+        if (!*line) continue;
+        cline += 1;
         char *trimmed = trim_left(*line);
-        if (trimmed == NULL || strlen(trimmed) == 0 || starts_with(";", trimmed)) {
+        if (!trimmed || !*trimmed || starts_with(";", trimmed)) {
             free(trimmed);
             continue;
         }
 
         Vector tokens = split_to_vector(trimmed, " ");
         free(trimmed);
-        if (tokens.size < 1) {
+        if (!tokens.size) {
             vector_free(&tokens);
             continue;
         }
 
         for (size_t i = 0; i < tokens.size; i++) {
             char *token = vector_get_str(&tokens, i);
-            if (token != NULL && starts_with(";", token)) {
-                while (tokens.size > i) {
-                    vector_remove(&tokens, i);
-                }
+            if (token && starts_with(";", token)) {
+                while (tokens.size > i) vector_remove(&tokens, i);
                 break;
             }
         }
 
-        if (tokens.size == 0) {
+        if (!tokens.size) {
             vector_free(&tokens);
             continue;
         }
 
         char *first_token = vector_get_str(&tokens, 0);
-        if (first_token != NULL && is_label_declaration(first_token)) {
-            size_t label_len = strlen(first_token);
+        if (is_label_declaration(first_token)) {
             char *label_name = strdup(first_token);
-            label_name[label_len - 1] = '\0';
+            label_name[strlen(label_name)-1] = '\0';
+
+            if (label_name[0] != '.') {
+                free(vm->program.last_non_local_label);
+                vm->program.last_non_local_label = strdup(label_name);
+            }
 
             add_label(&vm->program, label_name, vm->program.instructions_count);
             free(label_name);
-
             vector_remove(&tokens, 0);
 
-            if (tokens.size == 0) {
+            if (!tokens.size) {
                 vector_free(&tokens);
                 continue;
             }
-
             first_token = vector_get_str(&tokens, 0);
         }
 
-        if (first_token == NULL) {
+        if (!first_token) {
             vector_free(&tokens);
             continue;
+        }
+
+        for (size_t i = 0; i < tokens.size; i++) {
+            char *token = vector_get_str(&tokens, i);
+            if (token[0] == '.' && is_label_reference(token)) {
+                if (!vm->program.last_non_local_label) {
+                    fprintf(stderr, "Error: Local label '%s' has no context\n", token);
+                    vector_free(&tokens);
+                    vector_free(&lines);
+                    return 0;
+                }
+                char resolved[256];
+                snprintf(resolved, sizeof(resolved), "%s_%s", 
+                        vm->program.last_non_local_label, token + 1);
+                char *new_token = strdup(resolved);
+                vector_set(&tokens, i, &new_token);
+                free(token);
+            }
         }
 
         char *instruction_name = strdup(first_token);
@@ -95,24 +114,23 @@ int parse_program(OrtaVM *vm, const char *filename) {
 
         ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
         if (!validateArgCount(expected_args, tokens.size)) {
-            fprintf(stderr, "Error: Expected %d arguments for instruction '%s', but got %zu\n",
+            fprintf(stderr, "Error: Expected %d args for '%s', got %zu\n",
                     expected_args.value, instruction_to_string(parsed_instruction), tokens.size);
             vector_free(&tokens);
             vector_free(&lines);
             return 0;
         }
 
-
         InstructionData instr;
         instr.opcode = parsed_instruction;
         instr.operands = tokens;
+        instr.line = cline;
         add_instruction(&vm->program, instr);
     }
 
     vector_free(&lines);
     return 1;
 }
-
 
 typedef struct {
     char name[MAX_DEFINE_NAME];

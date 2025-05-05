@@ -19,11 +19,6 @@ _system:
 
         ; cast latest stack element to different type
         ; rbx = type as str
-cast:
-    mov 3 rax 
-    xcall
-    ret
-
 ;
 ; REGISTERS
 ;

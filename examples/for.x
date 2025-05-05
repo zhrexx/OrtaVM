@@ -1,5 +1,5 @@
 ; Equivalent to: for (int i = 0; i < 5; i++) { print(i); }
-#define $LOOPS 5
+#define $LOOPS 10
 
 __entry:
     mov 0 r8

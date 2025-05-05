@@ -1,8 +1,7 @@
-#include "std.x"
+;#include "std.x"
+
 __entry:
     push 10
-    cast char
-    print 
-
+    push 10 
+    add 
     print
-    halt 10
