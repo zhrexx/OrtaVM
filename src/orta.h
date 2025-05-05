@@ -1,8 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: leaking error messages also add usage to line in InstructionData i added it
-
-// TODO: make all instructions usable with stack 
-
+// TODO: use xstack_pop_and_expect
 #ifndef ORTA_H
 #define ORTA_H
 
@@ -185,6 +182,14 @@ Word xstack_peek(XStack *stack, size_t offset) {
         return w;
     }
     return stack->stack[stack->count - 1 - offset];
+}
+
+int xstack_check(XStack *stack, size_t expected) {
+    if (stack->count >= expected) {
+        return 1; 
+    } else {
+        return 0;
+    }
 }
 
 void xstack_free(XStack *stack) {
@@ -774,6 +779,15 @@ const char *word_type_to_string(WordType wt) {
     }
     return "ERROR";
 } 
+
+Word xstack_pop_and_expect(OrtaVM *vm, WordType expected) {
+    Word result = xstack_pop(&vm->xpu.stack);
+    if (result.type == expected) {
+        return result;
+    } else {
+        EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n", word_type_to_string(expected), word_type_to_string(result.type));
+    }
+}
 
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
@@ -1374,11 +1388,10 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         }
 
 		case IALLOC: {
+            size_t size = 0;
 		    if (instr->operands.size >= 1) {
 		        char *size_str = vector_get_str(&instr->operands, 0);
-		        size_t size = 0;
-
-		        if (is_type_name(size_str)) {
+                if (is_type_name(size_str)) {
 		            WordType type = get_type(size_str);
 		            switch(type) {
 		                case WINT: size = sizeof(int); break;
@@ -1436,7 +1449,70 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
 		            }
 		        }
-		    }
+		    } else {
+                if (xstack_check(&vm->xpu.stack, 1)) {
+                    Word operand_count = xstack_pop_and_expect(vm, WINT);
+                    if (!xstack_check(&vm->xpu.stack, operand_count.as_int)) {
+                        EERROR(vm, ERROR_BASE"expected %d items on stack but got %d",
+                               operand_count.as_int, vm->xpu.stack.count);
+                    }
+                    if (operand_count.as_int >= 1) {
+                        Word size_str = xstack_pop(&vm->xpu.stack);
+                        if (size_str.type == WCHARP) {
+                            if (is_type_name(size_str.as_string)) {
+                                switch(get_type(size_str.as_string)) {
+            		                case WINT: size = sizeof(int); break;
+		                            case WFLOAT: size = sizeof(float); break;
+		                            case WCHARP: size = sizeof(char*); break;
+		                            case W_CHAR: size = sizeof(char); break;
+		                            case WPOINTER: size = sizeof(void*); break;
+		                            default: size = 1; break;
+		                        }
+                            } else {
+                                EERROR(vm, ERROR_BASE"dont pass size as number per string brou!\n");
+                            }
+                            if (operand_count.as_int >= 2) {
+                                Word count = xstack_pop(&vm->xpu.stack);
+                                if (count.type == WINT) {
+		                            size *= count.as_int;
+		                        }
+		                        else if (count.type == WCHARP && is_register(count.as_string)) {
+		                            XRegisters reg = register_name_to_enum(count.as_string);
+		                            if (reg != -1 && regs[reg].reg_value.type == WINT) {
+		                                size *= regs[reg].reg_value.as_int;
+		                            }
+		                        }
+                            } 
+                        } else if (size_str.type == WINT) {
+                            size = size_str.as_int;
+                        } else {
+                            EERROR(vm, ERROR_BASE"expected INT or CHARP got '%s'\n", word_type_to_string(size_str.type));
+                        }
+		                if (size > 0) {
+		                    void *mem = malloc(size);
+
+		                    memset(mem, 0, size);
+
+		                    if (operand_count.as_int >= 3) {
+		                        char *dest_reg = xstack_pop_and_expect(vm, WCHARP).as_string;
+		                        if (is_register(dest_reg)) {
+		                            XRegisters reg = register_name_to_enum(dest_reg);
+		                            if (reg != -1) {
+		                                if (regs[reg].reg_value.type == WCHARP)
+		                                    free(regs[reg].reg_value.as_string);
+		                                regs[reg].reg_value.type = WPOINTER;
+		                                regs[reg].reg_value.as_pointer = mem;
+		                            }
+		                        }
+		                    } else {
+		                        xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
+		                    }
+		                }
+                    }
+                } else {
+                    EERROR(vm, ERROR_BASE"expected minimum one item on stack\n");
+                }
+            }
 		    break;
 		}
 
