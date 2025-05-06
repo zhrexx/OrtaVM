@@ -1,5 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: use xstack_pop_and_expect
+// TODO: fix all EERRORs i mean i forgot to add vm->program.filename and the lines
 #ifndef ORTA_H
 #define ORTA_H
 
@@ -238,7 +238,8 @@ typedef enum {
     IALLOC, IHALT, IMERGE, IXCALL, ISIZEOF, IMEMCMP,
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM,
     IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE,
-    IGETGLOBALVAR, ISETGLOBALVAR, IOVM, ICAST,
+    IGETGLOBALVAR, ISETGLOBALVAR, IOVM, ICAST, IHERE,
+    ISPRINTF,
 } Instruction;
 
 typedef enum {
@@ -283,7 +284,8 @@ static const InstructionInfo instructions[] = {
     {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}},
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
-    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}}, {"cast", ICAST, {ARG_EXACT, 1, 1}},
+    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}}, {"cast", ICAST, {ARG_EXACT, 1, 1}}, 
+    {"here", IHERE, {ARG_EXACT, 0, 0}}, {"sprintf", ISPRINTF, {ARG_MIN, 0, 0}},
 };
 
 #define INSTRUCTION_COUNT (sizeof(instructions) / sizeof(instructions[0]))
@@ -444,6 +446,35 @@ OrtaVM ortavm_create(const char *filename) {
 void ortavm_free(OrtaVM *vm) {
     xpu_free(&vm->xpu);
     program_free(&vm->program);
+}
+
+char* format(const char* format, ...) {
+    va_list args;
+    va_list args_copy;
+    
+    va_start(args, format);
+    va_copy(args_copy, args);
+    
+    int size = vsnprintf(NULL, 0, format, args) + 1; 
+    if (size <= 0) {
+        va_end(args);
+        va_end(args_copy);
+        return NULL;
+    }
+    
+    char* buffer = (char*)malloc(size * sizeof(char));
+    if (!buffer) {
+        va_end(args);
+        va_end(args_copy);
+        return NULL;
+    }
+    
+    vsnprintf(buffer, size, format, args_copy);
+    
+    va_end(args);
+    va_end(args_copy);
+    
+    return buffer;
 }
 
 void add_flag(OrtaVM *vm, Flags flag) {
@@ -2253,6 +2284,137 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 w.type = get_type(vector_get_str(&instr->operands, 0));
                 xstack_push(&xpu->stack, w);
                     } break;
+        case IHERE: {
+                xstack_push(&vm->xpu.stack, (Word){.type = WCHARP, .as_string = format("%s:%zu", vm->program.filename, instr->line)});
+                    } break;
+        
+        case ISPRINTF: {
+                Word format_word = xstack_pop(&xpu->stack);
+                if (format_word.type != WCHARP || format_word.as_string == NULL) {
+                        EERROR(vm, ERROR_BASE"Expected format string for sprintf, got %s\n",
+                               vm->program.filename, instr->line, word_type_to_string(format_word.type));
+                        break;
+                }
+
+                int arg_count = 0;
+                char *fmt = format_word.as_string;
+                for (char *p = fmt; *p; p++) {
+                        if (*p == '%' && *(p + 1) != '%') {
+                                arg_count++;
+                                p++;
+                                while (*p && !isalpha(*p) && *p != '%') p++;
+                        }
+                }
+
+                if (!xstack_check(&xpu->stack, arg_count)) {
+                        EERROR(vm, ERROR_BASE"Stack underflow: sprintf requires %d arguments\n",
+                               vm->program.filename, instr->line, arg_count);
+                        free(format_word.as_string);
+                        break;
+                }
+
+                Word *args = malloc(arg_count * sizeof(Word));
+                if (!args) {
+                        EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf arguments\n",
+                               vm->program.filename, instr->line);
+                        free(format_word.as_string);
+                        break;
+                }
+
+                for (int i = arg_count - 1; i >= 0; i--) {
+                        args[i] = xstack_pop(&xpu->stack);
+                }
+
+                int size = 0;
+                char *tmp_buf = NULL;
+                for (int i = 0; i < arg_count; i++) {
+                        Word arg = args[i];
+                        switch (arg.type) {
+                                case WINT:   size += snprintf(NULL, 0, "%d", arg.as_int); break;
+                                case WFLOAT: size += snprintf(NULL, 0, "%f", arg.as_float); break;
+                                case WCHARP: size += arg.as_string ? strlen(arg.as_string) : 4; break;
+                                case W_CHAR: size += 1; break;
+                                case WPOINTER: size += snprintf(NULL, 0, "%p", arg.as_pointer); break;
+                                case WBOOL: size += arg.as_bool ? 4 : 5; break;
+                                default:
+                                        EERROR(vm, ERROR_BASE"Unsupported argument type %s for sprintf\n",
+                                               vm->program.filename, instr->line, word_type_to_string(arg.type));
+                                        free(args);
+                                        free(format_word.as_string);
+                                        return;
+                        }
+                }
+
+                size += strlen(fmt) + 1;
+
+                char *result = malloc(size);
+                if (!result) {
+                        EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf result\n",
+                               vm->program.filename, instr->line);
+                        free(args);
+                        free(format_word.as_string);
+                        break;
+                }
+
+                int offset = 0;
+                int arg_index = 0;
+                for (char *p = fmt; *p; p++) {
+                        if (*p == '%' && *(p + 1) != '%') {
+                                p++;
+                                char specifier[32];
+                                int spec_len = 0;
+                                specifier[spec_len++] = '%';
+                                while (*p && !isalpha(*p) && *p != '%') {
+                                        specifier[spec_len++] = *p++;
+                                }
+                                specifier[spec_len++] = *p;
+                                specifier[spec_len] = '\0';
+
+                                Word arg = args[arg_index++];
+                                switch (arg.type) {
+                                        case WINT:
+                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_int);
+                                                break;
+                                        case WFLOAT:
+                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_float);
+                                                break;
+                                        case WCHARP:
+                                                offset += snprintf(result + offset, size - offset, specifier,
+                                                                 arg.as_string ? arg.as_string : "(null)");
+                                                break;
+                                        case W_CHAR:
+                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_char);
+                                                break;
+                                        case WPOINTER:
+                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_pointer);
+                                                break;
+                                        case WBOOL:
+                                                offset += snprintf(result + offset, size - offset, specifier,
+                                                                 arg.as_bool ? "true" : "false");
+                                                break;
+                                        default:
+                                                break;
+                                }
+                        } else {
+                                result[offset++] = *p;
+                                if (*p == '%' && *(p + 1) == '%') p++;
+                        }
+                }
+                result[offset] = '\0';
+
+                Word result_word = {.type = WCHARP, .as_string = result};
+                xstack_push(&xpu->stack, result_word);
+
+                for (int i = 0; i < arg_count; i++) {
+                        if (args[i].type == WCHARP && args[i].as_string != NULL) {
+                                free(args[i].as_string);
+                        }
+                }
+                free(args);
+                free(format_word.as_string);
+                break;
+        }
+
 
         case IHALT:
             if (instr->operands.size == 1) {

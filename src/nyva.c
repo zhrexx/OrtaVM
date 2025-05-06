@@ -367,7 +367,7 @@ char *lexer_collect_string(Lexer *lexer) {
                 case 't': buffer[i++] = '\t'; break;
                 case 'r': buffer[i++] = '\r'; break;
                 case '\\': buffer[i++] = '\\'; break;
-                case '"': buffer[i++] = '\\'; buffer[i++] = '"'; break;
+                case '"': buffer[i++] = '"'; break;
                 default: buffer[i++] = lexer->current_char; break;
             }
             escaped = false;
@@ -1483,7 +1483,7 @@ void codegen_generate_return_statement_orta(CodeGenerator *gen, ASTNode *node) {
     if (node->data.return_statement.value != NULL) {
         codegen_generate_expression(gen, node->data.return_statement.value);
     } else {
-        codegen_emit(gen, "push 0");
+        //codegen_emit(gen, "push 0");
     }
     codegen_emit(gen, "togglelocalscope");
     codegen_emit(gen, "ret");
@@ -1631,7 +1631,6 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
 
         case NODE_FUNCTION_CALL:
             codegen_generate_expression(gen, node);
-            // codegen_emit(gen, "pop");
             break;
         case NODE_FOR_STATEMENT:
             codegen_generate_for_statement(gen, node);

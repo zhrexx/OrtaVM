@@ -1,7 +1,8 @@
 ;#include "std.x"
 
 __entry:
-    push 10
-    push 10 
-    add 
+    here
+    push ": ERROR: Could not find bomb"
+    push "%s%s"
+    sprintf
     print
