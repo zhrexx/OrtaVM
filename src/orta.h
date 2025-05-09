@@ -1,5 +1,4 @@
 // DONE: add named memory | implemented variables now this isnt needed
-// TODO: fix all EERRORs i mean i forgot to add vm->program.filename and the lines
 #ifndef ORTA_H
 #define ORTA_H
 
@@ -816,7 +815,8 @@ Word xstack_pop_and_expect(OrtaVM *vm, WordType expected) {
     if (result.type == expected) {
         return result;
     } else {
-        EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n", word_type_to_string(expected), word_type_to_string(result.type));
+        EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n", 
+               vm->program.filename, vm->program.instructions[vm->xpu.ip].line, word_type_to_string(expected), word_type_to_string(result.type));
     }
 }
 
@@ -1485,7 +1485,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     Word operand_count = xstack_pop_and_expect(vm, WINT);
                     if (!xstack_check(&vm->xpu.stack, operand_count.as_int)) {
                         EERROR(vm, ERROR_BASE"expected %d items on stack but got %d",
-                               operand_count.as_int, vm->xpu.stack.count);
+                               vm->program.filename, instr->line, operand_count.as_int, vm->xpu.stack.count);
                     }
                     if (operand_count.as_int >= 1) {
                         Word size_str = xstack_pop(&vm->xpu.stack);
@@ -1500,7 +1500,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                            default: size = 1; break;
 		                        }
                             } else {
-                                EERROR(vm, ERROR_BASE"dont pass size as number per string brou!\n");
+                                EERROR(vm, ERROR_BASE"dont pass size as number per string brou!\n", vm->program.filename, instr->line);
                             }
                             if (operand_count.as_int >= 2) {
                                 Word count = xstack_pop(&vm->xpu.stack);
@@ -1517,7 +1517,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         } else if (size_str.type == WINT) {
                             size = size_str.as_int;
                         } else {
-                            EERROR(vm, ERROR_BASE"expected INT or CHARP got '%s'\n", word_type_to_string(size_str.type));
+                            EERROR(vm, ERROR_BASE"expected INT or CHARP got '%s'\n", vm->program.filename, instr->line, word_type_to_string(size_str.type));
                         }
 		                if (size > 0) {
 		                    void *mem = malloc(size);
@@ -1541,7 +1541,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		                }
                     }
                 } else {
-                    EERROR(vm, ERROR_BASE"expected minimum one item on stack\n");
+                    EERROR(vm, ERROR_BASE"expected minimum one item on stack\n", vm->program.filename, instr->line);
                 }
             }
 		    break;
