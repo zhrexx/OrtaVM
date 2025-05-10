@@ -1,4 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
+
 #ifndef ORTA_H
 #define ORTA_H
 
@@ -2502,6 +2503,8 @@ int create_xbin(OrtaVM *vm, const char *output_filename) {
 
         if (fwrite(&instr->opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error;
+        if (fwrite(&instr->line, sizeof(unsigned int), 1, fp) != 1) 
+            goto error;
 
         size_t operands_count = instr->operands.size;
         if (fwrite(&operands_count, sizeof(size_t), 1, fp) != 1)
@@ -2674,6 +2677,10 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
         if (fread(&opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error_instructions;
 
+        unsigned int line; 
+        if (fread(&line, sizeof(unsigned int), 1, fp) != 1)
+            goto error_instructions;
+
         size_t operands_count;
         if (fread(&operands_count, sizeof(size_t), 1, fp) != 1)
             goto error_instructions;
@@ -2792,6 +2799,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
 
         program->instructions[i].opcode = opcode;
         program->instructions[i].operands = operands;
+        program->instructions[i].line = line;
     }
 
     size_t labels_count;
@@ -2894,6 +2902,12 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             goto error_instructions;
         memcpy(&opcode, data + offset, sizeof(unsigned char));
         offset += sizeof(unsigned char);
+        
+        unsigned int line; 
+        if (offset + sizeof(unsigned int) > data_size)
+            goto error_instructions;
+        memcpy(&line, data + offset, sizeof(unsigned int));
+        offset += sizeof(unsigned int);
 
         size_t operands_count;
         if (offset + sizeof(size_t) > data_size)
@@ -3041,6 +3055,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
         program->instructions[i].opcode = opcode;
         program->instructions[i].operands = operands;
+        program->instructions[i].line = line;
     }
 
     size_t labels_count;
