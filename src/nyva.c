@@ -48,6 +48,7 @@ typedef enum {
     TOKEN_AT,          // @
     TOKEN_IMPORT,
     TOKEN_BREAK,
+    TOKEN_MODULUS,     // %
 } TokenType;
 
 typedef struct {
@@ -554,6 +555,11 @@ Token lexer_get_next_token(Lexer *lexer) {
             lexer_advance(lexer);
             token.type = TOKEN_BACKSLASH;
             token.value = strdup("\\");
+        case '%': 
+            lexer_advance(lexer);
+            token.type = TOKEN_MODULUS; 
+            token.value = strdup("%");
+
         default:
             lexer_error(lexer, "Unexpected character: %c\n",
                     lexer->current_char);
@@ -1185,6 +1191,8 @@ void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
             case TOKEN_GT:
                 codegen_emit(gen, "gt");
                 break;
+            case TOKEN_MODULUS: 
+                codegen_emit(gen, "mod");
             case TOKEN_LT:
                 codegen_emit(gen, "lt");
                 break;
@@ -1212,6 +1220,12 @@ void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
             }
         } else if (strcmp(func_name, "@inline") == 0) {
             for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) codegen_emit(gen, node->data.function_call.args->data.argument_list.args[i]->data.string.value);
+        } else if (strcmp(func_name, "@push") == 0) {
+            if (node->data.function_call.args->data.argument_list.count != 1) {
+                fprintf(stderr, "ERROR: expected only one argument for builtin '@push'\n");
+                exit(1);
+            }
+            codegen_generate_expression_orta(gen, node->data.function_call.args->data.argument_list.args[0]);
         } else {
             codegen_emit(gen, "; ------- Function call %s -------", func_name);
             for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) {
