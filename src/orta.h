@@ -1,4 +1,5 @@
 // DONE: add named memory | implemented variables now this isnt needed
+// TODO: add escaping to strings in ORTA
 
 #ifndef ORTA_H
 #define ORTA_H
@@ -1323,7 +1324,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
         }
         case IRET: {
-            xpu->ip = regs[REG_RA].reg_value.as_int;
+            if (regs[REG_RA].reg_value.type != WPOINTER) {
+                xpu->ip = regs[REG_RA].reg_value.as_int;
+            }
             break;
         }
         case ILOAD: {

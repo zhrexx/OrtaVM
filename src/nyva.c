@@ -1209,7 +1209,7 @@ void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
         }
     } else if (node->type == NODE_FUNCTION_CALL) {
         char *func_name = node->data.function_call.name;
-        if (strcmp(func_name, "print") == 0) {
+        if (strcmp(func_name, "@print") == 0) {
             if (node->data.function_call.args->data.argument_list.count == 0) {
                 codegen_emit(gen, "print");
             } else {
@@ -1223,6 +1223,12 @@ void codegen_generate_expression_orta(CodeGenerator *gen, ASTNode *node) {
         } else if (strcmp(func_name, "@push") == 0) {
             if (node->data.function_call.args->data.argument_list.count != 1) {
                 fprintf(stderr, "ERROR: expected only one argument for builtin '@push'\n");
+                exit(1);
+            }
+            codegen_generate_expression_orta(gen, node->data.function_call.args->data.argument_list.args[0]);
+        } else if (strcmp(func_name, "@pop") == 0) {
+            if (node->data.function_call.args->data.argument_list.count != 1) {
+                fprintf(stderr, "ERROR: expected one argument with variable name for builtin '@pop'\n");
                 exit(1);
             }
             codegen_generate_expression_orta(gen, node->data.function_call.args->data.argument_list.args[0]);
@@ -1449,6 +1455,8 @@ void codegen_generate_function_definition_orta(CodeGenerator *gen, ASTNode *node
         codegen_emit(gen, "push %d", node->data.function_definition.params->data.parameter_list.count);
         codegen_emit(gen, "eq");
         codegen_emit(gen, "not");
+        codegen_emit(gen, "here");
+        codegen_emit(gen, "swap");
         codegen_emit(gen, "jmpif %s", error_not_enough_args);
     }
     codegen_emit(gen, "togglelocalscope");
@@ -1461,13 +1469,25 @@ void codegen_generate_function_definition_orta(CodeGenerator *gen, ASTNode *node
     for (int i = 0; i < node->data.function_definition.body_count; i++) {
         codegen_generate_statement(gen, node->data.function_definition.body[i]);
     }
-
-    codegen_emit(gen, "togglelocalscope");
-    if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
-        codegen_emit(gen, "push 0");
-        codegen_emit(gen, "ret");
+    
+    if (node->data.function_definition.body_count > 0) {
+        if (node->data.function_definition.body[node->data.function_definition.body_count - 1]->type != NODE_RETURN_STATEMENT) {
+            codegen_emit(gen, "togglelocalscope");
+            if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
+                codegen_emit(gen, "push 0");
+                codegen_emit(gen, "ret");
+            } else {
+                codegen_emit(gen, "halt");
+            }
+        }
     } else {
-        codegen_emit(gen, "halt");
+            codegen_emit(gen, "togglelocalscope");
+            if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
+                codegen_emit(gen, "push 0");
+                codegen_emit(gen, "ret");
+            } else {
+                codegen_emit(gen, "halt");
+            }
     }
 }
 
@@ -1701,7 +1721,8 @@ void codegen_generate_program_orta(CodeGenerator *gen, ASTNode *program) {
     }
 
     codegen_emit(gen, "%s:", error_not_enough_args);
-    codegen_emit(gen, "push \"ERROR: not enough arguments\"");
+    codegen_emit(gen, "push \"[%%s ERROR] not enough arguments\"");
+    codegen_emit(gen, "sprintf");
     codegen_emit(gen, "print");
     codegen_emit(gen, "halt 1");
 
@@ -1865,6 +1886,8 @@ char *read_file(const char *filename) {
     return buffer;
 }
 
+char* preprocess(const char* source);
+
 void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
     char *filename = node->data.import_statement.file;
 
@@ -1885,10 +1908,7 @@ void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
         exit(1);
     }
 
-    char temp_filename[256];
-    sprintf(temp_filename, "%s.tmp", filename);
-
-    Token *tokens = tokenize(source);
+    Token *tokens = tokenize(preprocess(source));
     ASTNode *imported_ast = parse(tokens);
 
     codegen_emit(gen, "; --- Begin imported file: %s ---", filename);
