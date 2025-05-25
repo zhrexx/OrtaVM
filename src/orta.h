@@ -1,5 +1,6 @@
 // DONE: add named memory | implemented variables now this isnt needed
 // TODO: add escaping to strings in ORTA
+// TODO: add proper structs
 
 #ifndef ORTA_H
 #define ORTA_H

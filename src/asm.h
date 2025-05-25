@@ -165,22 +165,17 @@ static Token* lexer_read_number(Lexer *lexer) {
 static Token* lexer_read_string(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
-    char buffer[256];
+    char buffer[512];
     size_t i = 0;
     
-    lexer_advance(lexer);
+    buffer[i++] = lexer_advance(lexer);
     
-    while (lexer_peek(lexer) != '"' && lexer_peek(lexer) != '\0' && i < sizeof(buffer) - 1) {
+    while (lexer_peek(lexer) != '"' && lexer_peek(lexer) != '\0' && i < sizeof(buffer) - 2) {
         if (lexer_peek(lexer) == '\\') {
-            lexer_advance(lexer);
-            char escaped = lexer_advance(lexer);
-            switch (escaped) {
-                case 'n': buffer[i++] = '\n'; break;
-                case 't': buffer[i++] = '\t'; break;
-                case 'r': buffer[i++] = '\r'; break;
-                case '\\': buffer[i++] = '\\'; break;
-                case '"': buffer[i++] = '"'; break;
-                default: buffer[i++] = escaped; break;
+            buffer[i++] = lexer_advance(lexer);
+            char escaped = lexer_peek(lexer);
+            if (escaped != '\0') {
+                buffer[i++] = lexer_advance(lexer);
             }
         } else {
             buffer[i++] = lexer_advance(lexer);
@@ -188,7 +183,7 @@ static Token* lexer_read_string(Lexer *lexer) {
     }
     
     if (lexer_peek(lexer) == '"') {
-        lexer_advance(lexer);
+        buffer[i++] = lexer_advance(lexer);
     }
     
     buffer[i] = '\0';
@@ -467,6 +462,7 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
     
     static char result[8192];
     size_t pos = 0;
+    int on_new_line = 1;
     
     for (size_t i = 0; i < stream->count; i++) {
         Token *token = &stream->tokens[i];
@@ -491,24 +487,33 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
                     }
                 }
             }
-        } else if (token->type != TOKEN_COMMENT) {
+            on_new_line = 1;
+        } else if (token->type == TOKEN_COMMENT) {
+            continue;
+        } else if (token->type == TOKEN_NEWLINE) {
+            if (pos < sizeof(result) - 1) {
+                result[pos++] = '\n';
+            }
+            on_new_line = 1;
+        } else {
             if (token->value) {
                 char *expanded = preprocessor_expand_defines(pp, token->value);
+                if (!on_new_line && pos < sizeof(result) - 1) {
+                    result[pos++] = ' ';
+                }
                 if (pos + strlen(expanded) < sizeof(result) - 1) {
                     strcpy(result + pos, expanded);
                     pos += strlen(expanded);
                 }
             }
             
-            if (token->type == TOKEN_LABEL && pos < sizeof(result) - 1) {
-                result[pos++] = ':';
+            if (token->type == TOKEN_LABEL || token->type == TOKEN_LOCAL_LABEL) {
+                if (pos < sizeof(result) - 1) {
+                    result[pos++] = ':';
+                }
             }
             
-            if (token->type == TOKEN_NEWLINE && pos < sizeof(result) - 1) {
-                result[pos++] = '\n';
-            } else if (token->type != TOKEN_NEWLINE && pos < sizeof(result) - 1) {
-                result[pos++] = ' ';
-            }
+            on_new_line = 0;
         }
     }
     

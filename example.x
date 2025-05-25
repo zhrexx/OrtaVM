@@ -1,3 +1,4 @@
-;#include "std.x"
+#include "std.x"
 
 __entry:
+    print "Hello"
