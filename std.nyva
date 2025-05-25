@@ -1,13 +1,13 @@
-// TODO: could provide here to the __error_not_enough_args_0
 
-fn vm_alloc(bytes: UInt) -> GenericPtr {
+fn alloc(bytes: UInt) -> GenericPtr {
     @inline("getvar bytes") 
     @push(1)
     @inline("alloc")
-    return
+    @pop(ptr)
+    return ptr
 }
 
-fn vm_free(ptr: GenericPtr) {
+fn free(ptr: GenericPtr) {
     @push(ptr)
     @inline("free")
     return
@@ -26,14 +26,14 @@ fn here() -> String {
     return pos
 }
 
-fn alloc(bytes: UInt) -> GenericPtr {
-    if (bytes == 0) {
-        @push(here())
-        sprintf("[%s WARNING] expected minimum one byte setting to 1") // TODO: make the message more informative
-        @print()
-        bytes = 1
+fn error(here, prefix, msg: String, halt: bool) {
+    @push(msg)
+    @push(prefix)
+    @push(here)
+    sprintf("[%s %s] %s")
+    @print()
+    if (halt) {
+        @inline("halt 1")
     }
-    
-    var ptr = vm_alloc(bytes)
-    return ptr 
-}
+} 
+

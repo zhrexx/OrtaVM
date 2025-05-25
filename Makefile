@@ -38,6 +38,10 @@ xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
 nyva: $(SRCDIR)/nyva.c 
 	$(COMPILE)
 
+rom: $(SRCDIR)/rom.zig
+	zig build-exe src/rom.zig -femit-bin=$(BINDIR)/rom
+
+
 liborta: bin/liborta.so bin/liborta.a
 
 bin/orta.o: $(SRCDIR)/orta.h 
