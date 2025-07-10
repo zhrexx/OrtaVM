@@ -368,6 +368,7 @@ void add_label(Program *program, const char *name, size_t address) {
         program->labels_capacity *= 2;
         program->labels = realloc(program->labels, sizeof(Label) * program->labels_capacity);
     }
+
     if (strncmp(name, ".", 1) == 0) {
         char *context = (program->last_non_local_label != NULL) 
                       ? program->last_non_local_label 
@@ -2281,6 +2282,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             char *arg = vector_get_str(&instr->operands, 0);
             if (strcmp(arg, "stack") == 0) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
+            } else if (strcmp(arg, "stack_ptr") == 0) {
+                xstack_push(&vm->xpu.stack, (Word){.type = WPOINTER, .as_pointer = (void *)vm->xpu.stack.stack});
             }
                    } break;
         
