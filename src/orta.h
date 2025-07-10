@@ -3141,8 +3141,7 @@ void execute_program(OrtaVM *vm) {
 #define BOLD    "\033[1m"
 #define CYAN    "\033[36m"
 
-static void print_word(size_t index, Word w) {
-    printf("[%zu] ", index);
+static void print_word(Word w) {
     switch (w.type) {
         case WINT: printf("INT: %d", w.as_int); break;
         case WFLOAT: printf("FLOAT: %f", w.as_float); break;
@@ -3158,7 +3157,8 @@ static void print_word(size_t index, Word w) {
 void print_stack(XPU *xpu) {
     printf(BOLD CYAN "Stack (%zu items):\n" RESET, xpu->stack.count);
     for (size_t i = 0; i < xpu->stack.count; i++) {
-        print_word(i, xpu->stack.stack[i]);
+        printf("[%zu] ", i);
+        print_word(xpu->stack.stack[i]);
     }
 }
 
@@ -3167,15 +3167,7 @@ void print_registers(XPU *xpu) {
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = xpu->registers[i].reg_value;
         printf("[%3s] ", register_table[i].name);
-        switch (w.type) {
-            case WINT: printf("INT: %d", w.as_int); break;
-            case WFLOAT: printf("FLOAT: %f", w.as_float); break;
-            case WCHARP: printf("STRING: %s", w.as_string); break;
-            case W_CHAR: printf("CHAR: %c", w.as_char); break;
-            case WPOINTER: printf("POINTER: %p", w.as_pointer); break;
-            case WBOOL: printf("BOOL: %s", w.as_bool ? "true" : "false"); break;
-            default: printf("EMPTY");
-        }
+        print_word(w);
         printf("\n");
     }
 }

@@ -103,9 +103,6 @@ typedef struct ASTNode {
             int else_body_count;
         } if_statement;
         struct {
-            struct ASTNode *args;
-        } parse_statement;
-        struct {
             struct ASTNode *left;
             TokenType operator;
             struct ASTNode *right;
@@ -583,6 +580,7 @@ ASTNode *parser_parse_function_call(Parser *parser, char *name) {
     parser_expect(parser, TOKEN_LPAREN);
     ASTNode *args = parser_parse_argument_list(parser);
     parser_expect(parser, TOKEN_RPAREN);
+    parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_FUNCTION_CALL;
     node->data.function_call.name = name;
@@ -689,6 +687,7 @@ ASTNode *parser_parse_var_declaration(Parser *parser) {
     } else {
         node->data.var_declaration.value = NULL;
     }
+    parser_expect(parser, TOKEN_SEMICOLON);
     return node;
 }
 
@@ -701,6 +700,8 @@ ASTNode *parser_parse_assignment(Parser *parser) {
     node->type = NODE_ASSIGNMENT;
     node->data.assignment.name = strdup(identifier.value);
     node->data.assignment.value = value;
+    parser_expect(parser, TOKEN_IDENTIFIER);
+
     return node;
 }
 
@@ -794,9 +795,10 @@ ASTNode *parser_parse_function_definition(Parser *parser) {
 ASTNode *parser_parse_return_statement(Parser *parser) {
     parser_expect(parser, TOKEN_RETURN);
     ASTNode *value = NULL;
-    if (parser_current_token(parser).type != TOKEN_RBRACE) {
+    if (parser_current_token(parser).type != TOKEN_RBRACE && parser_current_token(parser).type != TOKEN_SEMICOLON) {
         value = parser_parse_expression(parser);
     }
+    parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_RETURN_STATEMENT;
     node->data.return_statement.value = value;
@@ -865,6 +867,8 @@ ASTNode *parser_parse_import_statement(Parser *parser) {
     char *file = strdup(parser_current_token(parser).value);
     parser_expect(parser, TOKEN_STRING);
     parser_expect(parser, TOKEN_RPAREN);
+    parser_expect(parser, TOKEN_SEMICOLON);
+
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_IMPORT;
     node->data.import_statement.file = file;
@@ -873,6 +877,7 @@ ASTNode *parser_parse_import_statement(Parser *parser) {
 
 ASTNode *parser_parse_break_statement(Parser *parser) {
     parser_expect(parser, TOKEN_BREAK);
+    parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_BREAK_STATEMENT;
     return node;
@@ -1127,13 +1132,6 @@ void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
-void codegen_generate_parse_statement(CodeGenerator *gen, ASTNode *node) {
-    for (int i = 0; i < node->data.parse_statement.args->data.argument_list.count; i++) {
-        codegen_generate_expression(gen, node->data.parse_statement.args->data.argument_list.args[i]);
-    }
-    codegen_emit(gen, "eval %d", node->data.parse_statement.args->data.argument_list.count);
-}
-
 void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {}
 
 char *error_not_enough_args = NULL;
@@ -1285,7 +1283,7 @@ void codegen_generate_program(CodeGenerator *gen, ASTNode *program) {
         }
     }
     codegen_emit(gen, "%s:", error_not_enough_args);
-    codegen_emit(gen, "    push \"[%%s ERROR] not enough arguments\"");
+    codegen_emit(gen, "    push \"[%%s ERROR] invalid amount of arguments\"");
     codegen_emit(gen, "    sprintf");
     codegen_emit(gen, "    print");
     codegen_emit(gen, "    halt 1");

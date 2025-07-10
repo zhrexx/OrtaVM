@@ -1,39 +1,39 @@
 
 fn alloc(bytes: UInt) -> GenericPtr {
-    @inline("getvar bytes") 
-    @push(1)
-    @inline("alloc")
-    @pop(ptr)
-    return ptr
+    @inline("getvar bytes");
+    @push(1);
+    @inline("alloc");
+    @pop(ptr);
+    return ptr;
 }
 
 fn free(ptr: GenericPtr) {
-    @push(ptr)
-    @inline("free")
-    return
+    @push(ptr);
+    @inline("free");
+    return;
 }
 
+// before use @push for all args to sprinf
 fn sprintf(string: String) -> String {
-    @push(string)
-    @inline("sprintf")
-    return
+    @push(string);
+    @inline("sprintf");
+    return;
 }
 
-// abc.x:12
 fn here() -> String {
-    @inline("here")
-    @pop(pos)
-    return pos
+    @inline("here");
+    @pop(pos);
+    return pos;
 }
 
 fn error(here, prefix, msg: String, halt: bool) {
-    @push(msg)
-    @push(prefix)
-    @push(here)
-    sprintf("[%s %s] %s")
-    @print()
+    @push(msg);
+    @push(prefix);
+    @push(here);
+    sprintf("[%s %s] %s");
+    @print();
     if (halt) {
-        @inline("halt 1")
+        @inline("halt 1");
     }
 } 
 

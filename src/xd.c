@@ -196,7 +196,8 @@ void cmd_stack(int argc, char **argv) {
                i == 0 ? COLOR_GREEN : "", 
                vm.xpu.stack.count - 1 - i,
                COLOR_RESET);
-        print_word(i, vm.xpu.stack.stack[vm.xpu.stack.count - 1 - i]);
+        printf("[%d] ", i);
+        print_word(vm.xpu.stack.stack[vm.xpu.stack.count - 1 - i]);
         printf("\n");
     }
     printf("\n");
