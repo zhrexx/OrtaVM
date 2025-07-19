@@ -1,16 +1,16 @@
 CC := gcc
 # CC=x86_64-w64-mingw32-gcc
 # CFLAGS = -O2 -static -Ofast -Os -s -g0 -flto
-CFLAGS = -g -ggdb 
+CFLAGS = -g -ggdb ./src/libs/xthread.c
 LDFLAGS = -L. -lm
 SRCDIR = src
 BINDIR := bin
-TARGETS = orta fcfx xd repl xtoa nyva
+TARGETS = orta fcfx xd repl xtoa nyva xbd
 
 PCOUNT = 0
 GIT_HASH := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 OVERSION = 1.0
-COMPILE = @echo "[$(PCOUNT)] CC $<"; $(CC) $(CFLAGS) $< $(LDFLAGS) -DGITHASH='$(GIT_HASH)' -D_VERSION=$(OVERSION) -o $(BINDIR)/$@; $(eval PCOUNT=$(shell echo $$(($(PCOUNT)+1))))
+COMPILE = @echo "[$(PCOUNT)] CC $<"; $(CC) $(CFLAGS) $< $(LDFLAGS) -DGITHASH='"$(GIT_HASH)"' -D_VERSION=$(OVERSION) -o $(BINDIR)/$@; $(eval PCOUNT=$(shell echo $$(($(PCOUNT)+1))))
 INSTALL_DIR = /usr/local/bin
 
 .PHONY: all clean release debug dir static install
@@ -36,6 +36,9 @@ xtoa: $(SRCDIR)/xtoa.c $(SRCDIR)/orta.h
 	$(COMPILE)
 
 nyva: $(SRCDIR)/nyva.c 
+	$(COMPILE)
+
+xbd: $(SRCDIR)/xbd.c
 	$(COMPILE)
 
 rom: $(SRCDIR)/rom.zig

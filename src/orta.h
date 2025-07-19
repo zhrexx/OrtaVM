@@ -33,12 +33,14 @@
     #define execvp _execvp
     #define waitpid _cwait
     #define WEXITSTATUS(status) ((status) & 0xFF)
+    #define PLATFORM "windows"
 #else
     #include <unistd.h>
     #include <time.h>
     #include <sys/stat.h>
     #include <sys/types.h>
     #include <sys/wait.h>
+    #define PLATFORM "unix"
 #endif
 
 #include "libs/vector.h"
@@ -325,8 +327,9 @@ typedef struct {
     char *last_non_local_label;
 } Program;
 
+// WARNING: dont relay on FLAG_EXTERNAL_LIBRARY it only is set when the assembly runs (means if you only compile i wont be set) instead use FLAG_XCALL
 typedef enum {
-    FLAG_NOTHING = 0, FLAG_STACK = 1, FLAG_MEMORY = 2, FLAG_XCALL = 3,
+    FLAG_NOTHING = 0, FLAG_STACK = 1, FLAG_MEMORY = 2, FLAG_XCALL = 3, FLAG_EXTERNAL_LIBRARY = 4
 } Flags;
 
 typedef struct {
@@ -1611,6 +1614,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
                     case 3: // load external function
 						call_dynlib_function(rbx->reg_value.as_string, rcx->reg_value.as_string, (OrtaVM *)vm);
+                        add_flag(vm, FLAG_EXTERNAL_LIBRARY);
                         break;
                     case 7:
 
@@ -2243,6 +2247,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
             } else if (strcmp(arg, "stack_ptr") == 0) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WPOINTER, .as_pointer = (void *)vm->xpu.stack.stack});
+            } else if (strcmp(arg, "platform") == 0)
+            {
+                xstack_push(&vm->xpu.stack, (Word){.type = WCHARP, .as_string = strdup(PLATFORM)});
             }
                    } break;
         
