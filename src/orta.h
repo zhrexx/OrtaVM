@@ -13,7 +13,6 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <stdarg.h>
-#include "xlib.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -44,6 +43,7 @@
 
 #include "libs/vector.h"
 #include "libs/str.h"
+#include "libs/loadfn.h"
 
 #define ODEFAULT_STACK_SIZE 16384
 #define ODEFAULT_ENTRY "__entry"
@@ -241,7 +241,7 @@ typedef enum {
     IDEC, IINC, IEVAL, ICMP, IREADMEM, ICPYMEM, IWRITEMEM,
     IVAR, ISETVAR, IGETVAR, IFREE, ITOGGLELOCALSCOPE,
     IGETGLOBALVAR, ISETGLOBALVAR, IOVM, ICAST, IHERE,
-    ISPRINTF,
+    ISPRINTF
 } Instruction;
 
 typedef enum {
@@ -822,6 +822,33 @@ Word xstack_pop_and_expect(OrtaVM *vm, WordType expected) {
         EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n", 
                vm->program.filename, vm->program.instructions[vm->xpu.ip].line, word_type_to_string(expected), word_type_to_string(result.type));
     }
+}
+
+void call_dynlib_function(const char* lib_path, const char* func_name, OrtaVM* vm) {
+    LibHandle handle = LOAD_LIBRARY(lib_path);
+    if (!handle) {
+#ifdef _WIN32
+        fprintf(stderr, "Failed to load library %s: Error code %lu\n", lib_path, GetLastError());
+#else
+        fprintf(stderr, "Failed to load library %s: %s\n", lib_path, dlerror());
+#endif
+        return;
+    }
+
+    typedef void (*func_t)(OrtaVM*);
+    func_t function = (func_t)GET_PROC_ADDRESS(handle, func_name);
+    if (!function) {
+#ifdef _WIN32
+        fprintf(stderr, "Failed to load function %s: Error code %lu\n", func_name, GetLastError());
+#else
+        fprintf(stderr, "Failed to load function %s: %s\n", func_name, dlerror());
+#endif
+        CLOSE_LIBRARY(handle);
+        return;
+    }
+
+    function(vm);
+    CLOSE_LIBRARY(handle);
 }
 
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
@@ -1582,77 +1609,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         if (rbx->reg_value.type == WCHARP) system(rbx->reg_value.as_string);
                         break;
 
-					case 4: {
-						if (rbx->reg_value.type == WCHARP) {
-							XLib_Handle* handle = XLib_open(rbx->reg_value.as_string);
-							if (handle) {
-								rcx->reg_value.type = WPOINTER;
-								rcx->reg_value.as_pointer = handle;
-								rax->reg_value.as_int = XLIB_OK;
-							} else {
-								rax->reg_value.as_int = XLIB_ERROR_OPEN;
-							}
-						} else {
-							rax->reg_value.as_int = XLIB_ERROR_INVALID;
-						}
-						break;
-					}
-
-					case 5: {
-						if (rcx->reg_value.type == WPOINTER && rdx->reg_value.type == WCHARP) {
-							XLib_Handle* handle = (XLib_Handle*)rcx->reg_value.as_pointer;
-							void* sym = XLib_sym(handle, rdx->reg_value.as_string);
-							if (sym) {
-								rdi->reg_value.type = WPOINTER;
-								rdi->reg_value.as_pointer = sym;
-								rax->reg_value.as_int = XLIB_OK;
-							} else {
-								rax->reg_value.as_int = XLIB_ERROR_SYMBOL;
-							}
-						} else {
-							rax->reg_value.as_int = XLIB_ERROR_INVALID;
-						}
-						break;
-					}
-
-					case 6: {
-						if (rdi->reg_value.type == WPOINTER && rbx->reg_value.type == WINT) {
-							void (*func)() = rdi->reg_value.as_pointer;
-							int argc = rbx->reg_value.as_int;
-							Word* args = malloc(argc * sizeof(Word));
-							for (int i = 0; i < argc; i++) {
-								args[i] = xstack_pop(&xpu->stack);
-							}
-
-							int result = 0;
-							switch (argc) {
-								case 0:
-									result = ((int (*)())func)();
-									break;
-								case 1:
-									result = ((int (*)(void *))func)(args[0].as_pointer);
-									break;
-								case 2:
-									result = ((int (*)(int, int))func)(args[1].as_int, args[0].as_int);
-									break;
-								case 3:
-									result = ((int (*)(int, int, int))func)(args[2].as_int, args[1].as_int, args[0].as_int);
-									break;
-								default:
-									OERROR(stderr, "Unsupported argument count: %d\n", argc);
-									result = -1;
-									break;
-							}
-
-							xstack_push(&xpu->stack, (Word){ .type = WINT, .as_int = result });
-							free(args);
-						} else {
-							rax->reg_value.as_int = XLIB_ERROR_INVALID;
-						}
-						break;
-					}
-
-
+                    case 3: // load external function
+						call_dynlib_function(rbx->reg_value.as_string, rcx->reg_value.as_string, (OrtaVM *)vm);
+                        break;
                     case 7:
 
                         xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = NULL});
@@ -1740,7 +1699,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 		        char *type_str = vector_get_str(&instr->operands, 2);
 		        write_type = get_type(type_str);
 		    }
-		
+
 		    if (instr->operands.size >= 4) {
 		        char *val_str = vector_get_str(&instr->operands, 3);
 		        if (is_register(val_str)) {

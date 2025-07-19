@@ -2,7 +2,7 @@ CC := gcc
 # CC=x86_64-w64-mingw32-gcc
 # CFLAGS = -O2 -static -Ofast -Os -s -g0 -flto
 CFLAGS = -g -ggdb 
-LDFLAGS = -L. -lxlib -lm 
+LDFLAGS = -L. -lm
 SRCDIR = src
 BINDIR := bin
 TARGETS = orta fcfx xd repl xtoa nyva
@@ -59,6 +59,9 @@ clean:
 
 release:
 	xxd -i std.x > $(SRCDIR)/std.h
+
+test:
+	gcc -shared -fPIC -o libx.so libx.c
 
 debug: CFLAGS += -DDEBUG
 debug: all
