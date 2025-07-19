@@ -1,9 +1,18 @@
 #include "std.x"
 
-__entry:
+externCallTest:
     mov 3 rax
     mov "./libx.so" rbx
     mov "ExampleExtern" rcx
     xcall
     print
-    print "Hello"
+    ret
+
+test:
+    print
+    print
+    ret
+
+__entry:
+    call test "Hello, World" 644
+    ;call externCallTest

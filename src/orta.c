@@ -170,6 +170,7 @@ int main(int argc, char **argv) {
     
     if (options.show_version) {
         printf("Orta v%.1f\n", _VERSION);
+        printf("%s\n", GITHASH);
         return EXIT_SUCCESS;
     }
     
@@ -290,6 +291,6 @@ int main(int argc, char **argv) {
     }
     int exit_code = vm.program.exit_code;
     ortavm_free(&vm);
-    
+
     return exit_code;
 }

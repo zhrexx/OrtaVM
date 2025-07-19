@@ -273,7 +273,7 @@ static const InstructionInfo instructions[] = {
     {"lt", ILT, {ARG_EXACT, 0, 0}}, {"gt", IGT, {ARG_EXACT, 0, 0}},
     {"le", ILE, {ARG_EXACT, 0, 0}}, {"ge", IGE, {ARG_EXACT, 0, 0}},
     {"jmp", IJMP, {ARG_EXACT, 1, 1}}, {"jmpif", IJMPIF, {ARG_EXACT, 1, 1}},
-    {"call", ICALL, {ARG_EXACT, 1, 1}}, {"ret", IRET, {ARG_EXACT, 0, 0}},
+    {"call", ICALL, {ARG_MIN, 1, 1}}, {"ret", IRET, {ARG_EXACT, 0, 0}},
     {"load", ILOAD, {ARG_EXACT, 1, 1}}, {"store", ISTORE, {ARG_EXACT, 1, 1}},
     {"print", IPRINT, {ARG_MIN, 0, 0}}, {"dup", IDUP, {ARG_EXACT, 0, 0}},
     {"swap", ISWAP, {ARG_EXACT, 0, 0}}, {"drop", IDROP, {ARG_EXACT, 0, 0}},
@@ -800,8 +800,90 @@ void EERROR(OrtaVM *vm, const char *msg, ...) {
     ortavm_free(vm);
     exit(1);
 }
-
 #define ERROR_BASE "%s:%zu ERROR: "
+
+
+Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
+    Word w = {.type = WPOINTER, .as_pointer = NULL};
+    char *operand = (char*)operand_c;
+    if (!operand) {
+        EERROR(vm, ERROR_BASE"Null operand\n", vm->program.filename, vm->program.instructions[vm->xpu.ip].line);
+        return w;
+    }
+
+    if (is_register(operand)) {
+        XRegisters reg = register_name_to_enum(operand);
+        if (reg != (XRegisters)-1) {
+            w = vm->xpu.registers[reg].reg_value;
+            if (w.type == WCHARP && w.as_string != NULL) {
+                w.as_string = strdup(w.as_string);
+            }
+            return w;
+        }
+        EERROR(vm, ERROR_BASE"Invalid register: %s\n",
+               vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
+        return w;
+    }
+
+    if (is_number(operand)) {
+        w.type = WINT;
+        w.as_int = atoi(operand);
+        return w;
+    }
+
+    if (is_float(operand)) {
+        w.type = WFLOAT;
+        w.as_float = atof(operand);
+        return w;
+    }
+
+    if (is_string(operand)) {
+        w.type = WCHARP;
+        size_t len = strlen(operand) - 2;
+        w.as_string = malloc(len + 1);
+        if (!w.as_string) {
+            EERROR(vm, ERROR_BASE"Failed to allocate memory for string\n",
+                   vm->program.filename, vm->program.instructions[vm->xpu.ip].line);
+            return w;
+        }
+        strncpy(w.as_string, operand + 1, len);
+        w.as_string[len] = '\0';
+        return w;
+    }
+
+    if (is_pointer(operand)) {
+        w.type = WPOINTER;
+        w.as_pointer = get_pointer((char*)operand);
+        return w;
+    }
+
+    if (is_variable((char*)operand, scope)) {
+        w = getvar(vm, (char*)operand, scope);
+        if (w.type == WPOINTER && w.as_pointer == NULL) {
+            EERROR(vm, ERROR_BASE"Variable not found: %s\n",
+                   vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
+        }
+        return w;
+    }
+
+    if (is_label_reference(operand)) {
+        size_t address;
+        if (find_label(&vm->program, operand, &address)) {
+            w.type = WINT;
+            w.as_int = address;
+            return w;
+        }
+        EERROR(vm, ERROR_BASE"Label not found: %s\n",
+               vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
+        return w;
+    }
+
+    EERROR(vm, ERROR_BASE"Invalid operand: %s\n",
+           vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
+    return w;
+}
+
+
 
 Vector *current_scope = NULL;
 
@@ -854,6 +936,7 @@ void call_dynlib_function(const char* lib_path, const char* func_name, OrtaVM* v
     CLOSE_LIBRARY(handle);
 }
 
+static void print_word(Word w);
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
     Word w1, w2, result; 
@@ -1346,12 +1429,39 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case ICALL: {
             char *operand = vector_get_str(&instr->operands, 0);
             size_t target = 0;
-            if (is_number(operand)) target = atoi(operand);
-            else if (is_label_reference(operand)) find_label(&vm->program, operand, &target);
-            if (target < vm->program.instructions_count) {
-                regs[REG_RA].reg_value.type = WINT;
-                regs[REG_RA].reg_value.as_int = xpu->ip;
-                xpu->ip = target - 1;
+            if (is_number(operand)) {
+                target = atoi(operand);
+            } else if (is_label_reference(operand)) {
+                if (!find_label(&vm->program, operand, &target)) {
+                    EERROR(vm, ERROR_BASE"Label not found: %s\n",
+                           vm->program.filename, instr->line, operand);
+                    return;
+                }
+            } else {
+                EERROR(vm, ERROR_BASE"Invalid call target: %s\n",
+                       vm->program.filename, instr->line, operand);
+                return;
+            }
+            if (target >= vm->program.instructions_count) {
+                EERROR(vm, ERROR_BASE"Invalid jump target: %zu\n",
+                       vm->program.filename, instr->line, target);
+                return;
+            }
+            regs[REG_RA].reg_value.type = WINT;
+            regs[REG_RA].reg_value.as_int = xpu->ip;
+            xpu->ip = target - 1;
+            //for (size_t i = 1; i < instr->operands.size; i++) {
+
+            for (size_t i = instr->operands.size; i > 0; i--) {
+                size_t operand_index = i - 1;
+                if (operand_index == 0) continue;
+                Word w = parseOperand(vm, vector_get_str(&instr->operands, operand_index), current_scope);
+                if (w.type == WPOINTER && w.as_pointer == NULL) {
+                    EERROR(vm, ERROR_BASE"Failed to parse operand: %s\n",
+                           vm->program.filename, instr->line, vector_get_str(&instr->operands, operand_index));
+                    return;
+                }
+                xstack_push(&xpu->stack, w);
             }
             break;
         }
