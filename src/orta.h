@@ -108,7 +108,6 @@ typedef enum {
     REG_R13,
     REG_R14,
     REG_R15,
-    REG_RA,
     REG_FR,
     REG_COUNT,
 } XRegisters;
@@ -134,7 +133,7 @@ XRegisterInfo register_table[REG_COUNT] = {
     {"R10", REG_R10, REGSIZE_64BIT}, {"R11", REG_R11, REGSIZE_64BIT},
     {"R12", REG_R12, REGSIZE_64BIT}, {"R13", REG_R13, REGSIZE_64BIT},
     {"R14", REG_R14, REGSIZE_64BIT}, {"R15", REG_R15, REGSIZE_64BIT},
-    {"RA",  REG_RA,  REGSIZE_64BIT}, {"FR",  REG_FR,  REGSIZE_64BIT},
+    {"FR",  REG_FR,  REGSIZE_64BIT},
 };
 
 int is_register(const char *str) {
@@ -208,11 +207,13 @@ typedef struct {
     XRegister *registers;
     XStack stack;
     size_t ip;
+    XStack call_stack;
 } XPU;
 
 XPU xpu_init() {
     XPU xpu = {0};
     xpu.stack = xstack_create(OSTACK_SIZE);
+    xpu.call_stack = xstack_create(1024);
     xpu.registers = malloc(sizeof(XRegister) * REG_COUNT);
     xpu.ip = 0;
 
@@ -232,6 +233,7 @@ void xpu_free(XPU *xpu) {
             free(xpu->registers[i].reg_value.as_pointer);
     }
     xstack_free(&xpu->stack);
+    xstack_free(&xpu->call_stack);
     free(xpu->registers);
 }
 
@@ -984,7 +986,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             XRegisters dst_reg = register_name_to_enum(dst);
             if (dst_reg == -1) break;
 
-            if (is_register(src)) {
+            if (is_register(src) ) {
                 XRegisters src_reg = register_name_to_enum(src);
                 if (src_reg != -1) {
                     if (regs[dst_reg].reg_value.type == WCHARP)
@@ -1447,8 +1449,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                        vm->program.filename, instr->line, target);
                 return;
             }
-            regs[REG_RA].reg_value.type = WINT;
-            regs[REG_RA].reg_value.as_int = xpu->ip;
+            xstack_push(&vm->xpu.call_stack, (Word){.type = WINT, .as_int = xpu->ip});
             xpu->ip = target - 1;
             //for (size_t i = 1; i < instr->operands.size; i++) {
 
@@ -1466,9 +1467,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
         }
         case IRET: {
-            if (regs[REG_RA].reg_value.type != WPOINTER) {
-                xpu->ip = regs[REG_RA].reg_value.as_int;
-            }
+            Word ra = xstack_pop(&vm->xpu.call_stack);
+            xpu->ip = ra.as_int;
             break;
         }
         case ILOAD: {
@@ -1723,7 +1723,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         break;
 
                     case 3: // load external function
-						call_dynlib_function(rbx->reg_value.as_string, rcx->reg_value.as_string, (OrtaVM *)vm);
+                        if (rbx->reg_value.type == WCHARP && rcx->reg_value.type == WCHARP) {
+                            call_dynlib_function(rbx->reg_value.as_string, rcx->reg_value.as_string, vm);
+                        } else {
+                            EERROR(vm, ERROR_BASE"Expected WCHARP in rbx and rcx for xcall 3\n",
+                                   vm->program.filename, instr->line);
+                        }
                         add_flag(vm, FLAG_EXTERNAL_LIBRARY);
                         break;
                     case 7:

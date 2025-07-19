@@ -78,8 +78,12 @@ rb:
     jmpif rb_loop
     ret
 
-
-
+callExtern:
+    mov 3 rax
+    pop rbx
+    pop rcx
+    xcall
+    ret
 
 
 
