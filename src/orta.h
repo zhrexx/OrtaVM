@@ -1,7 +1,6 @@
 // DONE: add named memory | implemented variables now this isnt needed
 // TODO: add escaping to strings in ORTA
-// TODO: add proper structs
-
+// TODO: fix local labels
 #ifndef ORTA_H
 #define ORTA_H
 
@@ -46,6 +45,7 @@
 #include "libs/vector.h"
 #include "libs/str.h"
 #include "libs/loadfn.h"
+#include "libs/xthread.h"
 
 #define ODEFAULT_STACK_SIZE 16384
 #define ODEFAULT_ENTRY "__entry"
@@ -326,7 +326,6 @@ typedef struct {
     Vector variables;
     bool halted;
     int exit_code;
-    char *last_non_local_label;
 } Program;
 
 // WARNING: dont relay on FLAG_EXTERNAL_LIBRARY it only is set when the assembly runs (means if you only compile i wont be set) instead use FLAG_XCALL
@@ -356,7 +355,6 @@ void program_init(Program *program, const char *filename) {
     program->labels = malloc(sizeof(Label) * program->labels_capacity);
     vector_init(&program->variables, 5, sizeof(Variable));
     program->exit_code = 0;
-    program->last_non_local_label = NULL;
 }
 
 void add_instruction(Program *program, InstructionData instr) {
@@ -374,21 +372,7 @@ void add_label(Program *program, const char *name, size_t address) {
         program->labels = realloc(program->labels, sizeof(Label) * program->labels_capacity);
     }
 
-    if (strncmp(name, ".", 1) == 0) {
-        char *context = (program->last_non_local_label != NULL)
-                            ? program->last_non_local_label
-                            : "_global";
-
-        char *mangled_name = malloc(strlen(context) + strlen(name) + 2);
-        sprintf(mangled_name, "%s_%s", context, name + 1);
-
-        program->labels[program->labels_count].name = mangled_name;
-    } else {
-        free(program->last_non_local_label);
-        program->last_non_local_label = strdup(name);
-
-        program->labels[program->labels_count].name = strdup(name);
-    }
+    program->labels[program->labels_count].name = strdup(name);
     program->labels[program->labels_count].address = address;
     program->labels_count++;
     Vector *nop_operands = malloc(sizeof(Vector));
@@ -397,12 +381,19 @@ void add_label(Program *program, const char *name, size_t address) {
 }
 
 int find_label(Program *program, const char *name, size_t *address) {
+    char *search_name = NULL;
+    search_name = strdup(name);
+
+
     for (size_t i = 0; i < program->labels_count; i++) {
-        if (strcmp(program->labels[i].name, name) == 0) {
+        if (strcmp(program->labels[i].name, search_name) == 0) {
             *address = program->labels[i].address;
+            free(search_name);
             return 1;
         }
     }
+
+    free(search_name);
     return 0;
 }
 
@@ -436,7 +427,6 @@ void program_free(Program *program) {
         }
     }
     vector_free(&program->variables);
-    free(program->last_non_local_label);
 }
 
 OrtaVM ortavm_create(const char *filename) {
@@ -879,6 +869,7 @@ Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
             w.as_int = address;
             return w;
         }
+
         EERROR(vm, ERROR_BASE"Label not found: %s\n",
                vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
         return w;
@@ -915,10 +906,11 @@ Word xstack_pop_and_expect(OrtaVM *vm, WordType expected) {
     }
 }
 
+
 void call_dynlib_function(const char *lib_path, const char *func_name, OrtaVM *vm) {
     LibHandle handle = LOAD_LIBRARY(lib_path);
     if (!handle) {
-#ifdef _WIN32
+#ifdef WIN32
         fprintf(stderr, "Failed to load library %s: Error code %lu\n", lib_path, GetLastError());
 #else
         fprintf(stderr, "Failed to load library %s: %s\n", lib_path, dlerror());
@@ -929,7 +921,7 @@ void call_dynlib_function(const char *lib_path, const char *func_name, OrtaVM *v
     typedef void (*func_t)(OrtaVM *);
     func_t function = (func_t) GET_PROC_ADDRESS(handle, func_name);
     if (!function) {
-#ifdef _WIN32
+#ifdef WIN32
         fprintf(stderr, "Failed to load function %s: Error code %lu\n", func_name, GetLastError());
 #else
         fprintf(stderr, "Failed to load function %s: %s\n", func_name, dlerror());
@@ -941,7 +933,6 @@ void call_dynlib_function(const char *lib_path, const char *func_name, OrtaVM *v
     function(vm);
     CLOSE_LIBRARY(handle);
 }
-
 static void print_word(Word w);
 
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {

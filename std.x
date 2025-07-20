@@ -91,10 +91,32 @@ isWindows:
     ovm platform
     push "windows"
     eq
+    ret
 
 ; Check if running on windows
 isUnix:
     ovm platform
     push "unix"
     eq
+    ret
+
+; for crossplatform usage
+; expects 2 libs 1 linux 2 windows
+chooseLib:
+    togglelocalscope
+    setvar __libso
+    setvar __libdll
+
+    call isUnix
+    jmpif chooseLib_if
+
+    chooseLib_else:
+        getvar __libdll
+        jmp chooseLib_end_if
+    chooseLib_if:
+        getvar __libso
+
+    chooseLib_end_if:
+    togglelocalscope
+    ret
 

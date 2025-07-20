@@ -13,7 +13,7 @@ OVERSION = 1.0
 COMPILE = @echo "[$(PCOUNT)] CC $<"; $(CC) $(CFLAGS) $< $(LDFLAGS) -DGITHASH='"$(GIT_HASH)"' -D_VERSION=$(OVERSION) -o $(BINDIR)/$@; $(eval PCOUNT=$(shell echo $$(($(PCOUNT)+1))))
 INSTALL_DIR = /usr/local/bin
 
-.PHONY: all clean release debug dir static install
+.PHONY: all clean release debug dir static install install-headers
 
 all: dir $(TARGETS)
 
@@ -40,9 +40,6 @@ nyva: $(SRCDIR)/nyva.c
 
 xbd: $(SRCDIR)/xbd.c
 	$(COMPILE)
-
-rom: $(SRCDIR)/rom.zig
-	zig build-exe src/rom.zig -femit-bin=$(BINDIR)/rom
 
 
 liborta: bin/liborta.so bin/liborta.a
@@ -72,10 +69,18 @@ debug: all
 static: CFLAGS += -static
 static: all
 
-install:
+install-headers:
+	@echo "Installing headers to /usr/include/orta"
+	@mkdir -p /usr/include/orta
+	@cp -r $(SRCDIR)/* /usr/include/orta/
+
+install: install-headers
 	@echo "Installing executables to $(INSTALL_DIR)"
 	@mkdir -p $(INSTALL_DIR)
 	@for target in $(TARGETS); do \
 		echo "Installing $$target"; \
 		install -m 755 $(BINDIR)/$$target $(INSTALL_DIR)/; \
 	done
+	
+
+

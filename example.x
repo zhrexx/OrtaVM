@@ -7,7 +7,7 @@ externCallTest:
 
 __entry:
     call externCallTest
-    push "platform"
-    ovm stack
+    call chooseLib "./libx.so" "./libx.dll"
     print
+
     halt 1

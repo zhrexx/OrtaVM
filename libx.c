@@ -8,3 +8,5 @@ void ExampleExtern(OrtaVM *vm)
     xstack_push(&vm->xpu.stack, (Word){.as_int = 100, .type = WINT});
 }
 
+
+
