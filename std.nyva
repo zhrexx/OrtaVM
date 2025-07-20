@@ -1,12 +1,4 @@
 
-fn alloc(bytes: UInt) -> GenericPtr {
-    @inline("getvar bytes");
-    @push(1);
-    @inline("alloc");
-    @pop(ptr);
-    return ptr;
-}
-
 fn free(ptr: GenericPtr) {
     @push(ptr);
     @inline("free");
@@ -35,5 +27,30 @@ fn error(here, prefix, msg: String, halt: bool) {
     if (halt) {
         @inline("halt 1");
     }
-} 
+}
+
+fn ovm(query) {
+    @push(query);
+    @inline("ovm stack");
+}
+
+fn isWindows() {
+    if (ovm("platform") == "window") {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+fn isUnix() {
+    if (isWindows() != 1) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+fn __entry() {
+    @print(isUnix());
+}
 

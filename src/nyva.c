@@ -580,7 +580,6 @@ ASTNode *parser_parse_function_call(Parser *parser, char *name) {
     parser_expect(parser, TOKEN_LPAREN);
     ASTNode *args = parser_parse_argument_list(parser);
     parser_expect(parser, TOKEN_RPAREN);
-    parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_FUNCTION_CALL;
     node->data.function_call.name = name;
@@ -693,15 +692,14 @@ ASTNode *parser_parse_var_declaration(Parser *parser) {
 
 ASTNode *parser_parse_assignment(Parser *parser) {
     Token identifier = parser_current_token(parser);
-    parser_advance(parser);
+    parser_expect(parser, TOKEN_IDENTIFIER);
     parser_expect(parser, TOKEN_EQUAL);
     ASTNode *value = parser_parse_expression(parser);
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_ASSIGNMENT;
     node->data.assignment.name = strdup(identifier.value);
     node->data.assignment.value = value;
-    parser_expect(parser, TOKEN_IDENTIFIER);
-
+    parser_expect(parser, TOKEN_SEMICOLON);
     return node;
 }
 
@@ -795,7 +793,7 @@ ASTNode *parser_parse_function_definition(Parser *parser) {
 ASTNode *parser_parse_return_statement(Parser *parser) {
     parser_expect(parser, TOKEN_RETURN);
     ASTNode *value = NULL;
-    if (parser_current_token(parser).type != TOKEN_RBRACE && parser_current_token(parser).type != TOKEN_SEMICOLON) {
+    if (parser_current_token(parser).type != TOKEN_SEMICOLON) {
         value = parser_parse_expression(parser);
     }
     parser_expect(parser, TOKEN_SEMICOLON);
@@ -817,7 +815,6 @@ ASTNode *parser_parse_for_statement(Parser *parser) {
         fprintf(stderr, "Expected var declaration or assignment in for loop initialization\n");
         exit(1);
     }
-    parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *condition = parser_parse_condition(parser);
     parser_expect(parser, TOKEN_SEMICOLON);
     ASTNode *update = parser_parse_assignment(parser);
@@ -868,7 +865,6 @@ ASTNode *parser_parse_import_statement(Parser *parser) {
     parser_expect(parser, TOKEN_STRING);
     parser_expect(parser, TOKEN_RPAREN);
     parser_expect(parser, TOKEN_SEMICOLON);
-
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_IMPORT;
     node->data.import_statement.file = file;
@@ -885,35 +881,37 @@ ASTNode *parser_parse_break_statement(Parser *parser) {
 
 ASTNode *parser_parse_statement(Parser *parser) {
     Token token = parser_current_token(parser);
+    ASTNode *node = NULL;
     if (token.type == TOKEN_VAR) {
-        return parser_parse_var_declaration(parser);
+        node = parser_parse_var_declaration(parser);
     } else if (token.type == TOKEN_IF) {
-        return parser_parse_if_statement(parser);
+        node = parser_parse_if_statement(parser);
     } else if (token.type == TOKEN_FN) {
-        return parser_parse_function_definition(parser);
+        node = parser_parse_function_definition(parser);
     } else if (token.type == TOKEN_RETURN) {
-        return parser_parse_return_statement(parser);
+        node = parser_parse_return_statement(parser);
     } else if (token.type == TOKEN_FOR) {
-        return parser_parse_for_statement(parser);
+        node = parser_parse_for_statement(parser);
     } else if (token.type == TOKEN_WHILE) {
-        return parser_parse_while_statement(parser);
+        node = parser_parse_while_statement(parser);
+    } else if (token.type == TOKEN_IMPORT) {
+        node = parser_parse_import_statement(parser);
+    } else if (token.type == TOKEN_BREAK) {
+        node = parser_parse_break_statement(parser);
     } else if (token.type == TOKEN_IDENTIFIER) {
         if (parser->position + 1 < parser->count &&
             parser->tokens[parser->position + 1].type == TOKEN_EQUAL) {
-            return parser_parse_assignment(parser);
+            node = parser_parse_assignment(parser);
         } else {
-            ASTNode *expr = parser_parse_expression(parser);
-            return expr;
+            node = parser_parse_expression(parser);
+            parser_expect(parser, TOKEN_SEMICOLON);
         }
-    } else if (token.type == TOKEN_IMPORT) {
-        return parser_parse_import_statement(parser);
-    } else if (token.type == TOKEN_BREAK) {
-        return parser_parse_break_statement(parser);
     } else {
         fprintf(stderr, "Unexpected token in statement: %s at line %d, column %d\n",
                 token.value, token.line, token.column);
         exit(1);
     }
+    return node;
 }
 
 ASTNode *parser_parse_program(Parser *parser) {
@@ -1255,7 +1253,8 @@ void codegen_generate_statement(CodeGenerator *gen, ASTNode *node) {
             codegen_generate_import_statement(gen, node);
             codegen_emit(gen, "; END   IMPORTED FILE %s", node->data.import_statement.file);
             break;
-        case NODE_BREAK_STATEMENT: break;
+        case NODE_BREAK_STATEMENT:
+            break;
         default:
             fprintf(stderr, "Unknown node type in code generation: %d\n", node->type);
             exit(1);
@@ -1320,7 +1319,6 @@ void free_ast(ASTNode *node) {
                 free(node->data.if_statement.else_body);
             }
             break;
-
         case NODE_BINARY_EXPRESSION:
             free_ast(node->data.binary_expression.left);
             free_ast(node->data.binary_expression.right);

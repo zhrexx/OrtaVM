@@ -7,4 +7,7 @@ externCallTest:
 
 __entry:
     call externCallTest
+    push "platform"
+    ovm stack
+    print
     halt 1

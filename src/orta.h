@@ -129,11 +129,11 @@ XRegisterInfo register_table[REG_COUNT] = {
     {"RAX", REG_RAX, REGSIZE_64BIT}, {"RBX", REG_RBX, REGSIZE_64BIT},
     {"RCX", REG_RCX, REGSIZE_64BIT}, {"RDX", REG_RDX, REGSIZE_64BIT},
     {"RSI", REG_RSI, REGSIZE_64BIT}, {"RDI", REG_RDI, REGSIZE_64BIT},
-    {"R8",  REG_R8,  REGSIZE_64BIT}, {"R9",  REG_R9,  REGSIZE_64BIT},
+    {"R8", REG_R8, REGSIZE_64BIT}, {"R9", REG_R9, REGSIZE_64BIT},
     {"R10", REG_R10, REGSIZE_64BIT}, {"R11", REG_R11, REGSIZE_64BIT},
     {"R12", REG_R12, REGSIZE_64BIT}, {"R13", REG_R13, REGSIZE_64BIT},
     {"R14", REG_R14, REGSIZE_64BIT}, {"R15", REG_R15, REGSIZE_64BIT},
-    {"FR",  REG_FR,  REGSIZE_64BIT},
+    {"FR", REG_FR, REGSIZE_64BIT},
 };
 
 int is_register(const char *str) {
@@ -148,7 +148,7 @@ XRegisters register_name_to_enum(const char *reg_name) {
         if (strcasecmp(reg_name, register_table[i].name) == 0)
             return register_table[i].id;
     }
-    return (XRegisters)-1;
+    return (XRegisters) -1;
 }
 
 typedef struct {
@@ -189,7 +189,7 @@ Word xstack_peek(XStack *stack, size_t offset) {
 
 int xstack_check(XStack *stack, size_t expected) {
     if (stack->count >= expected) {
-        return 1; 
+        return 1;
     } else {
         return 0;
     }
@@ -285,12 +285,12 @@ static const InstructionInfo instructions[] = {
     {"sizeof", ISIZEOF, {ARG_EXACT, 1, 1}}, {"dec", IDEC, {ARG_EXACT, 1, 1}},
     {"inc", IINC, {ARG_EXACT, 1, 1}}, {"eval", IEVAL, {ARG_MIN, 0, 0}},
     {"cmp", ICMP, {ARG_MIN, 1, 1}}, {"@r", IREADMEM, {ARG_MIN, 1, 1}},
-    {"@cpy", ICPYMEM, {ARG_EXACT, 0, 0}}, {"@w", IWRITEMEM, {ARG_MIN, 1, 1}}, 
-    {"@cmp", IMEMCMP, {ARG_MIN, 1, 1}},{"var", IVAR, {ARG_EXACT, 1, 0}}, 
+    {"@cpy", ICPYMEM, {ARG_EXACT, 0, 0}}, {"@w", IWRITEMEM, {ARG_MIN, 1, 1}},
+    {"@cmp", IMEMCMP, {ARG_MIN, 1, 1}}, {"var", IVAR, {ARG_EXACT, 1, 0}},
     {"setvar", ISETVAR, {ARG_EXACT, 1, 0}}, {"getvar", IGETVAR, {ARG_EXACT, 1, 0}},
     {"free", IFREE, {ARG_MIN, 0, 0}}, {"togglelocalscope", ITOGGLELOCALSCOPE, {ARG_MIN, 0, 0}},
     {"getglobalvar", IGETGLOBALVAR, {ARG_EXACT, 1, 0}}, {"setglobalvar", ISETGLOBALVAR, {ARG_EXACT, 1, 0}},
-    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}}, {"cast", ICAST, {ARG_EXACT, 1, 1}}, 
+    {"nop", INOP, {ARG_EXACT, 0, 0}}, {"ovm", IOVM, {ARG_EXACT, 1, 1}}, {"cast", ICAST, {ARG_EXACT, 1, 1}},
     {"here", IHERE, {ARG_EXACT, 0, 0}}, {"sprintf", ISPRINTF, {ARG_MIN, 0, 0}},
 };
 
@@ -363,7 +363,7 @@ void add_instruction(Program *program, InstructionData instr) {
     if (program->instructions_count >= program->instructions_capacity) {
         program->instructions_capacity *= 2;
         program->instructions = realloc(program->instructions,
-            sizeof(InstructionData) * program->instructions_capacity);
+                                        sizeof(InstructionData) * program->instructions_capacity);
     }
     program->instructions[program->instructions_count++] = instr;
 }
@@ -375,13 +375,13 @@ void add_label(Program *program, const char *name, size_t address) {
     }
 
     if (strncmp(name, ".", 1) == 0) {
-        char *context = (program->last_non_local_label != NULL) 
-                      ? program->last_non_local_label 
-                      : "_global";
-        
+        char *context = (program->last_non_local_label != NULL)
+                            ? program->last_non_local_label
+                            : "_global";
+
         char *mangled_name = malloc(strlen(context) + strlen(name) + 2);
         sprintf(mangled_name, "%s_%s", context, name + 1);
-        
+
         program->labels[program->labels_count].name = mangled_name;
     } else {
         free(program->last_non_local_label);
@@ -456,44 +456,44 @@ void ortavm_free(OrtaVM *vm) {
     program_free(&vm->program);
 }
 
-char* format(const char* format, ...) {
+char *format(const char *format, ...) {
     va_list args;
     va_list args_copy;
-    
+
     va_start(args, format);
     va_copy(args_copy, args);
-    
-    int size = vsnprintf(NULL, 0, format, args) + 1; 
+
+    int size = vsnprintf(NULL, 0, format, args) + 1;
     if (size <= 0) {
         va_end(args);
         va_end(args_copy);
         return NULL;
     }
-    
-    char* buffer = (char*)malloc(size * sizeof(char));
+
+    char *buffer = (char *) malloc(size * sizeof(char));
     if (!buffer) {
         va_end(args);
         va_end(args_copy);
         return NULL;
     }
-    
+
     vsnprintf(buffer, size, format, args_copy);
-    
+
     va_end(args);
     va_end(args_copy);
-    
+
     return buffer;
 }
 
 void add_flag(OrtaVM *vm, Flags flag) {
     for (int i = 0; i < vm->meta.flags_count; i++) {
-        if (vm->meta.flags[i] == (short)flag) return;
+        if (vm->meta.flags[i] == (short) flag) return;
     }
-    vm->meta.flags[vm->meta.flags_count++] = (short)flag;
+    vm->meta.flags[vm->meta.flags_count++] = (short) flag;
 }
 
 ArgRequirement instruction_expected_args(Instruction instruction) {
-    for (size_t i = 0; i < (sizeof(instructions)/sizeof(instructions[0])); i++) {
+    for (size_t i = 0; i < (sizeof(instructions) / sizeof(instructions[0])); i++) {
         if (instructions[i].instruction == instruction)
             return instructions[i].args;
     }
@@ -501,14 +501,14 @@ ArgRequirement instruction_expected_args(Instruction instruction) {
 }
 
 int is_pointer(char *str) {
-    return str && strlen(str) >= 2 && str[0] == '(' && str[strlen(str)-1] == ')';
+    return str && strlen(str) >= 2 && str[0] == '(' && str[strlen(str) - 1] == ')';
 }
 
 void *get_pointer(char *str) {
     if (!is_pointer(str)) return NULL;
     str++;
-    str[strlen(str)-1] = '\0';
-    return (void*)(uintptr_t)strtoull(str, NULL, 0);
+    str[strlen(str) - 1] = '\0';
+    return (void *) (uintptr_t) strtoull(str, NULL, 0);
 }
 
 int is_number(const char *str) {
@@ -525,12 +525,12 @@ int is_float(const char *str) {
 
 int is_string(const char *str) {
     size_t len = strlen(str);
-    return len >= 2 && str[0] == '"' && str[len-1] == '"';
+    return len >= 2 && str[0] == '"' && str[len - 1] == '"';
 }
 
 int is_label_declaration(const char *str) {
     size_t len = strlen(str);
-    return len > 0 && str[len-1] == ':';
+    return len > 0 && str[len - 1] == ':';
 }
 
 int is_label_reference(const char *str) {
@@ -538,20 +538,20 @@ int is_label_reference(const char *str) {
 }
 
 const char *instruction_to_string(Instruction instruction) {
-    for (size_t i = 0; i < (sizeof(instructions)/sizeof(instructions[0])); i++) {
+    for (size_t i = 0; i < (sizeof(instructions) / sizeof(instructions[0])); i++) {
         if (instructions[i].instruction == instruction)
             return instructions[i].name;
     }
     return "unknown";
 }
 
-char* trim_left(const char *str) {
+char *trim_left(const char *str) {
     while (isspace((unsigned char)*str)) str++;
     return strdup(str);
 }
 
 int validateArgCount(ArgRequirement req, int actualArgCount) {
-    switch(req.type) {
+    switch (req.type) {
         case ARG_EXACT: return actualArgCount == req.value;
         case ARG_MIN: return actualArgCount >= req.value;
         case ARG_MAX: return actualArgCount <= req.value;
@@ -561,26 +561,26 @@ int validateArgCount(ArgRequirement req, int actualArgCount) {
 }
 
 void microsleep(unsigned long usecs) {
-    #ifdef _WIN32
+#ifdef _WIN32
         HANDLE timer = CreateWaitableTimer(NULL, TRUE, NULL);
         LARGE_INTEGER ft = { .QuadPart = -(10 * (LONGLONG)usecs) };
         SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
         WaitForSingleObject(timer, INFINITE);
         CloseHandle(timer);
-    #else
-        struct timespec ts = {
-            .tv_sec = usecs / 1000000,
-            .tv_nsec = (usecs % 1000000) * 1000
-        };
-        nanosleep(&ts, NULL);
-    #endif
+#else
+    struct timespec ts = {
+        .tv_sec = usecs / 1000000,
+        .tv_nsec = (usecs % 1000000) * 1000
+    };
+    nanosleep(&ts, NULL);
+#endif
 }
 
 char *hmerge(InstructionData *instr) {
     char *string = calloc(1, 256);
 
     VECTOR_FOR_EACH(char *, elem, &instr->operands) {
-        char *rcharp = *(char **)elem;
+        char *rcharp = *(char **) elem;
 
         if (is_string(rcharp)) {
             size_t len = strlen(rcharp);
@@ -626,17 +626,19 @@ int eval(char *s) {
             int val = 0;
             while (isdigit(*p)) val = val * 10 + (*p++ - '0');
             char op = ops[--o_idx];
-            switch(op) {
-                case '+': values[v_idx-1] += val; break;
-                case '-': values[v_idx-1] -= val; break;
-                case '*': values[v_idx-1] *= val; break;
+            switch (op) {
+                case '+': values[v_idx - 1] += val;
+                    break;
+                case '-': values[v_idx - 1] -= val;
+                    break;
+                case '*': values[v_idx - 1] *= val;
+                    break;
                 case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val;
+                    values[v_idx - 1] /= val;
                     break;
             }
-        }
-        else if (*p == '+' || *p == '-') ops[o_idx++] = *p++;
+        } else if (*p == '+' || *p == '-') ops[o_idx++] = *p++;
         else if (*p == '*' || *p == '/') {
             ops[o_idx++] = *p++;
             while (isspace(*p)) p++;
@@ -655,20 +657,19 @@ int eval(char *s) {
                 *p = '\0';
                 val = eval(start);
                 *p = temp;
-            }
-            else if (isdigit(*p)) {
+            } else if (isdigit(*p)) {
                 while (isdigit(*p)) val = val * 10 + (*p++ - '0');
             }
             char op = ops[--o_idx];
-            switch(op) {
-                case '*': values[v_idx-1] *= val; break;
+            switch (op) {
+                case '*': values[v_idx - 1] *= val;
+                    break;
                 case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val;
+                    values[v_idx - 1] /= val;
                     break;
             }
-        }
-        else if (*p == '(') {
+        } else if (*p == '(') {
             p++;
             char *start = p;
             int paren_count = 1;
@@ -683,17 +684,19 @@ int eval(char *s) {
             int val = eval(start);
             *p = temp;
             char op = ops[--o_idx];
-            switch(op) {
-                case '+': values[v_idx-1] += val; break;
-                case '-': values[v_idx-1] -= val; break;
-                case '*': values[v_idx-1] *= val; break;
+            switch (op) {
+                case '+': values[v_idx - 1] += val;
+                    break;
+                case '-': values[v_idx - 1] -= val;
+                    break;
+                case '*': values[v_idx - 1] *= val;
+                    break;
                 case '/':
                     if (val == 0) return 0;
-                    values[v_idx-1] /= val;
+                    values[v_idx - 1] /= val;
                     break;
             }
-        }
-        else p++;
+        } else p++;
     }
     return values[0];
 }
@@ -705,7 +708,7 @@ WordType get_type(const char *s) {
     if (strcmp(s, "char") == 0) return W_CHAR;
     if (strcmp(s, "bool") == 0) return WBOOL;
     if (strcmp(s, "pointer") == 0) return WPOINTER;
-    return (WordType)-1;
+    return (WordType) -1;
 }
 
 bool is_type_name(const char *s) {
@@ -772,7 +775,7 @@ void setvar(OrtaVM *vm, char *var_name, Vector *scope, Word new_value) {
         var.value.type = WPOINTER;
         var.value.as_pointer = NULL;
         vector_push(scope, &var);
-        target_var = (Variable*)vector_get(scope, scope->size - 1);
+        target_var = (Variable *) vector_get(scope, scope->size - 1);
     }
 
     if (target_var->value.type == WCHARP) {
@@ -802,12 +805,13 @@ void EERROR(OrtaVM *vm, const char *msg, ...) {
     ortavm_free(vm);
     exit(1);
 }
+
 #define ERROR_BASE "%s:%zu ERROR: "
 
 
 Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
     Word w = {.type = WPOINTER, .as_pointer = NULL};
-    char *operand = (char*)operand_c;
+    char *operand = (char *) operand_c;
     if (!operand) {
         EERROR(vm, ERROR_BASE"Null operand\n", vm->program.filename, vm->program.instructions[vm->xpu.ip].line);
         return w;
@@ -815,7 +819,7 @@ Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
 
     if (is_register(operand)) {
         XRegisters reg = register_name_to_enum(operand);
-        if (reg != (XRegisters)-1) {
+        if (reg != (XRegisters) -1) {
             w = vm->xpu.registers[reg].reg_value;
             if (w.type == WCHARP && w.as_string != NULL) {
                 w.as_string = strdup(w.as_string);
@@ -855,12 +859,12 @@ Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
 
     if (is_pointer(operand)) {
         w.type = WPOINTER;
-        w.as_pointer = get_pointer((char*)operand);
+        w.as_pointer = get_pointer((char *) operand);
         return w;
     }
 
-    if (is_variable((char*)operand, scope)) {
-        w = getvar(vm, (char*)operand, scope);
+    if (is_variable((char *) operand, scope)) {
+        w = getvar(vm, (char *) operand, scope);
         if (w.type == WPOINTER && w.as_pointer == NULL) {
             EERROR(vm, ERROR_BASE"Variable not found: %s\n",
                    vm->program.filename, vm->program.instructions[vm->xpu.ip].line, operand);
@@ -886,11 +890,10 @@ Word parseOperand(OrtaVM *vm, const char *operand_c, Vector *scope) {
 }
 
 
-
 Vector *current_scope = NULL;
 
 const char *word_type_to_string(WordType wt) {
-    switch (wt) { 
+    switch (wt) {
         case WINT: return "INT";
         case W_CHAR: return "CHAR";
         case WPOINTER: return "POINTER";
@@ -899,19 +902,20 @@ const char *word_type_to_string(WordType wt) {
         case WBOOL: return "BOOL";
     }
     return "ERROR";
-} 
+}
 
 Word xstack_pop_and_expect(OrtaVM *vm, WordType expected) {
     Word result = xstack_pop(&vm->xpu.stack);
     if (result.type == expected) {
         return result;
     } else {
-        EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n", 
-               vm->program.filename, vm->program.instructions[vm->xpu.ip].line, word_type_to_string(expected), word_type_to_string(result.type));
+        EERROR(vm, ERROR_BASE"expected '%s' got '%s'\n",
+               vm->program.filename, vm->program.instructions[vm->xpu.ip].line, word_type_to_string(expected),
+               word_type_to_string(result.type));
     }
 }
 
-void call_dynlib_function(const char* lib_path, const char* func_name, OrtaVM* vm) {
+void call_dynlib_function(const char *lib_path, const char *func_name, OrtaVM *vm) {
     LibHandle handle = LOAD_LIBRARY(lib_path);
     if (!handle) {
 #ifdef _WIN32
@@ -922,8 +926,8 @@ void call_dynlib_function(const char* lib_path, const char* func_name, OrtaVM* v
         return;
     }
 
-    typedef void (*func_t)(OrtaVM*);
-    func_t function = (func_t)GET_PROC_ADDRESS(handle, func_name);
+    typedef void (*func_t)(OrtaVM *);
+    func_t function = (func_t) GET_PROC_ADDRESS(handle, func_name);
     if (!function) {
 #ifdef _WIN32
         fprintf(stderr, "Failed to load function %s: Error code %lu\n", func_name, GetLastError());
@@ -939,9 +943,10 @@ void call_dynlib_function(const char* lib_path, const char* func_name, OrtaVM* v
 }
 
 static void print_word(Word w);
+
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {
     XPU *xpu = &vm->xpu;
-    Word w1, w2, result; 
+    Word w1, w2, result;
     if (current_scope == NULL) {
         current_scope = &vm->program.variables;
     }
@@ -974,7 +979,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (reg != -1) w = regs[reg].reg_value;
             } else {
                 EERROR(vm, ERROR_BASE"Invalid operand type expected number, string, float or register\n",
-                       vm->program.filename, instr->line); 
+                       vm->program.filename, instr->line);
             }
             xstack_push(&xpu->stack, w);
             break;
@@ -986,7 +991,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             XRegisters dst_reg = register_name_to_enum(dst);
             if (dst_reg == -1) break;
 
-            if (is_register(src) ) {
+            if (is_register(src)) {
                 XRegisters src_reg = register_name_to_enum(src);
                 if (src_reg != -1) {
                     if (regs[dst_reg].reg_value.type == WCHARP)
@@ -1028,64 +1033,68 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
         }
 
-		case IADD: {
-		    if (instr->operands.size >= 2) {
-		        char *dest_str = vector_get_str(&instr->operands, 0);
-		        char *src_str = vector_get_str(&instr->operands, 1);
-		        XRegisters dest_reg = register_name_to_enum(dest_str);
-		        Word src_val;
-		
-		        if (is_register(src_str)) {
-		            XRegisters src_reg = register_name_to_enum(src_str);
-		            if (src_reg != -1) src_val = regs[src_reg].reg_value;
-		        } else if (is_number(src_str)) {
-		            src_val.type = WINT;
-		            src_val.as_int = atoi(src_str);
-		        } else if (is_float(src_str)) {
-		            src_val.type = WFLOAT;
-		            src_val.as_float = atof(src_str);
-		        } else {
-		            EERROR(vm, ERROR_BASE"Invalid operand type expected number, float or register\n",
-                       vm->program.filename, instr->line); 
-                    break; 
-		        }
-		
-		        if (dest_reg != -1) {
-		            XRegister *dest = &regs[dest_reg];
-		            if (dest->reg_value.type == src_val.type) {
-		                switch (dest->reg_value.type) {
-		                    case WINT:   dest->reg_value.as_int += src_val.as_int; break;
-		                    case WFLOAT: dest->reg_value.as_float += src_val.as_float; break;
-		                    case WPOINTER: 
-		                        if (src_val.type == WINT)
-		                            dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer + src_val.as_int;
-		                        break;
-		                    case W_CHAR: dest->reg_value.as_char += src_val.as_char; break;
-		                    default: break;
-		                }
-		            } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
-		                dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer + src_val.as_int;
-		            } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
-		                dest->reg_value.type = WFLOAT;
-		                dest->reg_value.as_float = (float)dest->reg_value.as_int + src_val.as_float;
-		            } else {
+        case IADD: {
+            if (instr->operands.size >= 2) {
+                char *dest_str = vector_get_str(&instr->operands, 0);
+                char *src_str = vector_get_str(&instr->operands, 1);
+                XRegisters dest_reg = register_name_to_enum(dest_str);
+                Word src_val;
+
+                if (is_register(src_str)) {
+                    XRegisters src_reg = register_name_to_enum(src_str);
+                    if (src_reg != -1) src_val = regs[src_reg].reg_value;
+                } else if (is_number(src_str)) {
+                    src_val.type = WINT;
+                    src_val.as_int = atoi(src_str);
+                } else if (is_float(src_str)) {
+                    src_val.type = WFLOAT;
+                    src_val.as_float = atof(src_str);
+                } else {
+                    EERROR(vm, ERROR_BASE"Invalid operand type expected number, float or register\n",
+                           vm->program.filename, instr->line);
+                    break;
+                }
+
+                if (dest_reg != -1) {
+                    XRegister *dest = &regs[dest_reg];
+                    if (dest->reg_value.type == src_val.type) {
+                        switch (dest->reg_value.type) {
+                            case WINT: dest->reg_value.as_int += src_val.as_int;
+                                break;
+                            case WFLOAT: dest->reg_value.as_float += src_val.as_float;
+                                break;
+                            case WPOINTER:
+                                if (src_val.type == WINT)
+                                    dest->reg_value.as_pointer = (char *) dest->reg_value.as_pointer + src_val.as_int;
+                                break;
+                            case W_CHAR: dest->reg_value.as_char += src_val.as_char;
+                                break;
+                            default: break;
+                        }
+                    } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
+                        dest->reg_value.as_pointer = (char *) dest->reg_value.as_pointer + src_val.as_int;
+                    } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
+                        dest->reg_value.type = WFLOAT;
+                        dest->reg_value.as_float = (float) dest->reg_value.as_int + src_val.as_float;
+                    } else {
                         EERROR(vm, ERROR_BASE"Invalid data types expected values of same type but got %s and %s\n",
-                       vm->program.filename, instr->line, word_type_to_string(src_val.type), word_type_to_string(dest->reg_value.type));
+                               vm->program.filename, instr->line, word_type_to_string(src_val.type),
+                               word_type_to_string(dest->reg_value.type));
                     }
-		        }
-		    } else if (instr->operands.size == 1) {
-		        char *src_str = vector_get_str(&instr->operands, 0);
-		        Word w = xstack_peek(&xpu->stack, 0);
-		        if (is_number(src_str)) {
-		            int imm = atoi(src_str);
-		            if (w.type == WINT) w.as_int += imm;
-		            else if (w.type == WFLOAT) w.as_float += (float)imm;
-		            else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer += imm;
-		        }
-		        xstack_push(&xpu->stack, w);
-		    } else {
-		        w1 = xstack_pop(&xpu->stack);
-		        w2 = xstack_pop(&xpu->stack);
+                }
+            } else if (instr->operands.size == 1) {
+                char *src_str = vector_get_str(&instr->operands, 0);
+                Word w = xstack_peek(&xpu->stack, 0);
+                if (is_number(src_str)) {
+                    int imm = atoi(src_str);
+                    if (w.type == WINT) w.as_int += imm;
+                    else if (w.type == WFLOAT) w.as_float += (float) imm;
+                    else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer += imm;
+                }
+                xstack_push(&xpu->stack, w);
+            } else {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
                 if (w1.type == w2.type) {
                     if (w1.type == WINT) {
                         result.as_int = w1.as_int + w2.as_int;
@@ -1095,71 +1104,74 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         result.type = WFLOAT;
                     } else {
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type)); 
- 
+                               vm->program.filename, instr->line, word_type_to_string(w1.type));
                     }
                 } else {
                     EERROR(vm, ERROR_BASE"Invalid types on stack expected two values of same type got %s and %s\n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type), word_type_to_string(w2.type)); 
+                           vm->program.filename, instr->line, word_type_to_string(w1.type),
+                           word_type_to_string(w2.type));
                 }
-		        xstack_push(&xpu->stack, result);
-		    }
-		    break;
-		}
-		
-		case ISUB: {
-		    if (instr->operands.size >= 2) {
-		        char *dest_str = vector_get_str(&instr->operands, 0);
-		        char *src_str = vector_get_str(&instr->operands, 1);
-		        XRegisters dest_reg = register_name_to_enum(dest_str);
-		        Word src_val;
-		
-		        if (is_register(src_str)) {
-		            XRegisters src_reg = register_name_to_enum(src_str);
-		            if (src_reg != -1) src_val = regs[src_reg].reg_value;
-		        } else if (is_number(src_str)) {
-		            src_val.type = WINT;
-		            src_val.as_int = atoi(src_str);
-		        } else if (is_float(src_str)) {
-		            src_val.type = WFLOAT;
-		            src_val.as_float = atof(src_str);
-		        } else {
-		            break;
-		        }
-		
-		        if (dest_reg != -1) {
-		            XRegister *dest = &regs[dest_reg];
-		            if (dest->reg_value.type == src_val.type) {
-		                switch (dest->reg_value.type) {
-		                    case WINT:   dest->reg_value.as_int -= src_val.as_int; break;
-		                    case WFLOAT: dest->reg_value.as_float -= src_val.as_float; break;
-		                    case WPOINTER:
-		                        if (src_val.type == WINT)
-		                            dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer - src_val.as_int;
-		                        break;
-		                    case W_CHAR: dest->reg_value.as_char -= src_val.as_char; break;
-		                    default: break;
-		                }
-		            } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
-		                dest->reg_value.as_pointer = (char*)dest->reg_value.as_pointer - src_val.as_int;
-		            } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
-		                dest->reg_value.type = WFLOAT;
-		                dest->reg_value.as_float = (float)dest->reg_value.as_int - src_val.as_float;
-		            }
-		        }
-		    } else if (instr->operands.size == 1) {
-		        char *src_str = vector_get_str(&instr->operands, 0);
-		        Word w = xstack_peek(&xpu->stack, 0);
-		        if (is_number(src_str)) {
-		            int imm = atoi(src_str);
-		            if (w.type == WINT) w.as_int -= imm;
-		            else if (w.type == WFLOAT) w.as_float -= (float)imm;
-		            else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer -= imm;
-		        }
-		        xstack_push(&xpu->stack, w);
-		    } else {
-		        w1 = xstack_pop(&xpu->stack);
-		        w2 = xstack_pop(&xpu->stack);
+                xstack_push(&xpu->stack, result);
+            }
+            break;
+        }
+
+        case ISUB: {
+            if (instr->operands.size >= 2) {
+                char *dest_str = vector_get_str(&instr->operands, 0);
+                char *src_str = vector_get_str(&instr->operands, 1);
+                XRegisters dest_reg = register_name_to_enum(dest_str);
+                Word src_val;
+
+                if (is_register(src_str)) {
+                    XRegisters src_reg = register_name_to_enum(src_str);
+                    if (src_reg != -1) src_val = regs[src_reg].reg_value;
+                } else if (is_number(src_str)) {
+                    src_val.type = WINT;
+                    src_val.as_int = atoi(src_str);
+                } else if (is_float(src_str)) {
+                    src_val.type = WFLOAT;
+                    src_val.as_float = atof(src_str);
+                } else {
+                    break;
+                }
+
+                if (dest_reg != -1) {
+                    XRegister *dest = &regs[dest_reg];
+                    if (dest->reg_value.type == src_val.type) {
+                        switch (dest->reg_value.type) {
+                            case WINT: dest->reg_value.as_int -= src_val.as_int;
+                                break;
+                            case WFLOAT: dest->reg_value.as_float -= src_val.as_float;
+                                break;
+                            case WPOINTER:
+                                if (src_val.type == WINT)
+                                    dest->reg_value.as_pointer = (char *) dest->reg_value.as_pointer - src_val.as_int;
+                                break;
+                            case W_CHAR: dest->reg_value.as_char -= src_val.as_char;
+                                break;
+                            default: break;
+                        }
+                    } else if (dest->reg_value.type == WPOINTER && src_val.type == WINT) {
+                        dest->reg_value.as_pointer = (char *) dest->reg_value.as_pointer - src_val.as_int;
+                    } else if (dest->reg_value.type == WINT && src_val.type == WFLOAT) {
+                        dest->reg_value.type = WFLOAT;
+                        dest->reg_value.as_float = (float) dest->reg_value.as_int - src_val.as_float;
+                    }
+                }
+            } else if (instr->operands.size == 1) {
+                char *src_str = vector_get_str(&instr->operands, 0);
+                Word w = xstack_peek(&xpu->stack, 0);
+                if (is_number(src_str)) {
+                    int imm = atoi(src_str);
+                    if (w.type == WINT) w.as_int -= imm;
+                    else if (w.type == WFLOAT) w.as_float -= (float) imm;
+                    else if (w.type == WPOINTER || w.type == WCHARP) w.as_pointer -= imm;
+                }
+                xstack_push(&xpu->stack, w);
+            } else {
+                w1 = xstack_pop(&xpu->stack);
+                w2 = xstack_pop(&xpu->stack);
                 if (w1.type == w2.type) {
                     if (w1.type == WINT) {
                         result.as_int = w1.as_int - w2.as_int;
@@ -1169,17 +1181,17 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         result.type = WFLOAT;
                     } else {
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type)); 
- 
+                               vm->program.filename, instr->line, word_type_to_string(w1.type));
                     }
                 } else {
                     EERROR(vm, ERROR_BASE"Invalid types on stack expected two values of same type got %s and %s\n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type), word_type_to_string(w2.type)); 
+                           vm->program.filename, instr->line, word_type_to_string(w1.type),
+                           word_type_to_string(w2.type));
                 }
-		        xstack_push(&xpu->stack, result);
-		    }
-		    break;
-		}
+                xstack_push(&xpu->stack, result);
+            }
+            break;
+        }
 
         case IMUL: {
             w1 = xstack_pop(&xpu->stack);
@@ -1237,8 +1249,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 result.type = WINT;
                 result.as_int = w2.as_int & w1.as_int;
             } else {
-               EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type)); 
+                EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
+                       vm->program.filename, instr->line, word_type_to_string(w1.type));
             }
             break;
         }
@@ -1251,7 +1263,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 result.as_int = w2.as_int | w1.as_int;
             } else {
                 EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
-                       vm->program.filename, instr->line, word_type_to_string(w1.type)); 
+                       vm->program.filename, instr->line, word_type_to_string(w1.type));
             }
             xstack_push(&xpu->stack, result);
             break;
@@ -1280,7 +1292,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 result.type = WINT;
                 result.as_int = !w1.as_int;
             } else if (w1.type == WFLOAT) {
-                result.type = WFLOAT; 
+                result.type = WFLOAT;
                 result.as_float = !w1.as_float;
             } else {
                 EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
@@ -1296,11 +1308,14 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 0;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w1.as_int == w2.as_int); break;
-                    case WFLOAT: result.as_int = (w1.as_float == w2.as_float); break;
-                    case WCHARP: result.as_int = (strcmp(w1.as_string, w2.as_string) == 0); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w1.as_int == w2.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w1.as_float == w2.as_float);
+                        break;
+                    case WCHARP: result.as_int = (strcmp(w1.as_string, w2.as_string) == 0);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1315,11 +1330,14 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 1;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w1.as_int != w2.as_int); break;
-                    case WFLOAT: result.as_int = (w1.as_float != w2.as_float); break;
-                    case WCHARP: result.as_int = (strcmp(w1.as_string, w2.as_string) != 0); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w1.as_int != w2.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w1.as_float != w2.as_float);
+                        break;
+                    case WCHARP: result.as_int = (strcmp(w1.as_string, w2.as_string) != 0);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1334,10 +1352,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 0;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w2.as_int < w1.as_int); break;
-                    case WFLOAT: result.as_int = (w2.as_float < w1.as_float); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w2.as_int < w1.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w2.as_float < w1.as_float);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1352,10 +1372,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 0;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w2.as_int > w1.as_int); break;
-                    case WFLOAT: result.as_int = (w2.as_float > w1.as_float); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w2.as_int > w1.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w2.as_float > w1.as_float);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1370,10 +1392,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 0;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w2.as_int <= w1.as_int); break;
-                    case WFLOAT: result.as_int = (w2.as_float <= w1.as_float); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w2.as_int <= w1.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w2.as_float <= w1.as_float);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1388,10 +1412,12 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             result.type = WINT;
             result.as_int = 0;
             if (w1.type == w2.type) {
-                switch(w1.type) {
-                    case WINT: result.as_int = (w2.as_int >= w1.as_int); break;
-                    case WFLOAT: result.as_int = (w2.as_float >= w1.as_float); break;
-                    default: 
+                switch (w1.type) {
+                    case WINT: result.as_int = (w2.as_int >= w1.as_int);
+                        break;
+                    case WFLOAT: result.as_int = (w2.as_float >= w1.as_float);
+                        break;
+                    default:
                         EERROR(vm, ERROR_BASE"type '%s' is not supported \n",
                                vm->program.filename, instr->line, word_type_to_string(w1.type));
                 }
@@ -1497,12 +1523,17 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
         case IPRINT: {
             if (instr->operands.size == 0) {
                 w1 = xstack_pop(&xpu->stack);
-                switch(w1.type) {
-                    case WINT: printf("%d\n", w1.as_int); break;
-                    case WFLOAT: printf("%f\n", w1.as_float); break;
-                    case WCHARP: printf("%s\n", w1.as_string); break;
-                    case W_CHAR: printf("%c\n", w1.as_char); break;
-                    case WPOINTER: printf("%p\n", w1.as_pointer); break;
+                switch (w1.type) {
+                    case WINT: printf("%d\n", w1.as_int);
+                        break;
+                    case WFLOAT: printf("%f\n", w1.as_float);
+                        break;
+                    case WCHARP: printf("%s\n", w1.as_string);
+                        break;
+                    case W_CHAR: printf("%c\n", w1.as_char);
+                        break;
+                    case WPOINTER: printf("%p\n", w1.as_pointer);
+                        break;
                 }
             } else {
                 char *str = hmerge(instr);
@@ -1514,11 +1545,15 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IDUP: {
             w1 = xstack_peek(&xpu->stack, 0);
-            switch(w1.type) {
-                case WINT: xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = w1.as_int}); break;
-                case WFLOAT: xstack_push(&xpu->stack, (Word){.type = WFLOAT, .as_float = w1.as_float}); break;
-                case WCHARP: xstack_push(&xpu->stack, (Word){.type = WCHARP, .as_string = strdup(w1.as_string)}); break;
-                case WPOINTER: xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = w1.as_pointer}); break;
+            switch (w1.type) {
+                case WINT: xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = w1.as_int});
+                    break;
+                case WFLOAT: xstack_push(&xpu->stack, (Word){.type = WFLOAT, .as_float = w1.as_float});
+                    break;
+                case WCHARP: xstack_push(&xpu->stack, (Word){.type = WCHARP, .as_string = strdup(w1.as_string)});
+                    break;
+                case WPOINTER: xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = w1.as_pointer});
+                    break;
             }
             break;
         }
@@ -1543,9 +1578,9 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             Word *temp = malloc(n * sizeof(Word));
             for (int i = 0; i < n; i++) temp[i] = xstack_pop(&xpu->stack);
             Word bottom = temp[0];
-            for (int i = 0; i < n-1; i++) temp[i] = temp[i+1];
-            temp[n-1] = bottom;
-            for (int i = n-1; i >= 0; i--) xstack_push(&xpu->stack, temp[i]);
+            for (int i = 0; i < n - 1; i++) temp[i] = temp[i + 1];
+            temp[n - 1] = bottom;
+            for (int i = n - 1; i >= 0; i--) xstack_push(&xpu->stack, temp[i]);
             free(temp);
             break;
         }
@@ -1556,77 +1591,80 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             if (n <= 0 || n >= xpu->stack.count) break;
             Word *temp = malloc(n * sizeof(Word));
             for (int i = 0; i < n; i++) temp[i] = xstack_pop(&xpu->stack);
-            Word top = temp[n-1];
-            for (int i = n-1; i > 0; i--) temp[i] = temp[i-1];
+            Word top = temp[n - 1];
+            for (int i = n - 1; i > 0; i--) temp[i] = temp[i - 1];
             temp[0] = top;
-            for (int i = n-1; i >= 0; i--) xstack_push(&xpu->stack, temp[i]);
+            for (int i = n - 1; i >= 0; i--) xstack_push(&xpu->stack, temp[i]);
             free(temp);
             break;
         }
 
-		case IALLOC: {
+        case IALLOC: {
             size_t size = 0;
-		    if (instr->operands.size >= 1) {
-		        char *size_str = vector_get_str(&instr->operands, 0);
+            if (instr->operands.size >= 1) {
+                char *size_str = vector_get_str(&instr->operands, 0);
                 if (is_type_name(size_str)) {
-		            WordType type = get_type(size_str);
-		            switch(type) {
-		                case WINT: size = sizeof(int); break;
-		                case WFLOAT: size = sizeof(float); break;
-		                case WCHARP: size = sizeof(char*); break;
-		                case W_CHAR: size = sizeof(char); break;
-		                case WPOINTER: size = sizeof(void*); break;
-		                default: size = 1; break;
-		            }
+                    WordType type = get_type(size_str);
+                    switch (type) {
+                        case WINT: size = sizeof(int);
+                            break;
+                        case WFLOAT: size = sizeof(float);
+                            break;
+                        case WCHARP: size = sizeof(char *);
+                            break;
+                        case W_CHAR: size = sizeof(char);
+                            break;
+                        case WPOINTER: size = sizeof(void *);
+                            break;
+                        default: size = 1;
+                            break;
+                    }
 
-		            if (instr->operands.size >= 2) {
-		                char *count_str = vector_get_str(&instr->operands, 1);
-		                if (is_number(count_str)) {
-		                    size_t count = atoi(count_str);
-		                    size *= count;
-		                }
-		                else if (is_register(count_str)) {
-		                    XRegisters reg = register_name_to_enum(count_str);
-		                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
-		                        size *= regs[reg].reg_value.as_int;
-		                    }
-		                } else if (is_variable(count_str, current_scope)) {
-							Word variable = getvar(vm, count_str, current_scope);
-							size *= variable.as_int;
-						}
-		            }
-		        }
-		        else if (is_number(size_str)) {
-		            size = atoi(size_str);
-		        }
-		        else if (is_register(size_str)) {
-		            XRegisters reg = register_name_to_enum(size_str);
-		            if (reg != -1 && regs[reg].reg_value.type == WINT) {
-		                size = regs[reg].reg_value.as_int;
-		            }
-		        }
+                    if (instr->operands.size >= 2) {
+                        char *count_str = vector_get_str(&instr->operands, 1);
+                        if (is_number(count_str)) {
+                            size_t count = atoi(count_str);
+                            size *= count;
+                        } else if (is_register(count_str)) {
+                            XRegisters reg = register_name_to_enum(count_str);
+                            if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                                size *= regs[reg].reg_value.as_int;
+                            }
+                        } else if (is_variable(count_str, current_scope)) {
+                            Word variable = getvar(vm, count_str, current_scope);
+                            size *= variable.as_int;
+                        }
+                    }
+                } else if (is_number(size_str)) {
+                    size = atoi(size_str);
+                } else if (is_register(size_str)) {
+                    XRegisters reg = register_name_to_enum(size_str);
+                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                        size = regs[reg].reg_value.as_int;
+                    }
+                }
 
-		        if (size > 0) {
-		            void *mem = malloc(size);
+                if (size > 0) {
+                    void *mem = malloc(size);
 
-		            memset(mem, 0, size);
+                    memset(mem, 0, size);
 
-		            if (instr->operands.size >= 3) {
-		                char *dest_reg = vector_get_str(&instr->operands, 2);
-		                if (is_register(dest_reg)) {
-		                    XRegisters reg = register_name_to_enum(dest_reg);
-		                    if (reg != -1) {
-		                        if (regs[reg].reg_value.type == WCHARP)
-		                            free(regs[reg].reg_value.as_string);
-		                        regs[reg].reg_value.type = WPOINTER;
-		                        regs[reg].reg_value.as_pointer = mem;
-		                    }
-		                }
-		            } else {
-		                xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
-		            }
-		        }
-		    } else {
+                    if (instr->operands.size >= 3) {
+                        char *dest_reg = vector_get_str(&instr->operands, 2);
+                        if (is_register(dest_reg)) {
+                            XRegisters reg = register_name_to_enum(dest_reg);
+                            if (reg != -1) {
+                                if (regs[reg].reg_value.type == WCHARP)
+                                    free(regs[reg].reg_value.as_string);
+                                regs[reg].reg_value.type = WPOINTER;
+                                regs[reg].reg_value.as_pointer = mem;
+                            }
+                        }
+                    } else {
+                        xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
+                    }
+                }
+            } else {
                 if (xstack_check(&vm->xpu.stack, 1)) {
                     Word operand_count = xstack_pop_and_expect(vm, WINT);
                     if (!xstack_check(&vm->xpu.stack, operand_count.as_int)) {
@@ -1637,61 +1675,68 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                         Word size_str = xstack_pop(&vm->xpu.stack);
                         if (size_str.type == WCHARP) {
                             if (is_type_name(size_str.as_string)) {
-                                switch(get_type(size_str.as_string)) {
-            		                case WINT: size = sizeof(int); break;
-		                            case WFLOAT: size = sizeof(float); break;
-		                            case WCHARP: size = sizeof(char*); break;
-		                            case W_CHAR: size = sizeof(char); break;
-		                            case WPOINTER: size = sizeof(void*); break;
-		                            default: size = 1; break;
-		                        }
+                                switch (get_type(size_str.as_string)) {
+                                    case WINT: size = sizeof(int);
+                                        break;
+                                    case WFLOAT: size = sizeof(float);
+                                        break;
+                                    case WCHARP: size = sizeof(char *);
+                                        break;
+                                    case W_CHAR: size = sizeof(char);
+                                        break;
+                                    case WPOINTER: size = sizeof(void *);
+                                        break;
+                                    default: size = 1;
+                                        break;
+                                }
                             } else {
-                                EERROR(vm, ERROR_BASE"dont pass size as number per string brou!\n", vm->program.filename, instr->line);
+                                EERROR(vm, ERROR_BASE"dont pass size as number per string brou!\n",
+                                       vm->program.filename, instr->line);
                             }
                             if (operand_count.as_int >= 2) {
                                 Word count = xstack_pop(&vm->xpu.stack);
                                 if (count.type == WINT) {
-		                            size *= count.as_int;
-		                        }
-		                        else if (count.type == WCHARP && is_register(count.as_string)) {
-		                            XRegisters reg = register_name_to_enum(count.as_string);
-		                            if (reg != -1 && regs[reg].reg_value.type == WINT) {
-		                                size *= regs[reg].reg_value.as_int;
-		                            }
-		                        }
-                            } 
+                                    size *= count.as_int;
+                                } else if (count.type == WCHARP && is_register(count.as_string)) {
+                                    XRegisters reg = register_name_to_enum(count.as_string);
+                                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                                        size *= regs[reg].reg_value.as_int;
+                                    }
+                                }
+                            }
                         } else if (size_str.type == WINT) {
                             size = size_str.as_int;
                         } else {
-                            EERROR(vm, ERROR_BASE"expected INT or CHARP got '%s'\n", vm->program.filename, instr->line, word_type_to_string(size_str.type));
+                            EERROR(vm, ERROR_BASE"expected INT or CHARP got '%s'\n", vm->program.filename, instr->line,
+                                   word_type_to_string(size_str.type));
                         }
-		                if (size > 0) {
-		                    void *mem = malloc(size);
+                        if (size > 0) {
+                            void *mem = malloc(size);
 
-		                    memset(mem, 0, size);
+                            memset(mem, 0, size);
 
-		                    if (operand_count.as_int >= 3) {
-		                        char *dest_reg = xstack_pop_and_expect(vm, WCHARP).as_string;
-		                        if (is_register(dest_reg)) {
-		                            XRegisters reg = register_name_to_enum(dest_reg);
-		                            if (reg != -1) {
-		                                if (regs[reg].reg_value.type == WCHARP)
-		                                    free(regs[reg].reg_value.as_string);
-		                                regs[reg].reg_value.type = WPOINTER;
-		                                regs[reg].reg_value.as_pointer = mem;
-		                            }
-		                        }
-		                    } else {
-		                        xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
-		                    }
-		                }
+                            if (operand_count.as_int >= 3) {
+                                char *dest_reg = xstack_pop_and_expect(vm, WCHARP).as_string;
+                                if (is_register(dest_reg)) {
+                                    XRegisters reg = register_name_to_enum(dest_reg);
+                                    if (reg != -1) {
+                                        if (regs[reg].reg_value.type == WCHARP)
+                                            free(regs[reg].reg_value.as_string);
+                                        regs[reg].reg_value.type = WPOINTER;
+                                        regs[reg].reg_value.as_pointer = mem;
+                                    }
+                                }
+                            } else {
+                                xstack_push(&xpu->stack, (Word){.type = WPOINTER, .as_pointer = mem});
+                            }
+                        }
                     }
                 } else {
                     EERROR(vm, ERROR_BASE"expected minimum one item on stack\n", vm->program.filename, instr->line);
                 }
             }
-		    break;
-		}
+            break;
+        }
 
         case IMERGE: {
             if (instr->operands.size == 0) {
@@ -1704,8 +1749,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                     strcat(merged, w1.as_string);
                     xstack_push(&xpu->stack, (Word){.type = WCHARP, .as_string = merged});
                 }
-            }
-            else {
+            } else {
                 char *merged = hmerge(instr);
                 xstack_push(&xpu->stack, (Word){.type = WCHARP, .as_string = merged});
             }
@@ -1714,7 +1758,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 
         case IXCALL: {
             if (rax->reg_value.type == WINT) {
-                switch(rax->reg_value.as_int) {
+                switch (rax->reg_value.as_int) {
                     case 1:
                         if (rbx->reg_value.type == WINT) xsleep(rbx->reg_value.as_int);
                         break;
@@ -1740,196 +1784,210 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             break;
         }
 
-		case IWRITEMEM: {
-		    void *dest_addr = NULL;
-		    size_t offset = 0;
-		    Word value;
-		    WordType write_type = WINT;
-		
-		    if (instr->operands.size == 0) {
-		        Word addr_word = xstack_pop(&xpu->stack);
-		        if (addr_word.type == WPOINTER) {
-		            dest_addr = addr_word.as_pointer;
-		        } else {
-		            OERROR(stderr, "ERROR: First stack value must be a pointer for WRITEMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 1) {
-		        char *dest = vector_get_str(&instr->operands, 0);
-		        if (is_register(dest)) {
-		            XRegisters reg = register_name_to_enum(dest);
-		            if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
-		                dest_addr = regs[reg].reg_value.as_pointer;
-		            } else {
-		                OERROR(stderr, "ERROR: Register %s must contain a pointer for WRITEMEM\n", dest);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        }
-		    }
-		
-		    if (instr->operands.size <= 1) {
-		        Word off_word = xstack_pop(&xpu->stack);
-		        if (off_word.type == WINT) {
-		            offset = off_word.as_int;
-		        } else {
-		            OERROR(stderr, "ERROR: Offset must be an integer for WRITEMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 2) {
-		        char *off = vector_get_str(&instr->operands, 1);
-		        if (is_number(off)) {
-		            offset = atoi(off);
-		        } else if (is_register(off)) {
-		            XRegisters reg = register_name_to_enum(off);
-		            if (reg != -1 && regs[reg].reg_value.type == WINT) {
-		                offset = regs[reg].reg_value.as_int;
-		            } else {
-		                OERROR(stderr, "ERROR: Register %s must contain an integer for offset\n", off);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        }
-		    }
-		
-		    if (instr->operands.size <= 2) {
-		        Word type_word = xstack_pop(&xpu->stack);
-		        if (type_word.type == WINT) {
-		            write_type = (WordType)type_word.as_int;
-		            if (write_type < WINT || write_type > WPOINTER) {
-		                OERROR(stderr, "ERROR: Invalid type value %d for WRITEMEM\n", write_type);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        } else {
-		            OERROR(stderr, "ERROR: Type must be an integer for WRITEMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 3) {
-		        char *type_str = vector_get_str(&instr->operands, 2);
-		        write_type = get_type(type_str);
-		    }
+        case IWRITEMEM: {
+            void *dest_addr = NULL;
+            size_t offset = 0;
+            Word value;
+            WordType write_type = WINT;
 
-		    if (instr->operands.size >= 4) {
-		        char *val_str = vector_get_str(&instr->operands, 3);
-		        if (is_register(val_str)) {
-		            XRegisters reg = register_name_to_enum(val_str);
-		            if (reg != -1) {
-		                value = regs[reg].reg_value;
-		            } else {
-		                OERROR(stderr, "ERROR: Invalid register %s\n", val_str);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        } else if (is_number(val_str)) {
-		            value.type = WINT;
-		            value.as_int = atoi(val_str);
-		        } else if (is_float(val_str)) {
-		            value.type = WFLOAT;
-		            value.as_float = atof(val_str);
-		        } else if (is_string(val_str)) {
-		            value.type = WCHARP;
-		            size_t len = strlen(val_str) - 2;
-		            value.as_string = malloc(len + 1);
-		            if (!value.as_string) {
-		                OERROR(stderr, "ERROR: Failed to allocate memory for string\n");
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		            strncpy(value.as_string, val_str + 1, len);
-		            value.as_string[len] = '\0';
-		        } else {
-		            OERROR(stderr, "ERROR: Invalid value format %s\n", val_str);
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else {
-		        value = xstack_pop(&xpu->stack);
-		    }
-		
-		    if (dest_addr) {
-		        void *write_addr = (char*)dest_addr + offset;
-		        switch (write_type) {
-		            case WINT:
-		                *(int*)write_addr = (value.type == WINT) ? value.as_int :
-		                                   (value.type == WFLOAT) ? (int)value.as_float : 0;
-		                break;
-		            case WFLOAT:
-		                *(float*)write_addr = (value.type == WFLOAT) ? value.as_float :
-		                                     (value.type == WINT) ? (float)value.as_int : 0.0f;
-		                break;
-		            case W_CHAR:
-		                *(char*)write_addr = (value.type == W_CHAR) ? value.as_char :
-		                                   (value.type == WINT) ? (char)value.as_int : 0;
-		                break;
-		            case WCHARP:
-		                if (value.type == WCHARP) {
-		                    if (*(char**)write_addr != NULL) {
-		                        free(*(char**)write_addr);
-		                    }
-		                    if (value.as_string != NULL) {
-		                        *(char**)write_addr = strdup(value.as_string);
-		                        if (*(char**)write_addr == NULL) {
-		                            OERROR(stderr, "Failed to duplicate string in WRITEMEM\n");
-		                            vm->xpu.ip = vm->program.instructions_count;
-		                            vm->program.exit_code = 1;
-		                            return;
-		                        }
-		                    } else {
-		                        *(char**)write_addr = NULL;
-		                    }
-		                } else {
-		                    OERROR(stderr, "ERROR: Type mismatch when writing string pointer\n");
-		                }
-		                break;
-		            case WPOINTER:
-		                if (value.type == WPOINTER) {
-		                    *(void**)write_addr = value.as_pointer;
-		                } else {
-		                    OERROR(stderr, "ERROR: Type mismatch when writing pointer\n");
-		                }
-		                break;
-		            default:
-		                OERROR(stderr, "ERROR: Unsupported write type %d\n", write_type);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		        }
-		    } else {
-		        OERROR(stderr, "ERROR: NULL destination address for WRITEMEM\n");
-		        vm->xpu.ip = vm->program.instructions_count;
-		        vm->program.exit_code = 1;
-		        return;
-		    }
-		
-		    if (instr->operands.size < 4 && value.type == WCHARP && value.as_string != NULL) {
-		        free(value.as_string);
-		    }
-		    break;
-		}
+            if (instr->operands.size == 0) {
+                Word addr_word = xstack_pop(&xpu->stack);
+                if (addr_word.type == WPOINTER) {
+                    dest_addr = addr_word.as_pointer;
+                } else {
+                    OERROR(stderr, "ERROR: First stack value must be a pointer for WRITEMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 1) {
+                char *dest = vector_get_str(&instr->operands, 0);
+                if (is_register(dest)) {
+                    XRegisters reg = register_name_to_enum(dest);
+                    if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+                        dest_addr = regs[reg].reg_value.as_pointer;
+                    } else {
+                        OERROR(stderr, "ERROR: Register %s must contain a pointer for WRITEMEM\n", dest);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                }
+            }
+
+            if (instr->operands.size <= 1) {
+                Word off_word = xstack_pop(&xpu->stack);
+                if (off_word.type == WINT) {
+                    offset = off_word.as_int;
+                } else {
+                    OERROR(stderr, "ERROR: Offset must be an integer for WRITEMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 2) {
+                char *off = vector_get_str(&instr->operands, 1);
+                if (is_number(off)) {
+                    offset = atoi(off);
+                } else if (is_register(off)) {
+                    XRegisters reg = register_name_to_enum(off);
+                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                        offset = regs[reg].reg_value.as_int;
+                    } else {
+                        OERROR(stderr, "ERROR: Register %s must contain an integer for offset\n", off);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                }
+            }
+
+            if (instr->operands.size <= 2) {
+                Word type_word = xstack_pop(&xpu->stack);
+                if (type_word.type == WINT) {
+                    write_type = (WordType) type_word.as_int;
+                    if (write_type < WINT || write_type > WPOINTER) {
+                        OERROR(stderr, "ERROR: Invalid type value %d for WRITEMEM\n", write_type);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                } else {
+                    OERROR(stderr, "ERROR: Type must be an integer for WRITEMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 3) {
+                char *type_str = vector_get_str(&instr->operands, 2);
+                write_type = get_type(type_str);
+            }
+
+            if (instr->operands.size >= 4) {
+                char *val_str = vector_get_str(&instr->operands, 3);
+                if (is_register(val_str)) {
+                    XRegisters reg = register_name_to_enum(val_str);
+                    if (reg != -1) {
+                        value = regs[reg].reg_value;
+                    } else {
+                        OERROR(stderr, "ERROR: Invalid register %s\n", val_str);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                } else if (is_number(val_str)) {
+                    value.type = WINT;
+                    value.as_int = atoi(val_str);
+                } else if (is_float(val_str)) {
+                    value.type = WFLOAT;
+                    value.as_float = atof(val_str);
+                } else if (is_string(val_str)) {
+                    value.type = WCHARP;
+                    size_t len = strlen(val_str) - 2;
+                    value.as_string = malloc(len + 1);
+                    if (!value.as_string) {
+                        OERROR(stderr, "ERROR: Failed to allocate memory for string\n");
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                    strncpy(value.as_string, val_str + 1, len);
+                    value.as_string[len] = '\0';
+                } else {
+                    OERROR(stderr, "ERROR: Invalid value format %s\n", val_str);
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else {
+                value = xstack_pop(&xpu->stack);
+            }
+
+            if (dest_addr) {
+                void *write_addr = (char *) dest_addr + offset;
+                switch (write_type) {
+                    case WINT:
+                        *(int *) write_addr = (value.type == WINT)
+                                                  ? value.as_int
+                                                  : (value.type == WFLOAT)
+                                                        ? (int) value.as_float
+                                                        : 0;
+                        break;
+                    case WFLOAT:
+                        *(float *) write_addr = (value.type == WFLOAT)
+                                                    ? value.as_float
+                                                    : (value.type == WINT)
+                                                          ? (float) value.as_int
+                                                          : 0.0f;
+                        break;
+                    case W_CHAR:
+                        *(char *) write_addr = (value.type == W_CHAR)
+                                                   ? value.as_char
+                                                   : (value.type == WINT)
+                                                         ? (char) value.as_int
+                                                         : 0;
+                        break;
+                    case WCHARP:
+                        if (value.type == WCHARP) {
+                            if (*(char **) write_addr != NULL) {
+                                free(*(char **) write_addr);
+                            }
+                            if (value.as_string != NULL) {
+                                *(char **) write_addr = strdup(value.as_string);
+                                if (*(char **) write_addr == NULL) {
+                                    OERROR(stderr, "Failed to duplicate string in WRITEMEM\n");
+                                    vm->xpu.ip = vm->program.instructions_count;
+                                    vm->program.exit_code = 1;
+                                    return;
+                                }
+                            } else {
+                                *(char **) write_addr = NULL;
+                            }
+                        } else {
+                            OERROR(stderr, "ERROR: Type mismatch when writing string pointer\n");
+                        }
+                        break;
+                    case WPOINTER:
+                        if (value.type == WPOINTER) {
+                            *(void **) write_addr = value.as_pointer;
+                        } else {
+                            OERROR(stderr, "ERROR: Type mismatch when writing pointer\n");
+                        }
+                        break;
+                    default:
+                        OERROR(stderr, "ERROR: Unsupported write type %d\n", write_type);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                }
+            } else {
+                OERROR(stderr, "ERROR: NULL destination address for WRITEMEM\n");
+                vm->xpu.ip = vm->program.instructions_count;
+                vm->program.exit_code = 1;
+                return;
+            }
+
+            if (instr->operands.size < 4 && value.type == WCHARP && value.as_string != NULL) {
+                free(value.as_string);
+            }
+            break;
+        }
 
         case ISIZEOF: {
             char *operand = vector_get_str(&instr->operands, 0);
             WordType type = get_type(operand);
             int size = 0;
-            switch(type) {
-                case WINT: size = sizeof(int); break;
-                case WFLOAT: size = sizeof(float); break;
-                case WCHARP: size = sizeof(char*); break;
-                case W_CHAR: size = sizeof(char); break;
-                case WPOINTER: size = sizeof(void*); break;
+            switch (type) {
+                case WINT: size = sizeof(int);
+                    break;
+                case WFLOAT: size = sizeof(float);
+                    break;
+                case WCHARP: size = sizeof(char *);
+                    break;
+                case W_CHAR: size = sizeof(char);
+                    break;
+                case WPOINTER: size = sizeof(void *);
+                    break;
             }
             xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = size});
             break;
@@ -1942,7 +2000,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 regs[reg].reg_value.as_int--;
             else if (is_variable(operand, current_scope)) {
                 w1 = getvar(vm, operand, current_scope);
-            
+
                 if (w1.type == WPOINTER && w1.as_pointer == NULL) {
                     OERROR(stderr, "ERROR: could not found variable '%s'\n", operand);
                 } else {
@@ -1963,7 +2021,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 regs[reg].reg_value.as_int++;
             else if (is_variable(operand, current_scope)) {
                 w1 = getvar(vm, operand, current_scope);
-            
+
                 if (w1.type == WPOINTER && w1.as_pointer == NULL) {
                     OERROR(stderr, "ERROR: could not found variable '%s'\n", operand);
                 } else {
@@ -1981,7 +2039,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             int val = eval(expr);
             xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = val});
             free(expr);
-        } break;
+        }
+        break;
 
         case ICMP: {
             if (instr->operands.size >= 2) {
@@ -1992,8 +2051,7 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (is_register(op1)) {
                     XRegisters reg = register_name_to_enum(op1);
                     w1 = regs[reg].reg_value;
-                }
-                else if (is_number(op1)) {
+                } else if (is_number(op1)) {
                     w1.type = WINT;
                     w1.as_int = atoi(op1);
                 }
@@ -2001,183 +2059,186 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 if (is_register(op2)) {
                     XRegisters reg = register_name_to_enum(op2);
                     w2 = regs[reg].reg_value;
-                }
-                else if (is_number(op2)) {
+                } else if (is_number(op2)) {
                     w2.type = WINT;
                     w2.as_int = atoi(op2);
                 }
 
                 int cmp = 0;
                 if (w1.type == w2.type) {
-                    switch(w1.type) {
-                        case WINT: cmp = w1.as_int - w2.as_int; break;
-                        case WFLOAT: cmp = (w1.as_float > w2.as_float) ? 1 : -1; break;
-                        case WCHARP: cmp = strcmp(w1.as_string, w2.as_string); break;
+                    switch (w1.type) {
+                        case WINT: cmp = w1.as_int - w2.as_int;
+                            break;
+                        case WFLOAT: cmp = (w1.as_float > w2.as_float) ? 1 : -1;
+                            break;
+                        case WCHARP: cmp = strcmp(w1.as_string, w2.as_string);
+                            break;
                     }
                 }
                 rdx->reg_value.type = WINT;
                 rdx->reg_value.as_int = cmp;
             }
-        } break;
+        }
+        break;
 
-		case IREADMEM: {
-		    void *src_addr = NULL;
-		    size_t offset = 0;
-		    WordType read_type = WINT;
-		
-		    if (instr->operands.size == 0) {
-		        Word addr_word = xstack_pop(&xpu->stack);
-		        if (addr_word.type == WPOINTER) {
-		            src_addr = addr_word.as_pointer;
-		        } else {
-		            OERROR(stderr, "ERROR: First stack value must be a pointer for READMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 1) {
-		        char *src = vector_get_str(&instr->operands, 0);
-		        if (is_register(src)) {
-		            XRegisters reg = register_name_to_enum(src);
-		            if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
-		                src_addr = regs[reg].reg_value.as_pointer;
-		            } else {
-		                OERROR(stderr, "ERROR: Register %s must contain a pointer for READMEM\n", src);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        }
-		    }
-		
-		    if (instr->operands.size <= 1) {
-		        Word off_word = xstack_pop(&xpu->stack);
-		        if (off_word.type == WINT) {
-		            offset = off_word.as_int;
-		        } else {
-		            OERROR(stderr, "ERROR: Offset must be an integer for READMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 2) {
-		        char *off = vector_get_str(&instr->operands, 1);
-		        if (is_number(off)) {
-		            offset = atoi(off);
-		        } else if (is_register(off)) {
-		            XRegisters reg = register_name_to_enum(off);
-		            if (reg != -1 && regs[reg].reg_value.type == WINT) {
-		                offset = regs[reg].reg_value.as_int;
-		            } else {
-		                OERROR(stderr, "ERROR: Register %s must contain an integer for offset\n", off);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        }
-		    }
-		
-		    if (instr->operands.size <= 2) {
-		        Word type_word = xstack_pop(&xpu->stack);
-		        if (type_word.type == WINT) {
-		            read_type = (WordType)type_word.as_int;
-		            if (read_type < WINT || read_type > WPOINTER) {
-		                OERROR(stderr, "ERROR: Invalid type value %d for READMEM\n", read_type);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        } else {
-		            OERROR(stderr, "ERROR: Type must be an integer for READMEM\n");
-		            vm->xpu.ip = vm->program.instructions_count;
-		            vm->program.exit_code = 1;
-		            return;
-		        }
-		    } else if (instr->operands.size >= 3) {
-		        char *type_str = vector_get_str(&instr->operands, 2);
-		        read_type = get_type(type_str);
-		    }
-		
-		    if (src_addr) {
-		        void *read_addr = (char*)src_addr + offset;
-		        Word result;
-		
-		        switch (read_type) {
-		            case WINT:
-		                result.type = WINT;
-		                result.as_int = *(int*)read_addr;
-		                break;
-		            case WFLOAT:
-		                result.type = WFLOAT;
-		                result.as_float = *(float*)read_addr;
-		                break;
-		            case W_CHAR:
-		                result.type = W_CHAR;
-		                result.as_char = *(char*)read_addr;
-		                break;
-		            case WCHARP:
-		                result.type = WCHARP;
-		                if (*(char **)read_addr != NULL) {
-		                    result.as_string = strdup(*(char**)read_addr);
-		                    if (!result.as_string) {
-		                        OERROR(stderr, "ERROR: Failed to allocate memory for string\n");
-		                        vm->xpu.ip = vm->program.instructions_count;
-		                        vm->program.exit_code = 1;
-		                        return;
-		                    }
-		                } else {
-		                    result.as_string = NULL;
-		                }
-		                break;
-		            case WPOINTER:
-		                result.type = WPOINTER;
-		                result.as_pointer = *(void**)read_addr;
-		                break;
-		            default:
-		                OERROR(stderr, "ERROR: Unsupported read type %d\n", read_type);
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		        }
-		
-		        if (instr->operands.size >= 4) {
-		            char *dest = vector_get_str(&instr->operands, 3);
-		            if (is_register(dest)) {
-		                XRegisters reg = register_name_to_enum(dest);
-		                if (reg != -1) {
-		                    if (regs[reg].reg_value.type == WCHARP && regs[reg].reg_value.as_string != NULL) {
-		                        free(regs[reg].reg_value.as_string);
-		                    }
-		                    regs[reg].reg_value = result;
-		                } else {
-		                    if (result.type == WCHARP && result.as_string != NULL) {
-		                        free(result.as_string);
-		                    }
-		                    OERROR(stderr, "ERROR: Invalid register %s\n", dest);
-		                    vm->xpu.ip = vm->program.instructions_count;
-		                    vm->program.exit_code = 1;
-		                    return;
-		                }
-		            } else {
-		                if (result.type == WCHARP && result.as_string != NULL) {
-		                    free(result.as_string);
-		                }
-		                OERROR(stderr, "ERROR: Destination must be a register\n");
-		                vm->xpu.ip = vm->program.instructions_count;
-		                vm->program.exit_code = 1;
-		                return;
-		            }
-		        } else {
-		            xstack_push(&xpu->stack, result);
-		        }
-		    } else {
-		        OERROR(stderr, "ERROR: NULL source address for READMEM\n");
-		        vm->xpu.ip = vm->program.instructions_count;
-		        vm->program.exit_code = 1;
-		        return;
-		    }
-		    break;
-		}
+        case IREADMEM: {
+            void *src_addr = NULL;
+            size_t offset = 0;
+            WordType read_type = WINT;
+
+            if (instr->operands.size == 0) {
+                Word addr_word = xstack_pop(&xpu->stack);
+                if (addr_word.type == WPOINTER) {
+                    src_addr = addr_word.as_pointer;
+                } else {
+                    OERROR(stderr, "ERROR: First stack value must be a pointer for READMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 1) {
+                char *src = vector_get_str(&instr->operands, 0);
+                if (is_register(src)) {
+                    XRegisters reg = register_name_to_enum(src);
+                    if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+                        src_addr = regs[reg].reg_value.as_pointer;
+                    } else {
+                        OERROR(stderr, "ERROR: Register %s must contain a pointer for READMEM\n", src);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                }
+            }
+
+            if (instr->operands.size <= 1) {
+                Word off_word = xstack_pop(&xpu->stack);
+                if (off_word.type == WINT) {
+                    offset = off_word.as_int;
+                } else {
+                    OERROR(stderr, "ERROR: Offset must be an integer for READMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 2) {
+                char *off = vector_get_str(&instr->operands, 1);
+                if (is_number(off)) {
+                    offset = atoi(off);
+                } else if (is_register(off)) {
+                    XRegisters reg = register_name_to_enum(off);
+                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                        offset = regs[reg].reg_value.as_int;
+                    } else {
+                        OERROR(stderr, "ERROR: Register %s must contain an integer for offset\n", off);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                }
+            }
+
+            if (instr->operands.size <= 2) {
+                Word type_word = xstack_pop(&xpu->stack);
+                if (type_word.type == WINT) {
+                    read_type = (WordType) type_word.as_int;
+                    if (read_type < WINT || read_type > WPOINTER) {
+                        OERROR(stderr, "ERROR: Invalid type value %d for READMEM\n", read_type);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                } else {
+                    OERROR(stderr, "ERROR: Type must be an integer for READMEM\n");
+                    vm->xpu.ip = vm->program.instructions_count;
+                    vm->program.exit_code = 1;
+                    return;
+                }
+            } else if (instr->operands.size >= 3) {
+                char *type_str = vector_get_str(&instr->operands, 2);
+                read_type = get_type(type_str);
+            }
+
+            if (src_addr) {
+                void *read_addr = (char *) src_addr + offset;
+                Word result;
+
+                switch (read_type) {
+                    case WINT:
+                        result.type = WINT;
+                        result.as_int = *(int *) read_addr;
+                        break;
+                    case WFLOAT:
+                        result.type = WFLOAT;
+                        result.as_float = *(float *) read_addr;
+                        break;
+                    case W_CHAR:
+                        result.type = W_CHAR;
+                        result.as_char = *(char *) read_addr;
+                        break;
+                    case WCHARP:
+                        result.type = WCHARP;
+                        if (*(char **) read_addr != NULL) {
+                            result.as_string = strdup(*(char **) read_addr);
+                            if (!result.as_string) {
+                                OERROR(stderr, "ERROR: Failed to allocate memory for string\n");
+                                vm->xpu.ip = vm->program.instructions_count;
+                                vm->program.exit_code = 1;
+                                return;
+                            }
+                        } else {
+                            result.as_string = NULL;
+                        }
+                        break;
+                    case WPOINTER:
+                        result.type = WPOINTER;
+                        result.as_pointer = *(void **) read_addr;
+                        break;
+                    default:
+                        OERROR(stderr, "ERROR: Unsupported read type %d\n", read_type);
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                }
+
+                if (instr->operands.size >= 4) {
+                    char *dest = vector_get_str(&instr->operands, 3);
+                    if (is_register(dest)) {
+                        XRegisters reg = register_name_to_enum(dest);
+                        if (reg != -1) {
+                            if (regs[reg].reg_value.type == WCHARP && regs[reg].reg_value.as_string != NULL) {
+                                free(regs[reg].reg_value.as_string);
+                            }
+                            regs[reg].reg_value = result;
+                        } else {
+                            if (result.type == WCHARP && result.as_string != NULL) {
+                                free(result.as_string);
+                            }
+                            OERROR(stderr, "ERROR: Invalid register %s\n", dest);
+                            vm->xpu.ip = vm->program.instructions_count;
+                            vm->program.exit_code = 1;
+                            return;
+                        }
+                    } else {
+                        if (result.type == WCHARP && result.as_string != NULL) {
+                            free(result.as_string);
+                        }
+                        OERROR(stderr, "ERROR: Destination must be a register\n");
+                        vm->xpu.ip = vm->program.instructions_count;
+                        vm->program.exit_code = 1;
+                        return;
+                    }
+                } else {
+                    xstack_push(&xpu->stack, result);
+                }
+            } else {
+                OERROR(stderr, "ERROR: NULL source address for READMEM\n");
+                vm->xpu.ip = vm->program.instructions_count;
+                vm->program.exit_code = 1;
+                return;
+            }
+            break;
+        }
 
         case ICPYMEM: {
             w1 = xstack_pop(&xpu->stack);
@@ -2185,66 +2246,68 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             Word n = xstack_pop(&xpu->stack);
             if (w1.type == WPOINTER && w2.type == WPOINTER && n.type == WINT)
                 memcpy(w1.as_pointer, w2.as_pointer, n.as_int);
-        } break;
+        }
+        break;
 
         // TODO: Implment ISYSCALL
 
         case IMEMCMP: {
-			void *addr1 = NULL;
-			void *addr2 = NULL;
-			size_t size = 0;
+            void *addr1 = NULL;
+            void *addr2 = NULL;
+            size_t size = 0;
 
-			if (instr->operands.size >= 1) {
-				char *ptr1 = vector_get_str(&instr->operands, 0);
-				if (is_register(ptr1)) {
-					XRegisters reg = register_name_to_enum(ptr1);
-					if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
-						addr1 = regs[reg].reg_value.as_pointer;
-					}
-				}
-			}
+            if (instr->operands.size >= 1) {
+                char *ptr1 = vector_get_str(&instr->operands, 0);
+                if (is_register(ptr1)) {
+                    XRegisters reg = register_name_to_enum(ptr1);
+                    if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+                        addr1 = regs[reg].reg_value.as_pointer;
+                    }
+                }
+            }
 
-			if (instr->operands.size >= 2) {
-				char *ptr2 = vector_get_str(&instr->operands, 1);
-				if (is_register(ptr2)) {
-					XRegisters reg = register_name_to_enum(ptr2);
-					if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
-						addr2 = regs[reg].reg_value.as_pointer;
-					}
-				}
-			}
+            if (instr->operands.size >= 2) {
+                char *ptr2 = vector_get_str(&instr->operands, 1);
+                if (is_register(ptr2)) {
+                    XRegisters reg = register_name_to_enum(ptr2);
+                    if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+                        addr2 = regs[reg].reg_value.as_pointer;
+                    }
+                }
+            }
 
-			if (instr->operands.size >= 3) {
-				char *sz = vector_get_str(&instr->operands, 2);
-				if (is_number(sz)) {
-					size = atoi(sz);
-				} else if (is_register(sz)) {
-					XRegisters reg = register_name_to_enum(sz);
-					if (reg != -1 && regs[reg].reg_value.type == WINT) {
-						size = regs[reg].reg_value.as_int;
-					}
-				}
-			}
+            if (instr->operands.size >= 3) {
+                char *sz = vector_get_str(&instr->operands, 2);
+                if (is_number(sz)) {
+                    size = atoi(sz);
+                } else if (is_register(sz)) {
+                    XRegisters reg = register_name_to_enum(sz);
+                    if (reg != -1 && regs[reg].reg_value.type == WINT) {
+                        size = regs[reg].reg_value.as_int;
+                    }
+                }
+            }
 
-			if (addr1 && addr2 && size > 0) {
-				int result = memcmp(addr1, addr2, size);
+            if (addr1 && addr2 && size > 0) {
+                int result = memcmp(addr1, addr2, size);
 
-				if (instr->operands.size >= 4) {
-					char *dest = vector_get_str(&instr->operands, 3);
-					if (is_register(dest)) {
-						XRegisters reg = register_name_to_enum(dest);
-						if (reg != -1) {
-							if (regs[reg].reg_value.type == WCHARP)
-								free(regs[reg].reg_value.as_string);
-							regs[reg].reg_value.type = WINT;
-							regs[reg].reg_value.as_int = result;
-						}
-					}
-				} else {
-					xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = result});
-				}
-			}
-		} break;
+                if (instr->operands.size >= 4) {
+                    char *dest = vector_get_str(&instr->operands, 3);
+                    if (is_register(dest)) {
+                        XRegisters reg = register_name_to_enum(dest);
+                        if (reg != -1) {
+                            if (regs[reg].reg_value.type == WCHARP)
+                                free(regs[reg].reg_value.as_string);
+                            regs[reg].reg_value.type = WINT;
+                            regs[reg].reg_value.as_int = result;
+                        }
+                    }
+                } else {
+                    xstack_push(&xpu->stack, (Word){.type = WINT, .as_int = result});
+                }
+            }
+        }
+        break;
 
         case IVAR: {
             if (instr->operands.size < 1) {
@@ -2257,7 +2320,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             var.value.type = WPOINTER;
             var.value.as_pointer = NULL;
             vector_push(current_scope, &var);
-        } break;
+        }
+        break;
 
         case ISETVAR: {
             if (instr->operands.size < 1) {
@@ -2271,7 +2335,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
             setvar(vm, var_name, current_scope, new_value);
-        } break;
+        }
+        break;
 
         case IGETVAR: {
             if (instr->operands.size < 1) {
@@ -2285,7 +2350,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             } else {
                 xstack_push(&vm->xpu.stack, found_var);
             }
-        } break;
+        }
+        break;
 
         case ITOGGLELOCALSCOPE: {
             static int status = 1;
@@ -2297,7 +2363,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
                 vector_free(current_scope);
                 current_scope = &vm->program.variables;
             }
-        } break;
+        }
+        break;
 
         case ISETGLOBALVAR: {
             if (instr->operands.size < 1) {
@@ -2311,7 +2378,8 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             }
             Word new_value = xstack_pop(&vm->xpu.stack);
             setvar(vm, var_name, &vm->program.variables, new_value);
-        } break;
+        }
+        break;
 
         case IGETGLOBALVAR: {
             if (instr->operands.size < 1) {
@@ -2325,183 +2393,197 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
             } else {
                 xstack_push(&vm->xpu.stack, found_var);
             }
-        } break;
+        }
+        break;
 
 
-		case IFREE: {
-				void *ptr_to_free = NULL;
-				if (instr->operands.size >= 1) {
-					char *operand = vector_get_str(&instr->operands, 0);
+        case IFREE: {
+            void *ptr_to_free = NULL;
+            if (instr->operands.size >= 1) {
+                char *operand = vector_get_str(&instr->operands, 0);
 
-					if (is_register(operand)) {
-						XRegisters reg = register_name_to_enum(operand);
-                        if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
-							ptr_to_free = regs[reg].reg_value.as_pointer;
+                if (is_register(operand)) {
+                    XRegisters reg = register_name_to_enum(operand);
+                    if (reg != -1 && regs[reg].reg_value.type == WPOINTER) {
+                        ptr_to_free = regs[reg].reg_value.as_pointer;
 
-							free(ptr_to_free);
-							regs[reg].reg_value.as_pointer = NULL;
-						}
-					} else if (is_pointer(operand)) {
-						ptr_to_free = get_pointer(operand);
+                        free(ptr_to_free);
+                        regs[reg].reg_value.as_pointer = NULL;
+                    }
+                } else if (is_pointer(operand)) {
+                    ptr_to_free = get_pointer(operand);
 
-						free(ptr_to_free);
-					}
-				} else {
-					Word w = xstack_pop(&xpu->stack);
-					if (w.type == WPOINTER) {
-						ptr_to_free = w.as_pointer;
-						free(ptr_to_free);
-					}
-				}
-				break;
-		}
+                    free(ptr_to_free);
+                }
+            } else {
+                Word w = xstack_pop(&xpu->stack);
+                if (w.type == WPOINTER) {
+                    ptr_to_free = w.as_pointer;
+                    free(ptr_to_free);
+                }
+            }
+            break;
+        }
 
         case IOVM: {
             char *arg = vector_get_str(&instr->operands, 0);
             if (strcmp(arg, "stack") == 0) {
-                xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int)vm->xpu.stack.count});
+                arg = xstack_pop_and_expect(vm, WCHARP).as_string;
+            }
+            if (strcmp(arg, "stack_size") == 0) {
+                xstack_push(&vm->xpu.stack, (Word){.type = WINT, .as_int = (int) vm->xpu.stack.count});
             } else if (strcmp(arg, "stack_ptr") == 0) {
-                xstack_push(&vm->xpu.stack, (Word){.type = WPOINTER, .as_pointer = (void *)vm->xpu.stack.stack});
-            } else if (strcmp(arg, "platform") == 0)
-            {
+                xstack_push(&vm->xpu.stack, (Word){.type = WPOINTER, .as_pointer = (void *) vm->xpu.stack.stack});
+            } else if (strcmp(arg, "platform") == 0) {
                 xstack_push(&vm->xpu.stack, (Word){.type = WCHARP, .as_string = strdup(PLATFORM)});
             }
-                   } break;
-        
+        }
+        break;
+
         case ICAST: {
-                Word w = xstack_pop(&xpu->stack);
-                w.type = get_type(vector_get_str(&instr->operands, 0));
-                xstack_push(&xpu->stack, w);
-                    } break;
+            Word w = xstack_pop(&xpu->stack);
+            w.type = get_type(vector_get_str(&instr->operands, 0));
+            xstack_push(&xpu->stack, w);
+        }
+        break;
         case IHERE: {
-                xstack_push(&vm->xpu.stack, (Word){.type = WCHARP, .as_string = format("%s:%zu", vm->program.filename, instr->line)});
-                    } break;
-        
+            xstack_push(&vm->xpu.stack, (Word){
+                            .type = WCHARP, .as_string = format("%s:%zu", vm->program.filename, instr->line)
+                        });
+        }
+        break;
+
         case ISPRINTF: {
-                Word format_word = xstack_pop(&xpu->stack);
-                if (format_word.type != WCHARP || format_word.as_string == NULL) {
-                        EERROR(vm, ERROR_BASE"Expected format string for sprintf, got %s\n",
-                               vm->program.filename, instr->line, word_type_to_string(format_word.type));
+            Word format_word = xstack_pop(&xpu->stack);
+            if (format_word.type != WCHARP || format_word.as_string == NULL) {
+                EERROR(vm, ERROR_BASE"Expected format string for sprintf, got %s\n",
+                       vm->program.filename, instr->line, word_type_to_string(format_word.type));
+                break;
+            }
+
+            int arg_count = 0;
+            char *fmt = format_word.as_string;
+            for (char *p = fmt; *p; p++) {
+                if (*p == '%' && *(p + 1) != '%') {
+                    arg_count++;
+                    p++;
+                    while (*p && !isalpha(*p) && *p != '%') p++;
+                }
+            }
+
+            if (!xstack_check(&xpu->stack, arg_count)) {
+                EERROR(vm, ERROR_BASE"Stack underflow: sprintf requires %d arguments\n",
+                       vm->program.filename, instr->line, arg_count);
+                free(format_word.as_string);
+                break;
+            }
+
+            Word *args = malloc(arg_count * sizeof(Word));
+            if (!args) {
+                EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf arguments\n",
+                       vm->program.filename, instr->line);
+                free(format_word.as_string);
+                break;
+            }
+
+            for (int i = arg_count - 1; i >= 0; i--) {
+                args[i] = xstack_pop(&xpu->stack);
+            }
+
+            int size = 0;
+            char *tmp_buf = NULL;
+            for (int i = 0; i < arg_count; i++) {
+                Word arg = args[i];
+                switch (arg.type) {
+                    case WINT: size += snprintf(NULL, 0, "%d", arg.as_int);
                         break;
-                }
-
-                int arg_count = 0;
-                char *fmt = format_word.as_string;
-                for (char *p = fmt; *p; p++) {
-                        if (*p == '%' && *(p + 1) != '%') {
-                                arg_count++;
-                                p++;
-                                while (*p && !isalpha(*p) && *p != '%') p++;
-                        }
-                }
-
-                if (!xstack_check(&xpu->stack, arg_count)) {
-                        EERROR(vm, ERROR_BASE"Stack underflow: sprintf requires %d arguments\n",
-                               vm->program.filename, instr->line, arg_count);
-                        free(format_word.as_string);
+                    case WFLOAT: size += snprintf(NULL, 0, "%f", arg.as_float);
                         break;
-                }
-
-                Word *args = malloc(arg_count * sizeof(Word));
-                if (!args) {
-                        EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf arguments\n",
-                               vm->program.filename, instr->line);
-                        free(format_word.as_string);
+                    case WCHARP: size += arg.as_string ? strlen(arg.as_string) : 4;
                         break;
-                }
-
-                for (int i = arg_count - 1; i >= 0; i--) {
-                        args[i] = xstack_pop(&xpu->stack);
-                }
-
-                int size = 0;
-                char *tmp_buf = NULL;
-                for (int i = 0; i < arg_count; i++) {
-                        Word arg = args[i];
-                        switch (arg.type) {
-                                case WINT:   size += snprintf(NULL, 0, "%d", arg.as_int); break;
-                                case WFLOAT: size += snprintf(NULL, 0, "%f", arg.as_float); break;
-                                case WCHARP: size += arg.as_string ? strlen(arg.as_string) : 4; break;
-                                case W_CHAR: size += 1; break;
-                                case WPOINTER: size += snprintf(NULL, 0, "%p", arg.as_pointer); break;
-                                case WBOOL: size += arg.as_bool ? 4 : 5; break;
-                                default:
-                                        EERROR(vm, ERROR_BASE"Unsupported argument type %s for sprintf\n",
-                                               vm->program.filename, instr->line, word_type_to_string(arg.type));
-                                        free(args);
-                                        free(format_word.as_string);
-                                        return;
-                        }
-                }
-
-                size += strlen(fmt) + 1;
-
-                char *result = malloc(size);
-                if (!result) {
-                        EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf result\n",
-                               vm->program.filename, instr->line);
+                    case W_CHAR: size += 1;
+                        break;
+                    case WPOINTER: size += snprintf(NULL, 0, "%p", arg.as_pointer);
+                        break;
+                    case WBOOL: size += arg.as_bool ? 4 : 5;
+                        break;
+                    default:
+                        EERROR(vm, ERROR_BASE"Unsupported argument type %s for sprintf\n",
+                               vm->program.filename, instr->line, word_type_to_string(arg.type));
                         free(args);
                         free(format_word.as_string);
-                        break;
+                        return;
                 }
+            }
 
-                int offset = 0;
-                int arg_index = 0;
-                for (char *p = fmt; *p; p++) {
-                        if (*p == '%' && *(p + 1) != '%') {
-                                p++;
-                                char specifier[32];
-                                int spec_len = 0;
-                                specifier[spec_len++] = '%';
-                                while (*p && !isalpha(*p) && *p != '%') {
-                                        specifier[spec_len++] = *p++;
-                                }
-                                specifier[spec_len++] = *p;
-                                specifier[spec_len] = '\0';
+            size += strlen(fmt) + 1;
 
-                                Word arg = args[arg_index++];
-                                switch (arg.type) {
-                                        case WINT:
-                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_int);
-                                                break;
-                                        case WFLOAT:
-                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_float);
-                                                break;
-                                        case WCHARP:
-                                                offset += snprintf(result + offset, size - offset, specifier,
-                                                                 arg.as_string ? arg.as_string : "(null)");
-                                                break;
-                                        case W_CHAR:
-                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_char);
-                                                break;
-                                        case WPOINTER:
-                                                offset += snprintf(result + offset, size - offset, specifier, arg.as_pointer);
-                                                break;
-                                        case WBOOL:
-                                                offset += snprintf(result + offset, size - offset, specifier,
-                                                                 arg.as_bool ? "true" : "false");
-                                                break;
-                                        default:
-                                                break;
-                                }
-                        } else {
-                                result[offset++] = *p;
-                                if (*p == '%' && *(p + 1) == '%') p++;
-                        }
-                }
-                result[offset] = '\0';
-
-                Word result_word = {.type = WCHARP, .as_string = result};
-                xstack_push(&xpu->stack, result_word);
-
-                for (int i = 0; i < arg_count; i++) {
-                        if (args[i].type == WCHARP && args[i].as_string != NULL) {
-                                free(args[i].as_string);
-                        }
-                }
+            char *result = malloc(size);
+            if (!result) {
+                EERROR(vm, ERROR_BASE"Failed to allocate memory for sprintf result\n",
+                       vm->program.filename, instr->line);
                 free(args);
                 free(format_word.as_string);
                 break;
+            }
+
+            int offset = 0;
+            int arg_index = 0;
+            for (char *p = fmt; *p; p++) {
+                if (*p == '%' && *(p + 1) != '%') {
+                    p++;
+                    char specifier[32];
+                    int spec_len = 0;
+                    specifier[spec_len++] = '%';
+                    while (*p && !isalpha(*p) && *p != '%') {
+                        specifier[spec_len++] = *p++;
+                    }
+                    specifier[spec_len++] = *p;
+                    specifier[spec_len] = '\0';
+
+                    Word arg = args[arg_index++];
+                    switch (arg.type) {
+                        case WINT:
+                            offset += snprintf(result + offset, size - offset, specifier, arg.as_int);
+                            break;
+                        case WFLOAT:
+                            offset += snprintf(result + offset, size - offset, specifier, arg.as_float);
+                            break;
+                        case WCHARP:
+                            offset += snprintf(result + offset, size - offset, specifier,
+                                               arg.as_string ? arg.as_string : "(null)");
+                            break;
+                        case W_CHAR:
+                            offset += snprintf(result + offset, size - offset, specifier, arg.as_char);
+                            break;
+                        case WPOINTER:
+                            offset += snprintf(result + offset, size - offset, specifier, arg.as_pointer);
+                            break;
+                        case WBOOL:
+                            offset += snprintf(result + offset, size - offset, specifier,
+                                               arg.as_bool ? "true" : "false");
+                            break;
+                        default:
+                            break;
+                    }
+                } else {
+                    result[offset++] = *p;
+                    if (*p == '%' && *(p + 1) == '%') p++;
+                }
+            }
+            result[offset] = '\0';
+
+            Word result_word = {.type = WCHARP, .as_string = result};
+            xstack_push(&xpu->stack, result_word);
+
+            for (int i = 0; i < arg_count; i++) {
+                if (args[i].type == WCHARP && args[i].as_string != NULL) {
+                    free(args[i].as_string);
+                }
+            }
+            free(args);
+            free(format_word.as_string);
+            break;
         }
 
 
@@ -2520,25 +2602,25 @@ void execute_instruction(OrtaVM *vm, InstructionData *instr) {
 }
 
 unsigned char optimal_size(int64_t x) {
-    if (x < 0) { 
+    if (x < 0) {
         if (x >= SCHAR_MIN && x <= SCHAR_MAX) {
-            return (unsigned char)sizeof(signed char);
+            return (unsigned char) sizeof(signed char);
         } else if (x >= SHRT_MIN && x <= SHRT_MAX) {
-            return (unsigned char)sizeof(short);
+            return (unsigned char) sizeof(short);
         } else if (x >= INT_MIN && x <= INT_MAX) {
-            return (unsigned char)sizeof(int);
+            return (unsigned char) sizeof(int);
         } else {
-            return (unsigned char)sizeof(int64_t);
+            return (unsigned char) sizeof(int64_t);
         }
-    } else { 
+    } else {
         if (x <= UCHAR_MAX) {
-            return (unsigned char)sizeof(unsigned char);
+            return (unsigned char) sizeof(unsigned char);
         } else if (x <= USHRT_MAX) {
-            return (unsigned char)sizeof(unsigned short);
+            return (unsigned char) sizeof(unsigned short);
         } else if (x <= UINT_MAX) {
-            return (unsigned char)sizeof(unsigned int);
+            return (unsigned char) sizeof(unsigned int);
         } else {
-            return (unsigned char)sizeof(uint64_t);
+            return (unsigned char) sizeof(uint64_t);
         }
     }
 }
@@ -2548,16 +2630,16 @@ void set_flags(OrtaVM *vm) {
     for (size_t i = 0; i < vm->program.instructions_count; i++) {
         Instruction instr = vm->program.instructions[i].opcode;
         switch (instr) {
-            case IPUSH: 
-            case IPOP: 
+            case IPUSH:
+            case IPOP:
                 add_flag(vm, FLAG_STACK);
                 break;
             case IALLOC:
             case IREADMEM:
-            case IWRITEMEM: 
+            case IWRITEMEM:
                 add_flag(vm, FLAG_MEMORY);
                 break;
-            case IXCALL: 
+            case IXCALL:
                 add_flag(vm, FLAG_XCALL);
                 break;
         }
@@ -2591,7 +2673,7 @@ int create_xbin(OrtaVM *vm, const char *output_filename) {
 
         if (fwrite(&instr->opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error;
-        if (fwrite(&instr->line, sizeof(unsigned int), 1, fp) != 1) 
+        if (fwrite(&instr->line, sizeof(unsigned int), 1, fp) != 1)
             goto error;
 
         size_t operands_count = instr->operands.size;
@@ -2599,71 +2681,69 @@ int create_xbin(OrtaVM *vm, const char *output_filename) {
             goto error;
 
         for (size_t j = 0; j < operands_count; j++) {
-            char *operand = *(char **)vector_get(&instr->operands, j);
-            
+            char *operand = *(char **) vector_get(&instr->operands, j);
+
             if (is_register(operand)) {
-                char type = 'R'; 
+                char type = 'R';
                 if (fwrite(&type, sizeof(char), 1, fp) != 1)
                     goto error;
-                
+
                 XRegisters reg_id = register_name_to_enum(operand);
                 if (fwrite(&reg_id, sizeof(XRegisters), 1, fp) != 1)
                     goto error;
-            }
-			else if (is_number(operand)) {
-			    char type = 'N';
-			    if (fwrite(&type, sizeof(char), 1, fp) != 1)
-			        goto error;
-			    
-			    int64_t value = atoll(operand);  
-			    
-			    unsigned char size = optimal_size(value);
-			    if (fwrite(&size, sizeof(unsigned char), 1, fp) != 1)
-			        goto error;
-			    
-			    switch (size) {
-			        case sizeof(signed char):
-			            if (value < 0) {
-			                signed char sval = (signed char)value;
-			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
-			            } else {
-			                unsigned char uval = (unsigned char)value;
-			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
-			            }
-			            break;
-			        case sizeof(short):
-			            if (value < 0) {
-			                short sval = (short)value;
-			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
-			            } else {
-			                unsigned short uval = (unsigned short)value;
-			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
-			            }
-			            break;
-			        case sizeof(int):
-			            if (value < 0) {
-			                int sval = (int)value;
-			                if (fwrite(&sval, size, 1, fp) != 1) goto error;
-			            } else {
-			                unsigned int uval = (unsigned int)value;
-			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
-			            }
-			            break;
-			        case sizeof(int64_t):
-			            if (value < 0) {
-			                if (fwrite(&value, size, 1, fp) != 1) goto error;
-			            } else {
-			                uint64_t uval = (uint64_t)value;
-			                if (fwrite(&uval, size, 1, fp) != 1) goto error;
-			            }
-			            break;
-			    }
-			}                        
-            else {
-                char type = 'S'; 
+            } else if (is_number(operand)) {
+                char type = 'N';
                 if (fwrite(&type, sizeof(char), 1, fp) != 1)
                     goto error;
-                
+
+                int64_t value = atoll(operand);
+
+                unsigned char size = optimal_size(value);
+                if (fwrite(&size, sizeof(unsigned char), 1, fp) != 1)
+                    goto error;
+
+                switch (size) {
+                    case sizeof(signed char):
+                        if (value < 0) {
+                            signed char sval = (signed char) value;
+                            if (fwrite(&sval, size, 1, fp) != 1) goto error;
+                        } else {
+                            unsigned char uval = (unsigned char) value;
+                            if (fwrite(&uval, size, 1, fp) != 1) goto error;
+                        }
+                        break;
+                    case sizeof(short):
+                        if (value < 0) {
+                            short sval = (short) value;
+                            if (fwrite(&sval, size, 1, fp) != 1) goto error;
+                        } else {
+                            unsigned short uval = (unsigned short) value;
+                            if (fwrite(&uval, size, 1, fp) != 1) goto error;
+                        }
+                        break;
+                    case sizeof(int):
+                        if (value < 0) {
+                            int sval = (int) value;
+                            if (fwrite(&sval, size, 1, fp) != 1) goto error;
+                        } else {
+                            unsigned int uval = (unsigned int) value;
+                            if (fwrite(&uval, size, 1, fp) != 1) goto error;
+                        }
+                        break;
+                    case sizeof(int64_t):
+                        if (value < 0) {
+                            if (fwrite(&value, size, 1, fp) != 1) goto error;
+                        } else {
+                            uint64_t uval = (uint64_t) value;
+                            if (fwrite(&uval, size, 1, fp) != 1) goto error;
+                        }
+                        break;
+                }
+            } else {
+                char type = 'S';
+                if (fwrite(&type, sizeof(char), 1, fp) != 1)
+                    goto error;
+
                 size_t operand_len = strlen(operand);
                 if (fwrite(&operand_len, sizeof(size_t), 1, fp) != 1)
                     goto error;
@@ -2703,7 +2783,7 @@ error:
 void free_program_instructions(Program *program, size_t count) {
     for (size_t i = 0; i < count; i++) {
         for (size_t j = 0; j < program->instructions[i].operands.size; j++) {
-            char **operand_ptr = *(char ***)vector_get(&program->instructions[i].operands, j);
+            char **operand_ptr = *(char ***) vector_get(&program->instructions[i].operands, j);
             free(*operand_ptr);
         }
         vector_free(&program->instructions[i].operands);
@@ -2736,7 +2816,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
     if (fread(&filename_len, sizeof(size_t), 1, fp) != 1)
         goto error_close;
 
-    char *filename = (char *)malloc(filename_len + 1);
+    char *filename = (char *) malloc(filename_len + 1);
     if (!filename)
         goto error_close;
 
@@ -2752,7 +2832,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
     if (fread(&instructions_count, sizeof(size_t), 1, fp) != 1)
         goto error_close;
 
-    program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
+    program->instructions = (InstructionData *) malloc(sizeof(InstructionData) * instructions_count);
     if (!program->instructions)
         goto error_close;
 
@@ -2765,7 +2845,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
         if (fread(&opcode, sizeof(unsigned char), 1, fp) != 1)
             goto error_instructions;
 
-        unsigned int line; 
+        unsigned int line;
         if (fread(&line, sizeof(unsigned int), 1, fp) != 1)
             goto error_instructions;
 
@@ -2774,7 +2854,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
             goto error_instructions;
 
         Vector operands;
-        vector_init(&operands, 10, sizeof(char*));
+        vector_init(&operands, 10, sizeof(char *));
 
         size_t j;
         for (j = 0; j < operands_count; j++) {
@@ -2783,84 +2863,82 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             char *persistent_operand = NULL;
-            
+
             if (type == 'R') {
                 XRegisters reg_id;
                 if (fread(&reg_id, sizeof(XRegisters), 1, fp) != 1) {
                     vector_free(&operands);
                     goto error_instructions;
                 }
-                
+
                 for (int k = 0; k < REG_COUNT; k++) {
                     if (register_table[k].id == reg_id) {
                         persistent_operand = strdup(register_table[k].name);
                         break;
                     }
                 }
-            }
-			else if (type == 'N') {
-			    unsigned char size;
-			    if (fread(&size, sizeof(unsigned char), 1, fp) != 1) {
-			        vector_free(&operands);
-			        goto error_instructions;
-			    }
-			    
-			    int64_t value = 0;
-			    
-			    switch (size) {
-			        case sizeof(signed char): {
-			            if (fread(&value, size, 1, fp) != 1) {
-			                vector_free(&operands);
-			                goto error_instructions;
-			            }
-			            if (value & 0x80) { 
-			                value |= ~0xFF; 
-			            }
-			            break;
-			        }
-			        case sizeof(short): {
-			            if (fread(&value, size, 1, fp) != 1) {
-			                vector_free(&operands);
-			                goto error_instructions;
-			            }
-			            if (value & 0x8000) {
-			                value |= ~0xFFFF;
-			            }
-			            break;
-			        }
-			        case sizeof(int): {
-			            if (fread(&value, size, 1, fp) != 1) {
-			                vector_free(&operands);
-			                goto error_instructions;
-			            }
-			            if (value & 0x80000000) {
-			                value |= ~0xFFFFFFFF;
-			            }
-			            break;
-			        }
-			        case sizeof(int64_t): {
-			            if (fread(&value, size, 1, fp) != 1) {
-			                vector_free(&operands);
-			                goto error_instructions;
-			            }
-			            break;
-			        }
-			    }
-			    
-			    char num_str[32];
-			    snprintf(num_str, sizeof(num_str), "%" PRId64, value);  
-			    persistent_operand = strdup(num_str);
-			}
-            else if (type == 'S') {
+            } else if (type == 'N') {
+                unsigned char size;
+                if (fread(&size, sizeof(unsigned char), 1, fp) != 1) {
+                    vector_free(&operands);
+                    goto error_instructions;
+                }
+
+                int64_t value = 0;
+
+                switch (size) {
+                    case sizeof(signed char): {
+                        if (fread(&value, size, 1, fp) != 1) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        if (value & 0x80) {
+                            value |= ~0xFF;
+                        }
+                        break;
+                    }
+                    case sizeof(short): {
+                        if (fread(&value, size, 1, fp) != 1) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        if (value & 0x8000) {
+                            value |= ~0xFFFF;
+                        }
+                        break;
+                    }
+                    case sizeof(int): {
+                        if (fread(&value, size, 1, fp) != 1) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        if (value & 0x80000000) {
+                            value |= ~0xFFFFFFFF;
+                        }
+                        break;
+                    }
+                    case sizeof(int64_t): {
+                        if (fread(&value, size, 1, fp) != 1) {
+                            vector_free(&operands);
+                            goto error_instructions;
+                        }
+                        break;
+                    }
+                }
+
+                char num_str[32];
+                snprintf(num_str, sizeof(num_str), "%" PRId64, value);
+                persistent_operand = strdup(num_str);
+            } else if (type == 'S') {
                 size_t operand_len;
                 if (fread(&operand_len, sizeof(size_t), 1, fp) != 1) {
                     vector_free(&operands);
                     goto error_instructions;
                 }
 
-                char *temp_operand = (char *)malloc(operand_len + 1);
+                char *temp_operand = (char *) malloc(operand_len + 1);
                 if (!temp_operand) {
                     vector_free(&operands);
                     goto error_instructions;
@@ -2872,16 +2950,16 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
                     goto error_instructions;
                 }
                 temp_operand[operand_len] = '\0';
-                
+
                 persistent_operand = strdup(temp_operand);
                 free(temp_operand);
             }
-            
+
             if (!persistent_operand) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             vector_push(&operands, &persistent_operand);
         }
 
@@ -2894,7 +2972,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
     if (fread(&labels_count, sizeof(size_t), 1, fp) != 1)
         goto error_instructions;
 
-    program->labels = (Label *)malloc(sizeof(Label) * labels_count);
+    program->labels = (Label *) malloc(sizeof(Label) * labels_count);
     if (!program->labels)
         goto error_instructions;
 
@@ -2906,7 +2984,7 @@ int load_xbin(OrtaVM *vm, const char *input_filename) {
         if (fread(&name_len, sizeof(size_t), 1, fp) != 1)
             goto error_labels;
 
-        char *name = (char *)malloc(name_len + 1);
+        char *name = (char *) malloc(name_len + 1);
         if (!name)
             goto error_labels;
 
@@ -2961,7 +3039,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
     if (offset + filename_len > data_size)
         return 0;
-    char *filename = (char *)malloc(filename_len + 1);
+    char *filename = (char *) malloc(filename_len + 1);
     if (!filename)
         return 0;
     memcpy(filename, data + offset, filename_len);
@@ -2976,7 +3054,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     memcpy(&instructions_count, data + offset, sizeof(size_t));
     offset += sizeof(size_t);
 
-    program->instructions = (InstructionData *)malloc(sizeof(InstructionData) * instructions_count);
+    program->instructions = (InstructionData *) malloc(sizeof(InstructionData) * instructions_count);
     if (!program->instructions)
         return 0;
 
@@ -2990,8 +3068,8 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             goto error_instructions;
         memcpy(&opcode, data + offset, sizeof(unsigned char));
         offset += sizeof(unsigned char);
-        
-        unsigned int line; 
+
+        unsigned int line;
         if (offset + sizeof(unsigned int) > data_size)
             goto error_instructions;
         memcpy(&line, data + offset, sizeof(unsigned int));
@@ -3004,7 +3082,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
         offset += sizeof(size_t);
 
         Vector operands;
-        vector_init(&operands, 10, sizeof(char*));
+        vector_init(&operands, 10, sizeof(char *));
 
         size_t j;
         for (j = 0; j < operands_count; j++) {
@@ -3015,10 +3093,10 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
             }
             memcpy(&type, data + offset, sizeof(char));
             offset += sizeof(char);
-            
+
             char *persistent_operand = NULL;
-            
-            if (type == 'R') { 
+
+            if (type == 'R') {
                 XRegisters reg_id;
                 if (offset + sizeof(XRegisters) > data_size) {
                     vector_free(&operands);
@@ -3026,15 +3104,14 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                 }
                 memcpy(&reg_id, data + offset, sizeof(XRegisters));
                 offset += sizeof(XRegisters);
-                
+
                 for (int k = 0; k < REG_COUNT; k++) {
                     if (register_table[k].id == reg_id) {
                         persistent_operand = strdup(register_table[k].name);
                         break;
                     }
                 }
-            }
-            else if (type == 'N') {
+            } else if (type == 'N') {
                 unsigned char size;
                 if (offset + sizeof(unsigned char) > data_size) {
                     vector_free(&operands);
@@ -3042,14 +3119,14 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                 }
                 memcpy(&size, data + offset, sizeof(unsigned char));
                 offset += sizeof(unsigned char);
-                
+
                 int64_t value = 0;
-                
+
                 if (offset + size > data_size) {
                     vector_free(&operands);
                     goto error_instructions;
                 }
-                
+
                 switch (size) {
                     case sizeof(signed char): {
                         if (offset + size > data_size) {
@@ -3060,7 +3137,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                         unsigned char uval = 0;
                         memcpy(&sval, data + offset, size);
                         memcpy(&uval, data + offset, size);
-                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        value = (sval < 0) ? (int64_t) sval : (int64_t) uval;
                         break;
                     }
                     case sizeof(short): {
@@ -3072,7 +3149,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                         unsigned short uval = 0;
                         memcpy(&sval, data + offset, size);
                         memcpy(&uval, data + offset, size);
-                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        value = (sval < 0) ? (int64_t) sval : (int64_t) uval;
                         break;
                     }
                     case sizeof(int): {
@@ -3084,7 +3161,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                         unsigned int uval = 0;
                         memcpy(&sval, data + offset, size);
                         memcpy(&uval, data + offset, size);
-                        value = (sval < 0) ? (int64_t)sval : (int64_t)uval;
+                        value = (sval < 0) ? (int64_t) sval : (int64_t) uval;
                         break;
                     }
                     case sizeof(int64_t): {
@@ -3096,17 +3173,16 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                         uint64_t uval = 0;
                         memcpy(&sval, data + offset, size);
                         memcpy(&uval, data + offset, size);
-                        value = (sval < 0) ? sval : (int64_t)uval;
+                        value = (sval < 0) ? sval : (int64_t) uval;
                         break;
                     }
                 }
                 offset += size;
-                
+
                 char num_str[32];
                 snprintf(num_str, sizeof(num_str), "%" PRId64, value);
                 persistent_operand = strdup(num_str);
-            }
-            else if (type == 'S') { 
+            } else if (type == 'S') {
                 size_t operand_len;
                 if (offset + sizeof(size_t) > data_size) {
                     vector_free(&operands);
@@ -3119,7 +3195,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                     vector_free(&operands);
                     goto error_instructions;
                 }
-                char *temp_operand = (char *)malloc(operand_len + 1);
+                char *temp_operand = (char *) malloc(operand_len + 1);
                 if (!temp_operand) {
                     vector_free(&operands);
                     goto error_instructions;
@@ -3128,16 +3204,16 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
                 memcpy(temp_operand, data + offset, operand_len);
                 temp_operand[operand_len] = '\0';
                 offset += operand_len;
-                
+
                 persistent_operand = strdup(temp_operand);
                 free(temp_operand);
             }
-            
+
             if (!persistent_operand) {
                 vector_free(&operands);
                 goto error_instructions;
             }
-            
+
             vector_push(&operands, &persistent_operand);
         }
 
@@ -3152,7 +3228,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
     memcpy(&labels_count, data + offset, sizeof(size_t));
     offset += sizeof(size_t);
 
-    program->labels = (Label *)malloc(sizeof(Label) * labels_count);
+    program->labels = (Label *) malloc(sizeof(Label) * labels_count);
     if (!program->labels)
         goto error_instructions;
 
@@ -3168,7 +3244,7 @@ int load_bytecode_from_memory(OrtaVM *vm, const unsigned char *data, size_t data
 
         if (offset + name_len > data_size)
             goto error_labels;
-        char *name = (char *)malloc(name_len + 1);
+        char *name = (char *) malloc(name_len + 1);
         if (!name)
             goto error_labels;
 
@@ -3206,8 +3282,7 @@ void execute_program(OrtaVM *vm) {
     if (!find_label(&vm->program, OENTRY, &entry)) {
         xpu->ip = 0;
         OERROR(stderr, "Could not find label '%s' starting at 0\n", OENTRY);
-    }
-    else xpu->ip = entry;
+    } else xpu->ip = entry;
     int running = 1;
     while (running && !vm->program.halted) {
         if (vm->xpu.ip >= vm->program.instructions_count) {
@@ -3224,12 +3299,18 @@ void execute_program(OrtaVM *vm) {
 
 static void print_word(Word w) {
     switch (w.type) {
-        case WINT: printf("INT: %d", w.as_int); break;
-        case WFLOAT: printf("FLOAT: %f", w.as_float); break;
-        case WCHARP: printf("STRING: %s", w.as_string); break;
-        case W_CHAR: printf("CHAR: %c", w.as_char); break;
-        case WPOINTER: printf("POINTER: %p", w.as_pointer); break;
-        case WBOOL: printf("BOOL: %s", w.as_bool ? "true" : "false"); break;
+        case WINT: printf("INT: %d", w.as_int);
+            break;
+        case WFLOAT: printf("FLOAT: %f", w.as_float);
+            break;
+        case WCHARP: printf("STRING: %s", w.as_string);
+            break;
+        case W_CHAR: printf("CHAR: %c", w.as_char);
+            break;
+        case WPOINTER: printf("POINTER: %p", w.as_pointer);
+            break;
+        case WBOOL: printf("BOOL: %s", w.as_bool ? "true" : "false");
+            break;
         default: printf("UNKNOWN");
     }
     printf("\n");

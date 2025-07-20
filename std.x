@@ -17,8 +17,6 @@ _system:
     xcall
     ret
 
-        ; cast latest stack element to different type
-        ; rbx = type as str
 ;
 ; REGISTERS
 ;
@@ -58,7 +56,7 @@ cregs:
     mov 0 r9
     ret
 
-; Reserver n bytes
+; Reserve n bytes
 ; rax = n
 ; returns rbx a string with n bytes (char sequence and char is 1 byte)
 rb: 
@@ -78,6 +76,9 @@ rb:
     jmpif rb_loop
     ret
 
+; Call external function from library
+; Args per stack: <lib_path> <function name>
+; Or via call syntax: call callExtern <lib_path> <function name>
 callExtern:
     mov 3 rax
     pop rbx
@@ -85,6 +86,15 @@ callExtern:
     xcall
     ret
 
+; Check if running on windows
+isWindows:
+    ovm platform
+    push "windows"
+    eq
 
-
+; Check if running on windows
+isUnix:
+    ovm platform
+    push "unix"
+    eq
 
