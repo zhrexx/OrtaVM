@@ -5,6 +5,10 @@ externCallTest:
     print
     ret
 
+.abc:
+    print "Hello, World"
+    ret
+
 __entry:
     call externCallTest
     call chooseLib "./libx.so" "./libx.dll"

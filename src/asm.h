@@ -52,6 +52,7 @@ typedef struct {
 typedef struct {
     char local_name[64];
     char global_name[128];
+    int is_resolved;
 } LocalLabelMapping;
 
 typedef struct {
@@ -66,6 +67,7 @@ typedef struct {
     size_t local_capacity;
     char current_global_label[128];
     int local_counter;
+    int preprocessing_depth;
 } Preprocessor;
 
 static Lexer* lexer_create(const char *input) {
@@ -150,13 +152,30 @@ static Token* lexer_read_identifier(Lexer *lexer) {
     return token_create(TOKEN_IDENTIFIER, buffer, start_line, start_column);
 }
 
+static Token* lexer_read_local_identifier(Lexer *lexer) {
+    size_t start_line = lexer->line;
+    size_t start_column = lexer->column;
+    char buffer[256];
+    size_t i = 0;
+
+    buffer[i++] = lexer_advance(lexer);
+
+    while (is_identifier_char(lexer_peek(lexer)) && i < sizeof(buffer) - 1) {
+        buffer[i++] = lexer_advance(lexer);
+    }
+    buffer[i] = '\0';
+
+    return token_create(TOKEN_IDENTIFIER, buffer, start_line, start_column);
+}
+
 static Token* lexer_read_number(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
     size_t i = 0;
 
-    if (lexer_peek(lexer) == '0' && (lexer->input[lexer->pos + 1] == 'x' || lexer->input[lexer->pos + 1] == 'X')) {
+    if (lexer_peek(lexer) == '0' && lexer->pos + 1 < lexer->length &&
+        (lexer->input[lexer->pos + 1] == 'x' || lexer->input[lexer->pos + 1] == 'X')) {
         buffer[i++] = lexer_advance(lexer);
         buffer[i++] = lexer_advance(lexer);
         while (isxdigit(lexer_peek(lexer)) && i < sizeof(buffer) - 1) {
@@ -277,26 +296,20 @@ static Token* lexer_next_token(Lexer *lexer) {
 
     if (is_identifier_start(c)) {
         Token *token = lexer_read_identifier(lexer);
-
         if (lexer_peek(lexer) == ':') {
             lexer_advance(lexer);
-            if (token->value[0] == '.') {
-                token->type = TOKEN_LOCAL_LABEL;
-            } else {
-                token->type = TOKEN_LABEL;
-            }
+            token->type = TOKEN_LABEL;
         }
-
         return token;
     }
 
     if (c == '.') {
-        Token *token = lexer_read_identifier(lexer);
+        Token *token = lexer_read_local_identifier(lexer);
         if (lexer_peek(lexer) == ':') {
             lexer_advance(lexer);
             token->type = TOKEN_LOCAL_LABEL;
         } else {
-            token->type = TOKEN_LOCAL_LABEL;
+            token->type = TOKEN_IDENTIFIER;
         }
         return token;
     }
@@ -313,22 +326,26 @@ static TokenStream* tokenize(const char *input) {
     stream->pos = 0;
 
     Lexer *lexer = lexer_create(input);
+    Token *token;
 
-    while (1) {
-        Token *token = lexer_next_token(lexer);
-
+    while ((token = lexer_next_token(lexer))->type != TOKEN_EOF) {
         if (stream->count >= stream->capacity) {
             stream->capacity *= 2;
             stream->tokens = realloc(stream->tokens, sizeof(Token) * stream->capacity);
         }
 
-        stream->tokens[stream->count++] = *token;
+        stream->tokens[stream->count] = *token;
+        stream->count++;
         free(token);
-
-        if (stream->tokens[stream->count - 1].type == TOKEN_EOF) {
-            break;
-        }
     }
+
+    if (stream->count >= stream->capacity) {
+        stream->capacity *= 2;
+        stream->tokens = realloc(stream->tokens, sizeof(Token) * stream->capacity);
+    }
+    stream->tokens[stream->count] = *token;
+    stream->count++;
+    free(token);
 
     lexer_free(lexer);
     return stream;
@@ -378,6 +395,7 @@ static Preprocessor* preprocessor_create() {
     pp->local_capacity = 128;
     strcpy(pp->current_global_label, "__global");
     pp->local_counter = 0;
+    pp->preprocessing_depth = 0;
     return pp;
 }
 
@@ -436,20 +454,32 @@ static char* preprocessor_get_local_label_global_name(Preprocessor *pp, const ch
     snprintf(mapping->global_name, sizeof(mapping->global_name), "%s__local_%d",
              pp->current_global_label, pp->local_counter++);
 
+    mapping->is_resolved = 1;
+
     return mapping->global_name;
 }
 
 static void preprocessor_update_global_context(Preprocessor *pp, const char *label_name) {
     strncpy(pp->current_global_label, label_name, sizeof(pp->current_global_label) - 1);
     pp->current_global_label[sizeof(pp->current_global_label) - 1] = '\0';
+
+    pp->local_count = 0;
+    pp->local_counter = 0;
 }
 
 static char* preprocessor_expand_defines(Preprocessor *pp, const char *text) {
-    static char result[4096];
+    if (pp->preprocessing_depth > 10) {
+        return strdup(text);
+    }
+
+    pp->preprocessing_depth++;
+
+    char *result = malloc(4096);
     const char *p = text;
     size_t i = 0;
+    const size_t max_len = 4095;
 
-    while (*p && i < sizeof(result) - 1) {
+    while (*p && i < max_len) {
         int replaced = 0;
 
         for (size_t j = 0; j < pp->count; j++) {
@@ -460,7 +490,7 @@ static char* preprocessor_expand_defines(Preprocessor *pp, const char *text) {
                 char next_char = p[name_len];
                 if (!is_identifier_char(next_char)) {
                     size_t value_len = strlen(def->value);
-                    if (i + value_len < sizeof(result) - 1) {
+                    if (i + value_len < max_len) {
                         strcpy(result + i, def->value);
                         i += value_len;
                         p += name_len;
@@ -477,6 +507,7 @@ static char* preprocessor_expand_defines(Preprocessor *pp, const char *text) {
     }
 
     result[i] = '\0';
+    pp->preprocessing_depth--;
     return result;
 }
 
@@ -497,15 +528,26 @@ static char* read_file(const char *filename) {
 }
 
 static char* preprocess_file(Preprocessor *pp, const char *filename) {
+    if (pp->preprocessing_depth > 5) {
+        fprintf(stderr, "Warning: Include depth limit reached for %s\n", filename);
+        return strdup("");
+    }
+
+    pp->preprocessing_depth++;
+
     char *content = read_file(filename);
-    if (!content) return NULL;
+    if (!content) {
+        pp->preprocessing_depth--;
+        return NULL;
+    }
 
     TokenStream *stream = tokenize(content);
     free(content);
 
-    static char result[8192];
+    char *result = malloc(8192);
     size_t pos = 0;
     int on_new_line = 1;
+    const size_t max_len = 8191;
 
     for (size_t i = 0; i < stream->count; i++) {
         Token *token = &stream->tokens[i];
@@ -523,7 +565,7 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
                 if (sscanf(token->value + 8, " \"%255[^\"]\"", include_file) == 1 ||
                     sscanf(token->value + 8, " <%255[^>]>", include_file) == 1) {
                     char *included = preprocess_file(pp, include_file);
-                    if (included && pos + strlen(included) < sizeof(result) - 1) {
+                    if (included && pos + strlen(included) < max_len) {
                         strcpy(result + pos, included);
                         pos += strlen(included);
                         free(included);
@@ -534,7 +576,7 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
         } else if (token->type == TOKEN_COMMENT) {
             continue;
         } else if (token->type == TOKEN_NEWLINE) {
-            if (pos < sizeof(result) - 1) {
+            if (pos < max_len) {
                 result[pos++] = '\n';
             }
             on_new_line = 1;
@@ -542,38 +584,39 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
             preprocessor_update_global_context(pp, token->value);
 
             char *expanded = preprocessor_expand_defines(pp, token->value);
-            if (!on_new_line && pos < sizeof(result) - 1) {
+            if (!on_new_line && pos < max_len) {
                 result[pos++] = ' ';
             }
-            if (pos + strlen(expanded) < sizeof(result) - 1) {
+            if (pos + strlen(expanded) < max_len) {
                 strcpy(result + pos, expanded);
                 pos += strlen(expanded);
             }
-            if (pos < sizeof(result) - 1) {
+            if (pos < max_len) {
                 result[pos++] = ':';
             }
+            free(expanded);
             on_new_line = 0;
         } else if (token->type == TOKEN_LOCAL_LABEL) {
             char *global_name = preprocessor_get_local_label_global_name(pp, token->value);
 
-            if (!on_new_line && pos < sizeof(result) - 1) {
+            if (!on_new_line && pos < max_len) {
                 result[pos++] = ' ';
             }
-            if (pos + strlen(global_name) < sizeof(result) - 1) {
+            if (pos + strlen(global_name) < max_len) {
                 strcpy(result + pos, global_name);
                 pos += strlen(global_name);
             }
-            if (pos < sizeof(result) - 1) {
+            if (pos < max_len) {
                 result[pos++] = ':';
             }
             on_new_line = 0;
-        } else if (token->type == TOKEN_IDENTIFIER && token->value[0] == '.') {
+        } else if (token->type == TOKEN_IDENTIFIER && token->value && token->value[0] == '.') {
             char *global_name = preprocessor_get_local_label_global_name(pp, token->value);
 
-            if (!on_new_line && pos < sizeof(result) - 1) {
+            if (!on_new_line && pos < max_len) {
                 result[pos++] = ' ';
             }
-            if (pos + strlen(global_name) < sizeof(result) - 1) {
+            if (pos + strlen(global_name) < max_len) {
                 strcpy(result + pos, global_name);
                 pos += strlen(global_name);
             }
@@ -581,13 +624,14 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
         } else {
             if (token->value) {
                 char *expanded = preprocessor_expand_defines(pp, token->value);
-                if (!on_new_line && pos < sizeof(result) - 1) {
+                if (!on_new_line && pos < max_len) {
                     result[pos++] = ' ';
                 }
-                if (pos + strlen(expanded) < sizeof(result) - 1) {
+                if (pos + strlen(expanded) < max_len) {
                     strcpy(result + pos, expanded);
                     pos += strlen(expanded);
                 }
+                free(expanded);
             }
             on_new_line = 0;
         }
@@ -595,8 +639,9 @@ static char* preprocess_file(Preprocessor *pp, const char *filename) {
 
     result[pos] = '\0';
     token_stream_free(stream);
+    pp->preprocessing_depth--;
 
-    return strdup(result);
+    return result;
 }
 
 Instruction parse_instruction(const char *instruction) {
