@@ -8,10 +8,10 @@
 #include "config.h"
 #include "asm.h"
 
-#ifdef WIN32 
+#ifdef WIN32
 #include <windows.h>
-#else 
-#include <unistd.h> 
+#else
+#include <unistd.h>
 #endif
 
 typedef struct {
@@ -22,14 +22,14 @@ typedef struct {
     bool debug;
     bool notdeletepreprocessed;
     bool only_compile;
-    const char* input_file;
+    const char *input_file;
 } ProgramOptions;
 
 void print_usage(const char *program_name) {
     printf("%s%s%s%s\n", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET);
-    printf("\n%s%sUSAGE: %s %s<program.x|program.xbin>%s [options]\n", 
+    printf("\n%s%sUSAGE: %s %s<program.x|program.xbin>%s [options]\n",
            COLOR_BOLD, COLOR_MAGENTA, program_name, COLOR_BLUE, COLOR_RESET);
-    
+
     printf("\n%s%sOPTIONS:%s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
     printf("  %s-h, --help%s           Display this help message\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--nopreproc%s          Disable source file preprocessing\n", COLOR_BLUE, COLOR_RESET);
@@ -38,7 +38,7 @@ void print_usage(const char *program_name) {
     printf("  %s--only-compile%s       Only compiles no run\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--version%s            Display version information\n", COLOR_BLUE, COLOR_RESET);
     printf("  %s--debug%s              Show detailed execution information\n", COLOR_BLUE, COLOR_RESET);
-    
+
     printf("\n%s%sEXAMPLES:%s\n", COLOR_BOLD, COLOR_MAGENTA, COLOR_RESET);
     printf("  %s example.x           %s# Run source with preprocessing\n", program_name, COLOR_GREEN);
     printf("  %s example.xbin        %s# Run pre-compiled bytecode\n", program_name, COLOR_GREEN);
@@ -46,11 +46,11 @@ void print_usage(const char *program_name) {
 
 char *expand_path(const char *path) {
     if (path[0] == '~') {
-        #ifndef _WIN32
+#ifndef _WIN32
         const char *home = getenv("HOME");
-        #else 
+#else
         const char *home = getenv("USERPROFILE");
-        #endif
+#endif
         if (!home) return NULL;
 
         size_t len = strlen(home) + strlen(path);
@@ -120,19 +120,19 @@ ProgramOptions parse_arguments(int argc, char **argv) {
         .only_compile = false,
         .input_file = NULL
     };
-    
+
     if (argc < 2) {
         options.help = true;
         return options;
     }
-    
+
     if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         options.help = true;
         return options;
     } else if (argv[1][0] != '-') {
         options.input_file = argv[1];
     }
-    
+
     for (int i = (options.input_file ? 2 : 1); i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             options.help = true;
@@ -152,7 +152,7 @@ ProgramOptions parse_arguments(int argc, char **argv) {
             options.input_file = argv[i];
         }
     }
-    
+
     return options;
 }
 
@@ -162,40 +162,40 @@ int main(int argc, char **argv) {
     }
 
     ProgramOptions options = parse_arguments(argc, argv);
-    
+
     if (options.help) {
         print_usage(argv[0]);
         return EXIT_SUCCESS;
     }
-    
+
     if (options.show_version) {
         printf("Orta v%.1f\n", _VERSION);
         printf("%s\n", GITHASH);
         return EXIT_SUCCESS;
     }
-    
+
     if (options.input_file == NULL) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }
-    
+
     if (options.debug) {
         print_progress("INIT", "Initializing virtual machine");
         print_info(options.input_file);
     }
-    
+
     OrtaVM vm = ortavm_create(options.input_file);
-    
+
     const char *filename = options.input_file;
     size_t len = strlen(filename);
     bool is_bytecode = false;
-    
+
     if (len > 5 && strcmp(filename + len - 5, ".xbin") == 0) {
         is_bytecode = true;
         if (options.debug) {
             print_progress("LOAD", "Loading compiled bytecode");
         }
-        
+
         if (!load_xbin(&vm, filename)) {
             print_error("Failed to load bytecode file");
             ortavm_free(&vm);
@@ -206,20 +206,20 @@ int main(int argc, char **argv) {
             if (options.debug) {
                 print_progress("PREPROC", "Preprocessing source file");
             }
-            
+
             char preprocessed_filename[256];
-            snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%.*s.pre.x", (int)(len - 2), filename);
-            
-            if (!orta_preprocess((char*)filename, preprocessed_filename)) {
+            snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%.*s.pre.x", (int) (len - 2), filename);
+
+            if (!orta_preprocess((char *) filename, preprocessed_filename)) {
                 print_error("Preprocessing failed");
                 ortavm_free(&vm);
                 return EXIT_FAILURE;
             }
-            
+
             if (options.debug) {
                 print_progress("PARSE", "Parsing preprocessed source");
             }
-            
+
             if (!parse_program(&vm, preprocessed_filename)) {
                 print_error("Failed to parse preprocessed source");
                 ortavm_free(&vm);
@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
                 if (resolved && _fullpath(resolved, preprocessed_filename, PATH_MAX)) {
                     _unlink(resolved);
                 }
-#else 
+#else
                 char *resolved = realpath(preprocessed_filename, NULL);
                 unlink(resolved);
 #endif
@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
             if (options.debug) {
                 print_progress("PARSE", "Parsing source program (preprocessing disabled)");
             }
-            
+
             if (!parse_program(&vm, filename)) {
                 print_error("Failed to parse source program");
                 ortavm_free(&vm);
@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
         ortavm_free(&vm);
         return EXIT_FAILURE;
     }
-    
+
     if (options.debug) {
         print_progress("EXEC", "Executing program instructions");
     }
@@ -261,26 +261,26 @@ int main(int argc, char **argv) {
         time_t start = time(NULL);
         execute_program(&vm);
         time_t end = time(NULL);
-    
-        printf("EXECUTION COMPLETED IN %ds\n", (int)(end - start));
+
+        printf("EXECUTION COMPLETED IN %ds\n", (int) (end - start));
 
         if (options.debug) {
             printf("\nSTACK STATE\n");
             print_stack(&vm.xpu);
-        
+
             printf("\nREGISTERS STATE\n");
             print_registers(&vm.xpu);
         }
     }
     if (!is_bytecode && !options.disable_compile) {
         char bytecode_filename[256];
-        snprintf(bytecode_filename, sizeof(bytecode_filename), "%.*s.xbin", (int)(len - 2), filename);
-        
+        snprintf(bytecode_filename, sizeof(bytecode_filename), "%.*s.xbin", (int) (len - 2), filename);
+
         if (options.debug) {
             print_progress("COMPILE", "Creating bytecode file");
             printf(" %s%s%s\n", COLOR_BLUE, bytecode_filename, COLOR_RESET);
         }
-        
+
         if (create_xbin(&vm, bytecode_filename)) {
             if (options.debug) {
                 print_success("Bytecode created successfully");

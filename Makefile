@@ -5,7 +5,7 @@ CFLAGS = -g -ggdb ./src/libs/xthread.c
 LDFLAGS = -L. -lm
 SRCDIR = src
 BINDIR := bin
-TARGETS = orta fcfx xd repl xtoa nyva xbd
+TARGETS = orta fcfx xd repl xtoa nyva xbd disassembler
 
 PCOUNT = 0
 GIT_HASH := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -41,6 +41,8 @@ nyva: $(SRCDIR)/nyva.c
 xbd: $(SRCDIR)/xbd.c
 	$(COMPILE)
 
+disassembler: $(SRCDIR)/disassembler.c
+	$(COMPILE)
 
 liborta: bin/liborta.so bin/liborta.a
 

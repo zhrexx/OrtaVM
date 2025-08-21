@@ -13,48 +13,48 @@ Instruction parse_instruction(const char *instruction) {
             return instructions[i].instruction;
         }
     }
-    return (Instruction)-1;
+    return (Instruction) -1;
 }
 
-char* readline(const char* prompt) {
+char *readline(const char *prompt) {
     printf("%s", prompt);
     fflush(stdout);
-    
-    char* buffer = malloc(MAX_INPUT_LENGTH);
+
+    char *buffer = malloc(MAX_INPUT_LENGTH);
     if (!buffer) return NULL;
-    
+
     if (fgets(buffer, MAX_INPUT_LENGTH, stdin) == NULL) {
         free(buffer);
         return NULL;
     }
-    
+
     size_t len = strlen(buffer);
-    if (len > 0 && buffer[len-1] == '\n') {
-        buffer[len-1] = '\0';
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
     }
-    
+
     return buffer;
 }
 
 #define HISTORY_SIZE 100
-static char* history[HISTORY_SIZE] = {0};
+static char *history[HISTORY_SIZE] = {0};
 static int history_count = 0;
 
-void add_to_history(const char* line) {
+void add_to_history(const char *line) {
     if (!line || strlen(line) == 0) return;
-    
-    if (history_count > 0 && strcmp(history[history_count-1], line) == 0) {
+
+    if (history_count > 0 && strcmp(history[history_count - 1], line) == 0) {
         return;
     }
-    
+
     if (history_count == HISTORY_SIZE) {
         free(history[0]);
         for (int i = 1; i < HISTORY_SIZE; i++) {
-            history[i-1] = history[i];
+            history[i - 1] = history[i];
         }
         history_count--;
     }
-    
+
     history[history_count++] = strdup(line);
 }
 
@@ -73,7 +73,7 @@ bool parse_line(OrtaVM *vm, const char *line) {
     }
     Vector tokens = split_to_vector(trimmed, " ");
     free(trimmed);
-    
+
     for (size_t i = 0; i < tokens.size; i++) {
         char *token = vector_get_str(&tokens, i);
         if (token != NULL && starts_with(";", token)) {
@@ -130,11 +130,11 @@ bool parse_line(OrtaVM *vm, const char *line) {
 
 void display_help() {
     printf("Available commands:\n"
-           "  exit      - Quit the REPL\n"
-           "  stack     - Display the current stack\n"
-           "  registers - Display register values\n"
-           "  history   - Show command history\n"
-           "  help      - Show this help message\n");
+        "  exit      - Quit the REPL\n"
+        "  stack     - Display the current stack\n"
+        "  registers - Display register values\n"
+        "  history   - Show command history\n"
+        "  help      - Show this help message\n");
 }
 
 int main(int argc, char **argv) {
@@ -145,33 +145,28 @@ int main(int argc, char **argv) {
         output = argv[1];
     }
 
-    printf("%s%s%s%s", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET); 
+    printf("%s%s%s%s", COLOR_BOLD, COLOR_CYAN, LOGO, COLOR_RESET);
     printf("OrtaVM REPL (type 'help' for commands)\n");
-    
+
     while ((line = readline("> ")) != NULL) {
         if (strcmp(line, "exit") == 0) {
             free(line);
             break;
         }
-        
+
         if (strcmp(line, "stack") == 0) {
             print_stack(&vm.xpu);
-        }
-        else if (strcmp(line, "registers") == 0) {
+        } else if (strcmp(line, "registers") == 0) {
             print_registers(&vm.xpu);
-        }
-        else if (strcmp(line, "history") == 0) {
+        } else if (strcmp(line, "history") == 0) {
             for (int i = 0; i < history_count; i++) {
                 printf("%3d: %s\n", i + 1, history[i]);
             }
-        }
-        else if (strcmp(line, "help") == 0) {
+        } else if (strcmp(line, "help") == 0) {
             display_help();
-        }
-        else if (strcmp(line, "save") == 0) {
+        } else if (strcmp(line, "save") == 0) {
             create_xbin(&vm, output);
-        }
-        else if (strlen(line) > 0) {
+        } else if (strlen(line) > 0) {
             if (!parse_line(&vm, line)) {
                 fprintf(stderr, "Syntax error.\n");
             } else {
@@ -181,10 +176,10 @@ int main(int argc, char **argv) {
             }
             add_to_history(line);
         }
-        
+
         free(line);
     }
-    
+
     free_history();
     ortavm_free(&vm);
     return 0;

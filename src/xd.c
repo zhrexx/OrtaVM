@@ -32,15 +32,15 @@ void print_prompt() {
 
 char **split_args(const char *input, int *count) {
     Vector v;
-    vector_init(&v, 8, sizeof(char*));
-    char *token = strtok((char*)input, " ");
+    vector_init(&v, 8, sizeof(char *));
+    char *token = strtok((char *) input, " ");
     while (token) {
         char *copy = strdup(token);
         vector_push(&v, &copy);
         token = strtok(NULL, " ");
     }
     *count = v.size;
-    return (char**)v.data;
+    return (char **) v.data;
 }
 
 void add_breakpoint(size_t address) {
@@ -64,14 +64,14 @@ void list_breakpoints() {
         printf("No breakpoints set\n");
         return;
     }
-    
+
     printf("%sBreakpoints:%s\n", COLOR_BOLD, COLOR_RESET);
     printf("Idx | Address\n");
     printf("----------------\n");
-    
+
     for (int i = 0; i < bp_count; i++) {
-        printf("%s%3d%s | 0x%-8zx\n", 
-               is_breakpoint(vm.xpu.ip) && breakpoints[i] == vm.xpu.ip ? COLOR_RED : "", 
+        printf("%s%3d%s | 0x%-8zx\n",
+               is_breakpoint(vm.xpu.ip) && breakpoints[i] == vm.xpu.ip ? COLOR_RED : "",
                i, COLOR_RESET, breakpoints[i]);
     }
     printf("\n");
@@ -82,7 +82,7 @@ void delete_breakpoint(int index) {
         printf("%sError:%s Invalid breakpoint index\n", COLOR_RED, COLOR_RESET);
         return;
     }
-    memmove(&breakpoints[index], &breakpoints[index+1], 
+    memmove(&breakpoints[index], &breakpoints[index + 1],
             (bp_count - index - 1) * sizeof(size_t));
     bp_count--;
     printf("%sBreakpoint %d removed%s\n", COLOR_GREEN, index, COLOR_RESET);
@@ -112,7 +112,7 @@ void cmd_step() {
         running = 0;
         return;
     }
-    
+
     printf("\n%s→ ", COLOR_BLUE);
     InstructionData *instr = &vm.program.instructions[vm.xpu.ip];
     printf("%s%s%s ", COLOR_YELLOW, instruction_to_string(instr->opcode), COLOR_RESET);
@@ -120,9 +120,9 @@ void cmd_step() {
         printf("%s ", *op);
     }
     printf("%s\n", COLOR_RESET);
-    
+
     execute_instruction(&vm, instr);
-    
+
     if (vm.xpu.ip >= vm.program.instructions_count) {
         printf("%sProgram finished%s\n", COLOR_GREEN, COLOR_RESET);
         running = 0;
@@ -144,14 +144,14 @@ void cmd_registers() {
     printf("%sRegisters:%s\n", COLOR_BOLD, COLOR_RESET);
     printf("Register | Value\n");
     printf("------------------\n");
-    
+
     printf("IP       | 0x%-12zx\n", vm.xpu.ip);
     printf("SP       | 0x%-12zx\n", vm.xpu.stack.count);
-    
+
     for (int i = 0; i < REG_COUNT; i++) {
         Word w = vm.xpu.registers[i].reg_value;
         printf("%-8s | ", register_table[i].name);
-        
+
         switch (w.type) {
             case WINT:
                 printf("INT: %-10d\n", w.as_int);
@@ -181,19 +181,19 @@ void cmd_registers() {
 void cmd_stack(int argc, char **argv) {
     int n = 5;
     if (argc >= 2) n = atoi(argv[1]);
-    
+
     if (vm.xpu.stack.count == 0) {
         printf("Stack is empty\n");
         return;
     }
-    
+
     printf("%sStack (top %d):%s\n", COLOR_BOLD, n, COLOR_RESET);
     printf("Index | Value\n");
     printf("----------------\n");
-    
+
     for (int i = 0; i < n && i < vm.xpu.stack.count; i++) {
-        printf("%s%5d%s | ", 
-               i == 0 ? COLOR_GREEN : "", 
+        printf("%s%5d%s | ",
+               i == 0 ? COLOR_GREEN : "",
                vm.xpu.stack.count - 1 - i,
                COLOR_RESET);
         printf("[%d] ", i);
@@ -208,24 +208,24 @@ void cmd_memory(int argc, char **argv) {
         printf("Usage: %smemory <address> <size>%s\n", COLOR_YELLOW, COLOR_RESET);
         return;
     }
-    void *addr = (void*)strtoul(argv[1], NULL, 0);
+    void *addr = (void *) strtoul(argv[1], NULL, 0);
     int size = atoi(argv[2]);
-    
+
     printf("%sMemory at %p:%s\n", COLOR_BOLD, addr, COLOR_RESET);
-    
+
     for (int i = 0; i < size; i++) {
         if (i % 16 == 0) {
             if (i > 0) printf("\n");
             printf("%s%04x:%s ", COLOR_BLUE, i, COLOR_RESET);
         }
-        
-        unsigned char byte = ((unsigned char*)addr)[i];
+
+        unsigned char byte = ((unsigned char *) addr)[i];
         printf("%02x%s", byte, (i % 2 == 1) ? " " : "");
-        
+
         if (i % 16 == 15) {
             printf(" %s|%s ", COLOR_DIM, COLOR_RESET);
             for (int j = i - 15; j <= i; j++) {
-                unsigned char c = ((unsigned char*)addr)[j];
+                unsigned char c = ((unsigned char *) addr)[j];
                 printf("%c", (c >= 32 && c <= 126) ? c : '.');
             }
         }
@@ -237,14 +237,14 @@ void cmd_disassemble() {
     printf("%sCurrent IP: 0x%zx%s\n", COLOR_BOLD, vm.xpu.ip, COLOR_RESET);
     printf("Curr | Address   | Instruction\n");
     printf("-------------------------------\n");
-    
+
     for (int i = -2; i <= 2; i++) {
         size_t ip = vm.xpu.ip + i;
         if (ip >= vm.program.instructions_count) continue;
-        
+
         InstructionData *instr = &vm.program.instructions[ip];
-        
-        printf("%s%s%s | 0x%-7zx | %s%-10s%s ", 
+
+        printf("%s%s%s | 0x%-7zx | %s%-10s%s ",
                (i == 0) ? COLOR_GREEN : "",
                (i == 0) ? "→" : " ",
                COLOR_RESET,
@@ -252,7 +252,7 @@ void cmd_disassemble() {
                (i == 0) ? COLOR_YELLOW : "",
                instruction_to_string(instr->opcode),
                COLOR_RESET);
-        
+
         VECTOR_FOR_EACH(char*, op, &instr->operands) {
             printf("%s ", *op);
         }
@@ -329,7 +329,7 @@ int main(int argc, char **argv) {
     find_label(&vm.program, OENTRY, &vm.xpu.ip);
 
     print_header();
-    printf("%sLoaded '%s' with %zu instructions%s\n", 
+    printf("%sLoaded '%s' with %zu instructions%s\n",
            COLOR_GREEN, vm.program.filename, vm.program.instructions_count, COLOR_RESET);
 
     char input[256];
@@ -338,7 +338,7 @@ int main(int argc, char **argv) {
             printf("\n%s● Breakpoint hit at 0x%zx%s\n", COLOR_RED, vm.xpu.ip, COLOR_RESET);
             cmd_disassemble();
         }
-        
+
         print_prompt();
         if (!fgets(input, sizeof(input), stdin)) break;
         input[strcspn(input, "\n")] = 0;

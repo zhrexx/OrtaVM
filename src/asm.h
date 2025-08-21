@@ -70,7 +70,7 @@ typedef struct {
     int preprocessing_depth;
 } Preprocessor;
 
-static Lexer* lexer_create(const char *input) {
+static Lexer *lexer_create(const char *input) {
     Lexer *lexer = malloc(sizeof(Lexer));
     lexer->input = strdup(input);
     lexer->pos = 0;
@@ -110,7 +110,7 @@ static void lexer_skip_whitespace(Lexer *lexer) {
     }
 }
 
-static Token* token_create(TokenType type, const char *value, size_t line, size_t column) {
+static Token *token_create(TokenType type, const char *value, size_t line, size_t column) {
     Token *token = malloc(sizeof(Token));
     token->type = type;
     token->value = value ? strdup(value) : NULL;
@@ -138,7 +138,7 @@ static int is_digit(char c) {
     return isdigit(c);
 }
 
-static Token* lexer_read_identifier(Lexer *lexer) {
+static Token *lexer_read_identifier(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
@@ -152,7 +152,7 @@ static Token* lexer_read_identifier(Lexer *lexer) {
     return token_create(TOKEN_IDENTIFIER, buffer, start_line, start_column);
 }
 
-static Token* lexer_read_local_identifier(Lexer *lexer) {
+static Token *lexer_read_local_identifier(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
@@ -168,7 +168,7 @@ static Token* lexer_read_local_identifier(Lexer *lexer) {
     return token_create(TOKEN_IDENTIFIER, buffer, start_line, start_column);
 }
 
-static Token* lexer_read_number(Lexer *lexer) {
+static Token *lexer_read_number(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
@@ -191,7 +191,7 @@ static Token* lexer_read_number(Lexer *lexer) {
     return token_create(TOKEN_NUMBER, buffer, start_line, start_column);
 }
 
-static Token* lexer_read_string(Lexer *lexer) {
+static Token *lexer_read_string(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[512];
@@ -219,7 +219,7 @@ static Token* lexer_read_string(Lexer *lexer) {
     return token_create(TOKEN_STRING, buffer, start_line, start_column);
 }
 
-static Token* lexer_read_comment(Lexer *lexer) {
+static Token *lexer_read_comment(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
@@ -233,7 +233,7 @@ static Token* lexer_read_comment(Lexer *lexer) {
     return token_create(TOKEN_COMMENT, buffer, start_line, start_column);
 }
 
-static Token* lexer_read_directive(Lexer *lexer) {
+static Token *lexer_read_directive(Lexer *lexer) {
     size_t start_line = lexer->line;
     size_t start_column = lexer->column;
     char buffer[256];
@@ -247,7 +247,7 @@ static Token* lexer_read_directive(Lexer *lexer) {
     return token_create(TOKEN_DIRECTIVE, buffer, start_line, start_column);
 }
 
-static Token* lexer_next_token(Lexer *lexer) {
+static Token *lexer_next_token(Lexer *lexer) {
     lexer_skip_whitespace(lexer);
 
     char c = lexer_peek(lexer);
@@ -318,7 +318,7 @@ static Token* lexer_next_token(Lexer *lexer) {
     return token_create(TOKEN_ERROR, NULL, line, column);
 }
 
-static TokenStream* tokenize(const char *input) {
+static TokenStream *tokenize(const char *input) {
     TokenStream *stream = malloc(sizeof(TokenStream));
     stream->capacity = 1024;
     stream->tokens = malloc(sizeof(Token) * stream->capacity);
@@ -361,12 +361,12 @@ static void token_stream_free(TokenStream *stream) {
     }
 }
 
-static Token* token_stream_peek(TokenStream *stream) {
+static Token *token_stream_peek(TokenStream *stream) {
     if (stream->pos >= stream->count) return NULL;
     return &stream->tokens[stream->pos];
 }
 
-static Token* token_stream_advance(TokenStream *stream) {
+static Token *token_stream_advance(TokenStream *stream) {
     if (stream->pos >= stream->count) return NULL;
     return &stream->tokens[stream->pos++];
 }
@@ -382,12 +382,12 @@ static void token_stream_skip_newlines(TokenStream *stream) {
     }
 }
 
-static Preprocessor* preprocessor_create() {
+static Preprocessor *preprocessor_create() {
     Preprocessor *pp = malloc(sizeof(Preprocessor));
     pp->defines = malloc(sizeof(Define) * 64);
     pp->count = 0;
     pp->capacity = 64;
-    pp->include_paths = malloc(sizeof(char*) * 16);
+    pp->include_paths = malloc(sizeof(char *) * 16);
     pp->include_count = 0;
     pp->include_capacity = 16;
     pp->local_mappings = malloc(sizeof(LocalLabelMapping) * 128);
@@ -429,13 +429,13 @@ static void preprocessor_add_define(Preprocessor *pp, const char *name, const ch
 static void preprocessor_add_include_path(Preprocessor *pp, const char *path) {
     if (pp->include_count >= pp->include_capacity) {
         pp->include_capacity *= 2;
-        pp->include_paths = realloc(pp->include_paths, sizeof(char*) * pp->include_capacity);
+        pp->include_paths = realloc(pp->include_paths, sizeof(char *) * pp->include_capacity);
     }
 
     pp->include_paths[pp->include_count++] = strdup(path);
 }
 
-static char* preprocessor_get_local_label_global_name(Preprocessor *pp, const char *local_name) {
+static char *preprocessor_get_local_label_global_name(Preprocessor *pp, const char *local_name) {
     for (size_t i = 0; i < pp->local_count; i++) {
         if (strcmp(pp->local_mappings[i].local_name, local_name) == 0) {
             return pp->local_mappings[i].global_name;
@@ -451,8 +451,13 @@ static char* preprocessor_get_local_label_global_name(Preprocessor *pp, const ch
     strncpy(mapping->local_name, local_name, sizeof(mapping->local_name) - 1);
     mapping->local_name[sizeof(mapping->local_name) - 1] = '\0';
 
-    snprintf(mapping->global_name, sizeof(mapping->global_name), "%s__local_%d",
-             pp->current_global_label, pp->local_counter++);
+    const char *local_part = local_name;
+    if (local_part[0] == '.') {
+        local_part++;
+    }
+
+    snprintf(mapping->global_name, sizeof(mapping->global_name), "__%s_%s",
+             pp->current_global_label, local_part);
 
     mapping->is_resolved = 1;
 
@@ -467,7 +472,7 @@ static void preprocessor_update_global_context(Preprocessor *pp, const char *lab
     pp->local_counter = 0;
 }
 
-static char* preprocessor_expand_defines(Preprocessor *pp, const char *text) {
+static char *preprocessor_expand_defines(Preprocessor *pp, const char *text) {
     if (pp->preprocessing_depth > 10) {
         return strdup(text);
     }
@@ -511,7 +516,7 @@ static char* preprocessor_expand_defines(Preprocessor *pp, const char *text) {
     return result;
 }
 
-static char* read_file(const char *filename) {
+static char *read_file(const char *filename) {
     FILE *fp = fopen(filename, "r");
     if (!fp) return NULL;
 
@@ -527,7 +532,7 @@ static char* read_file(const char *filename) {
     return content;
 }
 
-static char* preprocess_file(Preprocessor *pp, const char *filename) {
+static char *preprocess_file(Preprocessor *pp, const char *filename) {
     if (pp->preprocessing_depth > 5) {
         fprintf(stderr, "Warning: Include depth limit reached for %s\n", filename);
         return strdup("");
@@ -650,14 +655,13 @@ Instruction parse_instruction(const char *instruction) {
             return instructions[i].instruction;
         }
     }
-    return (Instruction)-1;
+    return (Instruction) -1;
 }
 
 static int parse_operands(TokenStream *stream, Vector *operands) {
     while (!token_stream_match(stream, TOKEN_NEWLINE) &&
            !token_stream_match(stream, TOKEN_EOF) &&
            !token_stream_match(stream, TOKEN_COMMENT)) {
-
         Token *token = token_stream_advance(stream);
         if (!token) break;
 
@@ -714,9 +718,9 @@ int parse_program(OrtaVM *vm, const char *filename) {
 
         if (token->type == TOKEN_IDENTIFIER) {
             Instruction parsed_instruction = parse_instruction(token->value);
-            if (parsed_instruction == (Instruction)-1) {
+            if (parsed_instruction == (Instruction) -1) {
                 fprintf(stderr, "Error: Unknown instruction '%s' at line %zu\n",
-                       token->value, token->line);
+                        token->value, token->line);
                 token_stream_free(stream);
                 return 0;
             }
@@ -724,7 +728,7 @@ int parse_program(OrtaVM *vm, const char *filename) {
             token_stream_advance(stream);
 
             Vector operands;
-            vector_init(&operands, 5, sizeof(char*));
+            vector_init(&operands, 5, sizeof(char *));
 
             if (!parse_operands(stream, &operands)) {
                 vector_free(&operands);
@@ -735,8 +739,8 @@ int parse_program(OrtaVM *vm, const char *filename) {
             ArgRequirement expected_args = instruction_expected_args(parsed_instruction);
             if (!validateArgCount(expected_args, operands.size)) {
                 fprintf(stderr, "Error: Expected %d args for '%s', got %zu at line %zu\n",
-                       expected_args.value, instruction_to_string(parsed_instruction),
-                       operands.size, current_line);
+                        expected_args.value, instruction_to_string(parsed_instruction),
+                        operands.size, current_line);
                 vector_free(&operands);
                 token_stream_free(stream);
                 return 0;

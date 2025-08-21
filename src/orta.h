@@ -34,12 +34,12 @@
     #define WEXITSTATUS(status) ((status) & 0xFF)
     #define PLATFORM "windows"
 #else
-    #include <unistd.h>
-    #include <time.h>
-    #include <sys/stat.h>
-    #include <sys/types.h>
-    #include <sys/wait.h>
-    #define PLATFORM "unix"
+#include <unistd.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#define PLATFORM "unix"
 #endif
 
 #include "libs/vector.h"
@@ -78,6 +78,7 @@ typedef enum {
 
 typedef struct {
     WordType type;
+
     union {
         int as_int;
         float as_float;
@@ -333,10 +334,12 @@ typedef enum {
     FLAG_NOTHING = 0, FLAG_STACK = 1, FLAG_MEMORY = 2, FLAG_XCALL = 3, FLAG_EXTERNAL_LIBRARY = 4
 } Flags;
 
+#define FLAG_COUNT 8
+
 typedef struct {
     char magic[4];
     char flags_count;
-    char flags[4];
+    char flags[FLAG_COUNT];
 } OrtaMeta;
 
 typedef struct {
@@ -397,6 +400,15 @@ int find_label(Program *program, const char *name, size_t *address) {
     return 0;
 }
 
+char *get_label_at_pos(OrtaVM *vm, size_t ip) {
+    for (size_t i = 0; i < vm->program.labels_count; i++) {
+        if (vm->program.labels[i].address == ip) {
+            return vm->program.labels[i].name;
+        }
+    }
+    return NULL;
+}
+
 void program_free(Program *program) {
     free(program->filename);
     for (size_t i = 0; i < program->instructions_count; i++) {
@@ -435,7 +447,7 @@ OrtaVM ortavm_create(const char *filename) {
     program_init(&vm.program, filename);
     vm.meta.flags_count = 0;
     strncpy(vm.meta.magic, "XBIN", 4);
-    for (size_t i = 0; i < 4; i++) {
+    for (size_t i = 0; i < FLAG_COUNT; i++) {
         vm.meta.flags[i] = FLAG_NOTHING;
     }
     return vm;
@@ -476,6 +488,7 @@ char *format(const char *format, ...) {
 }
 
 void add_flag(OrtaVM *vm, Flags flag) {
+    if (vm->meta.flags_count == FLAG_COUNT) return;
     for (int i = 0; i < vm->meta.flags_count; i++) {
         if (vm->meta.flags[i] == (short) flag) return;
     }
@@ -933,6 +946,7 @@ void call_dynlib_function(const char *lib_path, const char *func_name, OrtaVM *v
     function(vm);
     CLOSE_LIBRARY(handle);
 }
+
 static void print_word(Word w);
 
 void execute_instruction(OrtaVM *vm, InstructionData *instr) {

@@ -5,9 +5,7 @@ externCallTest:
     print
     ret
 
-.abc:
-    print "Hello, World"
-    ret
+
 
 __entry:
     call externCallTest

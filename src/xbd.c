@@ -128,7 +128,7 @@ int BundleFiles(char **filenames, int count, const char *bundlename, const char 
     return 0;
 }
 
-static char* readString(FILE *f, int len) {
+static char *readString(FILE *f, int len) {
     char *str = malloc(len + 1);
     if (!str || fread(str, 1, len, f) != len) {
         free(str);
@@ -138,7 +138,7 @@ static char* readString(FILE *f, int len) {
     return str;
 }
 
-UnbundledFiles* UnbundleFiles(const char *bundlename) {
+UnbundledFiles *UnbundleFiles(const char *bundlename) {
     FILE *bundle = fopen(bundlename, "rb");
     if (!bundle) return NULL;
 
@@ -163,7 +163,7 @@ UnbundledFiles* UnbundleFiles(const char *bundlename) {
         return NULL;
     }
 
-    uf->filenames = calloc(uf->count, sizeof(char*));
+    uf->filenames = calloc(uf->count, sizeof(char *));
     if (!uf->filenames) {
         fclose(bundle);
         freeUnbundledFiles(uf);
@@ -209,12 +209,12 @@ error:
     return NULL;
 }
 
-const char* short_to_flag(short flag) {
+const char *short_to_flag(short flag) {
     switch (flag) {
-        case FLAG_MEMORY:  return "MEMORY";
-        case FLAG_STACK:   return "STACK";
-        case FLAG_XCALL:   return "XCALL";
-        default:           return "INVALID";
+        case FLAG_MEMORY: return "MEMORY";
+        case FLAG_STACK: return "STACK";
+        case FLAG_XCALL: return "XCALL";
+        default: return "INVALID";
     }
 }
 
@@ -230,8 +230,8 @@ int main(int argc, char *argv[]) {
             printf("Usage: %s bundle <files...> <main_executable>\n", argv[0]);
             return 1;
         }
-        if (BundleFiles(&argv[2], argc - 3, "xbd.bundle", argv[argc-1]) == 0) {
-            printf("Bundled %d files into xbd.bundle with main: %s\n", argc - 3, argv[argc-1]);
+        if (BundleFiles(&argv[2], argc - 3, "xbd.bundle", argv[argc - 1]) == 0) {
+            printf("Bundled %d files into xbd.bundle with main: %s\n", argc - 3, argv[argc - 1]);
         } else {
             printf("Error bundling files\n");
             return 1;
@@ -252,8 +252,7 @@ int main(int argc, char *argv[]) {
             printf("Error unbundling files\n");
             return 1;
         }
-    } else if (strcmp(argv[1], "list") == 0)
-    {
+    } else if (strcmp(argv[1], "list") == 0) {
         UnbundledFiles *uf = UnbundleFiles(argv[2]);
         if (uf) {
             printf("Main executable: %s\n", uf->main_executable);
@@ -271,8 +270,7 @@ int main(int argc, char *argv[]) {
                 OrtaVM vm = ortavm_create(uf->main_executable);
                 load_xbin(&vm, uf->main_executable);
                 printf("Found %d flags:\n", vm.meta.flags_count);
-                for (int i = 0; i < vm.meta.flags_count; i++)
-                {
+                for (int i = 0; i < vm.meta.flags_count; i++) {
                     printf("%s\n", short_to_flag(vm.meta.flags[i]));
                 }
                 ortavm_free(&vm);

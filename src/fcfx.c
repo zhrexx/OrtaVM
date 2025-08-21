@@ -11,29 +11,29 @@
 typedef struct {
     bool minimize;
     bool verbose;
-    char* input_file;
+    char *input_file;
 } ProgramOptions;
 
-const char* short_to_flag(short flag) {
+const char *short_to_flag(short flag) {
     switch (flag) {
-        case FLAG_MEMORY:  return "MEMORY";
-        case FLAG_STACK:   return "STACK";
-        case FLAG_XCALL:   return "XCALL";
-        default:           return "INVALID";
+        case FLAG_MEMORY: return "MEMORY";
+        case FLAG_STACK: return "STACK";
+        case FLAG_XCALL: return "XCALL";
+        default: return "INVALID";
     }
 }
 
-const char* short_to_flag_minimized(short flag) {
+const char *short_to_flag_minimized(short flag) {
     switch (flag) {
         case FLAG_NOTHING: return "U";
-        case FLAG_MEMORY:  return "M";
-        case FLAG_STACK:   return "S";
-        case FLAG_XCALL:     return "X";
-        default:           return "I";
+        case FLAG_MEMORY: return "M";
+        case FLAG_STACK: return "S";
+        case FLAG_XCALL: return "X";
+        default: return "I";
     }
 }
 
-void print_usage(FILE* stream) {
+void print_usage(FILE *stream) {
     fprintf(stream, "Usage: %s [OPTIONS] <input-file>\n\n", PROGRAM_NAME);
     fprintf(stream, "Options:\n");
     fprintf(stream, "  -m, --minimize     Output minimized flag format\n");
@@ -45,7 +45,7 @@ void print_usage(FILE* stream) {
 ProgramOptions parse_args(int argc, char *argv[]) {
     ProgramOptions options = {false, false, NULL};
     int opt;
-    
+
     static struct option long_options[] = {
         {"minimize", no_argument, 0, 'm'},
         {"verbose", no_argument, 0, 'v'},
@@ -79,18 +79,18 @@ ProgramOptions parse_args(int argc, char *argv[]) {
         print_usage(stderr);
         exit(EXIT_FAILURE);
     }
-    
+
     options.input_file = argv[optind];
     return options;
 }
 
 int main(int argc, char *argv[]) {
     ProgramOptions options = parse_args(argc, argv);
-    
+
     if (options.verbose) {
         printf("Analyzing file: %s\n", options.input_file);
     }
-    
+
     OrtaVM vm = ortavm_create(options.input_file);
     if (!load_xbin(&vm, options.input_file)) {
         fprintf(stderr, "Error: Failed to load xbin file '%s'\n", options.input_file);
@@ -117,8 +117,7 @@ int main(int argc, char *argv[]) {
         }
     }
     if (!options.verbose) printf("\n");
-    
+
     ortavm_free(&vm);
     return EXIT_SUCCESS;
 }
-

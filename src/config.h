@@ -37,8 +37,8 @@ void print_info(const char *message) {
 }
 
 void print_progress(const char *stage, const char *detail) {
-    printf("%s%s[%s%s%s] %s%s%s\n", 
-           COLOR_BOLD, COLOR_YELLOW, 
+    printf("%s%s[%s%s%s] %s%s%s\n",
+           COLOR_BOLD, COLOR_YELLOW,
            COLOR_CYAN, stage, COLOR_YELLOW,
            COLOR_RESET, COLOR_BOLD, detail);
     printf("%s   └─> %s", COLOR_BOLD, COLOR_RESET);

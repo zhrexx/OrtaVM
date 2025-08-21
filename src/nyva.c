@@ -86,15 +86,18 @@ typedef enum {
 
 typedef struct ASTNode {
     NodeType type;
+
     union {
         struct {
             char *name;
             struct ASTNode *value;
         } var_declaration;
+
         struct {
             char *name;
             struct ASTNode *value;
         } assignment;
+
         struct {
             struct ASTNode *condition;
             struct ASTNode **body;
@@ -102,45 +105,56 @@ typedef struct ASTNode {
             struct ASTNode **else_body;
             int else_body_count;
         } if_statement;
+
         struct {
             struct ASTNode *left;
             TokenType operator;
             struct ASTNode *right;
         } binary_expression;
+
         struct {
             char *name;
         } identifier;
+
         struct {
             int value;
         } number;
+
         struct {
             char *value;
         } string;
+
         struct {
             char *name;
             struct ASTNode *args;
         } function_call;
+
         struct {
             struct ASTNode **args;
             int count;
         } argument_list;
+
         struct {
             struct ASTNode **statements;
             int count;
         } program;
+
         struct {
             char *name;
             struct ASTNode *params;
             struct ASTNode **body;
             int body_count;
         } function_definition;
+
         struct {
             struct ASTNode **params;
             int count;
         } parameter_list;
+
         struct {
             struct ASTNode *value;
         } return_statement;
+
         struct {
             struct ASTNode *init;
             struct ASTNode *condition;
@@ -148,9 +162,11 @@ typedef struct ASTNode {
             struct ASTNode **body;
             int body_count;
         } for_statement;
+
         struct {
             char *file;
         } import_statement;
+
         struct {
             struct ASTNode *condition;
             struct ASTNode **body;
@@ -202,17 +218,17 @@ int is_file_imported(const char *filename) {
 
 void add_imported_file(const char *filename) {
     if (imported_files.files == NULL) {
-        imported_files.files = malloc(sizeof(char*) * 64);
+        imported_files.files = malloc(sizeof(char *) * 64);
     }
     imported_files.files[imported_files.count++] = strdup(filename);
 }
 
-char* escape_string(const char* src) {
+char *escape_string(const char *src) {
     if (src == NULL) {
         return NULL;
     }
     size_t src_len = strlen(src);
-    char* dest = (char*)malloc(src_len * 2 + 1);
+    char *dest = (char *) malloc(src_len * 2 + 1);
     if (dest == NULL) {
         return NULL;
     }
@@ -245,7 +261,7 @@ char* escape_string(const char* src) {
         }
     }
     dest[j] = '\0';
-    char* result = (char*)realloc(dest, j + 1);
+    char *result = (char *) realloc(dest, j + 1);
     return result == NULL ? dest : result;
 }
 
@@ -322,12 +338,18 @@ char *lexer_collect_string(Lexer *lexer) {
     while (lexer->current_char != '\0' && (escaped || lexer->current_char != '"')) {
         if (escaped) {
             switch (lexer->current_char) {
-                case 'n': buffer[i++] = '\n'; break;
-                case 't': buffer[i++] = '\t'; break;
-                case 'r': buffer[i++] = '\r'; break;
-                case '\\': buffer[i++] = '\\'; break;
-                case '"': buffer[i++] = '"'; break;
-                default: buffer[i++] = lexer->current_char; break;
+                case 'n': buffer[i++] = '\n';
+                    break;
+                case 't': buffer[i++] = '\t';
+                    break;
+                case 'r': buffer[i++] = '\r';
+                    break;
+                case '\\': buffer[i++] = '\\';
+                    break;
+                case '"': buffer[i++] = '"';
+                    break;
+                default: buffer[i++] = lexer->current_char;
+                    break;
             }
             escaped = false;
         } else if (lexer->current_char == '\\') {
@@ -564,7 +586,7 @@ ASTNode *parser_parse_expression(Parser *parser);
 ASTNode *parser_parse_argument_list(Parser *parser) {
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_ARGUMENT_LIST;
-    node->data.argument_list.args = malloc(sizeof(ASTNode*) * 64);
+    node->data.argument_list.args = malloc(sizeof(ASTNode *) * 64);
     node->data.argument_list.count = 0;
     if (parser_current_token(parser).type != TOKEN_RPAREN) {
         node->data.argument_list.args[node->data.argument_list.count++] = parser_parse_expression(parser);
@@ -711,7 +733,7 @@ ASTNode *parser_parse_if_statement(Parser *parser) {
     ASTNode *condition = parser_parse_condition(parser);
     parser_expect(parser, TOKEN_RPAREN);
     parser_expect(parser, TOKEN_LBRACE);
-    ASTNode **body = malloc(sizeof(ASTNode*) * 64);
+    ASTNode **body = malloc(sizeof(ASTNode *) * 64);
     int body_count = 0;
     while (parser_current_token(parser).type != TOKEN_RBRACE &&
            parser_current_token(parser).type != TOKEN_EOF) {
@@ -728,7 +750,7 @@ ASTNode *parser_parse_if_statement(Parser *parser) {
     if (parser_current_token(parser).type == TOKEN_ELSE) {
         parser_advance(parser);
         parser_expect(parser, TOKEN_LBRACE);
-        ASTNode **else_body = malloc(sizeof(ASTNode*) * 64);
+        ASTNode **else_body = malloc(sizeof(ASTNode *) * 64);
         int else_body_count = 0;
         while (parser_current_token(parser).type != TOKEN_RBRACE &&
                parser_current_token(parser).type != TOKEN_EOF) {
@@ -744,7 +766,7 @@ ASTNode *parser_parse_if_statement(Parser *parser) {
 ASTNode *parser_parse_parameter_list(Parser *parser) {
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = NODE_PARAMETER_LIST;
-    node->data.parameter_list.params = malloc(sizeof(ASTNode*) * 64);
+    node->data.parameter_list.params = malloc(sizeof(ASTNode *) * 64);
     node->data.parameter_list.count = 0;
     if (parser_current_token(parser).type != TOKEN_RPAREN) {
         Token param = parser_current_token(parser);
@@ -774,7 +796,7 @@ ASTNode *parser_parse_function_definition(Parser *parser) {
     ASTNode *params = parser_parse_parameter_list(parser);
     parser_expect(parser, TOKEN_RPAREN);
     parser_expect(parser, TOKEN_LBRACE);
-    ASTNode **body = malloc(sizeof(ASTNode*) * 256);
+    ASTNode **body = malloc(sizeof(ASTNode *) * 256);
     int body_count = 0;
     while (parser_current_token(parser).type != TOKEN_RBRACE &&
            parser_current_token(parser).type != TOKEN_EOF) {
@@ -820,7 +842,7 @@ ASTNode *parser_parse_for_statement(Parser *parser) {
     ASTNode *update = parser_parse_assignment(parser);
     parser_expect(parser, TOKEN_RPAREN);
     parser_expect(parser, TOKEN_LBRACE);
-    ASTNode **body = malloc(sizeof(ASTNode*) * 64);
+    ASTNode **body = malloc(sizeof(ASTNode *) * 64);
     int body_count = 0;
     while (parser_current_token(parser).type != TOKEN_RBRACE &&
            parser_current_token(parser).type != TOKEN_EOF) {
@@ -843,7 +865,7 @@ ASTNode *parser_parse_while_statement(Parser *parser) {
     ASTNode *condition = parser_parse_condition(parser);
     parser_expect(parser, TOKEN_RPAREN);
     parser_expect(parser, TOKEN_LBRACE);
-    ASTNode **body = malloc(sizeof(ASTNode*) * 64);
+    ASTNode **body = malloc(sizeof(ASTNode *) * 64);
     int body_count = 0;
     while (parser_current_token(parser).type != TOKEN_RBRACE &&
            parser_current_token(parser).type != TOKEN_EOF) {
@@ -915,7 +937,7 @@ ASTNode *parser_parse_statement(Parser *parser) {
 }
 
 ASTNode *parser_parse_program(Parser *parser) {
-    ASTNode **statements = malloc(sizeof(ASTNode*) * 1024);
+    ASTNode **statements = malloc(sizeof(ASTNode *) * 1024);
     int count = 0;
     while (parser_current_token(parser).type != TOKEN_EOF) {
         statements[count++] = parser_parse_statement(parser);
@@ -936,7 +958,7 @@ void codegen_emit(CodeGenerator *gen, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t len = strlen(fmt);
-    bool is_label = (len > 0 && fmt[len-1] == ':');
+    bool is_label = (len > 0 && fmt[len - 1] == ':');
     if (!is_label) {
         for (int i = 0; i < gen->indent_level; i++) {
             fprintf(gen->out, "    ");
@@ -953,10 +975,10 @@ char *codegen_create_label(CodeGenerator *gen, const char *prefix) {
     return label;
 }
 
-char* itoa(int value) {
+char *itoa(int value) {
     int base = 10;
     if (value == 0) {
-        char* result = (char*)malloc(2);
+        char *result = (char *) malloc(2);
         if (result) {
             result[0] = '0';
             result[1] = '\0';
@@ -975,7 +997,7 @@ char* itoa(int value) {
         temp /= base;
     }
     int resultLength = len + (isNegative && base == 10 ? 1 : 0) + 1;
-    char* result = (char*)malloc(resultLength);
+    char *result = (char *) malloc(resultLength);
     if (!result) {
         return NULL;
     }
@@ -1004,10 +1026,14 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
         codegen_generate_expression(gen, node->data.binary_expression.right);
         switch (node->data.binary_expression.operator) {
             case TOKEN_PLUS:
-                if (node->data.binary_expression.left->type == NODE_STRING && node->data.binary_expression.right->type == NODE_STRING
-                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left->type == NODE_IDENTIFIER
-                    || node->data.binary_expression.right->type == NODE_STRING && node->data.binary_expression.left->type == NODE_IDENTIFIER
-                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left->type == NODE_STRING)
+                if (node->data.binary_expression.left->type == NODE_STRING && node->data.binary_expression.right->type
+                    == NODE_STRING
+                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left
+                    ->type == NODE_IDENTIFIER
+                    || node->data.binary_expression.right->type == NODE_STRING && node->data.binary_expression.left->
+                    type == NODE_IDENTIFIER
+                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left
+                    ->type == NODE_STRING)
                     codegen_emit(gen, "merge");
                 else
                     codegen_emit(gen, "add");
@@ -1058,7 +1084,8 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
                 codegen_emit(gen, "print");
             }
         } else if (strcmp(func_name, "@inline") == 0) {
-            for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) codegen_emit(gen, node->data.function_call.args->data.argument_list.args[i]->data.string.value);
+            for (int i = 0; i < node->data.function_call.args->data.argument_list.count; i++) codegen_emit(
+                gen, node->data.function_call.args->data.argument_list.args[i]->data.string.value);
         } else if (strcmp(func_name, "@push") == 0) {
             if (node->data.function_call.args->data.argument_list.count != 1) {
                 fprintf(stderr, "ERROR: expected only one argument for builtin '@push'\n");
@@ -1101,6 +1128,7 @@ void codegen_generate_assignment(CodeGenerator *gen, ASTNode *node) {
 }
 
 void codegen_generate_statement(CodeGenerator *gen, ASTNode *node);
+
 void codegen_generate_statement_with_break(CodeGenerator *gen, ASTNode *node, char *break_label);
 
 char *current_break_label = NULL;
@@ -1130,12 +1158,14 @@ void codegen_generate_if_statement(CodeGenerator *gen, ASTNode *node) {
     free(end_label);
 }
 
-void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {}
+void codegen_generate_parameter_list(CodeGenerator *gen, ASTNode *node) {
+}
 
 char *error_not_enough_args = NULL;
 
 void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
-    codegen_emit(gen, "; %s(%d)", node->data.function_definition.name, node->data.function_definition.params->data.parameter_list.count);
+    codegen_emit(gen, "; %s(%d)", node->data.function_definition.name,
+                 node->data.function_definition.params->data.parameter_list.count);
     codegen_emit(gen, "%s:", node->data.function_definition.name);
     gen->indent_level = 1;
     if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
@@ -1156,7 +1186,8 @@ void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
         codegen_generate_statement(gen, node->data.function_definition.body[i]);
     }
     if (node->data.function_definition.body_count > 0) {
-        if (node->data.function_definition.body[node->data.function_definition.body_count - 1]->type != NODE_RETURN_STATEMENT) {
+        if (node->data.function_definition.body[node->data.function_definition.body_count - 1]->type !=
+            NODE_RETURN_STATEMENT) {
             codegen_emit(gen, "togglelocalscope");
             if (!(strcmp(node->data.function_definition.name, "__entry") == 0)) {
                 codegen_emit(gen, "push 0");
@@ -1175,7 +1206,8 @@ void codegen_generate_function_definition(CodeGenerator *gen, ASTNode *node) {
         }
     }
     gen->indent_level = 0;
-    codegen_emit(gen, "; END %s(%d)", node->data.function_definition.name, node->data.function_definition.params->data.parameter_list.count);
+    codegen_emit(gen, "; END %s(%d)", node->data.function_definition.name,
+                 node->data.function_definition.params->data.parameter_list.count);
 }
 
 void codegen_generate_return_statement(CodeGenerator *gen, ASTNode *node) {
@@ -1410,11 +1442,11 @@ char *read_file(const char *filename) {
     return buffer;
 }
 
-char* preprocess(const char* source);
+char *preprocess(const char *source);
 
 void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
     char *filename = node->data.import_statement.file;
-    if (filename[0] == '"' && filename[strlen(filename)-1] == '"') {
+    if (filename[0] == '"' && filename[strlen(filename) - 1] == '"') {
         filename = strndup(filename + 1, strlen(filename) - 2);
     }
     if (is_file_imported(filename)) {
@@ -1441,12 +1473,12 @@ void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
     free(source);
 }
 
-char* preprocess(const char* source) {
+char *preprocess(const char *source) {
     if (source == NULL) {
         return NULL;
     }
     size_t source_len = strlen(source);
-    char* result = malloc(source_len + 1);
+    char *result = malloc(source_len + 1);
     if (result == NULL) {
         return NULL;
     }
@@ -1470,10 +1502,10 @@ char* preprocess(const char* source) {
                 i++;
             }
             while (i < source_len &&
-                  (isalnum(source[i]) || source[i] == '_' ||
-                   source[i] == '<' || source[i] == '>' ||
-                   source[i] == '|' || source[i] == '[' ||
-                   source[i] == ']' || source[i] == '.')) {
+                   (isalnum(source[i]) || source[i] == '_' ||
+                    source[i] == '<' || source[i] == '>' ||
+                    source[i] == '|' || source[i] == '[' ||
+                    source[i] == ']' || source[i] == '.')) {
                 i++;
             }
             continue;
@@ -1488,10 +1520,10 @@ char* preprocess(const char* source) {
                  source[temp_i] == '<' || source[temp_i] == '>')) {
                 i = temp_i;
                 while (i < source_len &&
-                      (isalnum(source[i]) || source[i] == '_' ||
-                       source[i] == '<' || source[i] == '>' ||
-                       source[i] == '|' || source[i] == '[' ||
-                       source[i] == ']' || source[i] == '.')) {
+                       (isalnum(source[i]) || source[i] == '_' ||
+                        source[i] == '<' || source[i] == '>' ||
+                        source[i] == '|' || source[i] == '[' ||
+                        source[i] == ']' || source[i] == '.')) {
                     i++;
                 }
                 continue;
@@ -1500,7 +1532,7 @@ char* preprocess(const char* source) {
         result[j++] = source[i++];
     }
     result[j] = '\0';
-    char* final_result = realloc(result, j + 1);
+    char *final_result = realloc(result, j + 1);
     return final_result ? final_result : result;
 }
 
