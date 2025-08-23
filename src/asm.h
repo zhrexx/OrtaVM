@@ -290,6 +290,31 @@ static Token *lexer_next_token(Lexer *lexer) {
         return token_create(TOKEN_RPAREN, ")", line, column);
     }
 
+    if (c == '-' && is_digit(lexer->input[lexer->pos + 1])) {
+        size_t start_line = lexer->line;
+        size_t start_column = lexer->column;
+        char buffer[256];
+        size_t i = 0;
+
+        buffer[i++] = lexer_advance(lexer);
+
+        if (lexer_peek(lexer) == '0' && lexer->pos + 1 < lexer->length &&
+            (lexer->input[lexer->pos + 1] == 'x' || lexer->input[lexer->pos + 1] == 'X')) {
+            buffer[i++] = lexer_advance(lexer);
+            buffer[i++] = lexer_advance(lexer);
+            while (isxdigit(lexer_peek(lexer)) && i < sizeof(buffer) - 1) {
+                buffer[i++] = lexer_advance(lexer);
+            }
+            } else {
+                while (is_digit(lexer_peek(lexer)) && i < sizeof(buffer) - 1) {
+                    buffer[i++] = lexer_advance(lexer);
+                }
+            }
+
+        buffer[i] = '\0';
+        return token_create(TOKEN_NUMBER, buffer, start_line, start_column);
+    }
+
     if (is_digit(c)) {
         return lexer_read_number(lexer);
     }
