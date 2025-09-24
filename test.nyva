@@ -1,0 +1,3 @@
+fn __entry() {
+    @print("Hello from refactored code!");
+}
