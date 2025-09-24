@@ -16,6 +16,8 @@
 #include <stdbool.h>
 #include "int.h"
 
+#define INITIAL_SPLIT_ARRAY_SIZE 10
+
 char* from(const char* src, int init, int finish) {
     if (init < 0 || finish < 0 || init >= finish || finish > strlen(src)) {
         return NULL;
@@ -31,19 +33,43 @@ char* from(const char* src, int init, int finish) {
 }
 
 char** split(const char* src, const char* delimiter, int* count) {
+    if (!src || !delimiter || !count) return NULL;
+    
     char* src_copy = strdup(src);
+    if (!src_copy) return NULL;
+    
     char* token;
-    int size = 10;
+    int size = INITIAL_SPLIT_ARRAY_SIZE;
     char** result = (char**)malloc(size * sizeof(char*));
+    if (!result) {
+        free(src_copy);
+        return NULL;
+    }
+    
     *count = 0;
 
     token = strtok(src_copy, delimiter);
     while (token != NULL) {
         if (*count >= size) {
             size *= 2;
-            result = (char**)realloc(result, size * sizeof(char*));
+            char** new_result = (char**)realloc(result, size * sizeof(char*));
+            if (!new_result) {
+                // Cleanup on failure
+                for (int i = 0; i < *count; i++) free(result[i]);
+                free(result);
+                free(src_copy);
+                return NULL;
+            }
+            result = new_result;
         }
         result[*count] = strdup(token);
+        if (!result[*count]) {
+            // Cleanup on failure
+            for (int i = 0; i < *count; i++) free(result[i]);
+            free(result);
+            free(src_copy);
+            return NULL;
+        }
         (*count)++;
         token = strtok(NULL, delimiter);
     }

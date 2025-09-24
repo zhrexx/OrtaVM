@@ -1014,6 +1014,17 @@ char *itoa(int value) {
     return result;
 }
 
+// Helper function to determine if binary plus operation should use merge instead of add
+static bool should_use_merge_for_plus(ASTNode *left, ASTNode *right) {
+    NodeType left_type = left->type;
+    NodeType right_type = right->type;
+    
+    return (left_type == NODE_STRING && right_type == NODE_STRING) ||
+           (left_type == NODE_IDENTIFIER && right_type == NODE_IDENTIFIER) ||
+           (left_type == NODE_STRING && right_type == NODE_IDENTIFIER) ||
+           (left_type == NODE_IDENTIFIER && right_type == NODE_STRING);
+}
+
 void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
     if (node->type == NODE_NUMBER) {
         codegen_emit(gen, "push %d", node->data.number.value);
@@ -1026,17 +1037,12 @@ void codegen_generate_expression(CodeGenerator *gen, ASTNode *node) {
         codegen_generate_expression(gen, node->data.binary_expression.right);
         switch (node->data.binary_expression.operator) {
             case TOKEN_PLUS:
-                if (node->data.binary_expression.left->type == NODE_STRING && node->data.binary_expression.right->type
-                    == NODE_STRING
-                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left
-                    ->type == NODE_IDENTIFIER
-                    || node->data.binary_expression.right->type == NODE_STRING && node->data.binary_expression.left->
-                    type == NODE_IDENTIFIER
-                    || node->data.binary_expression.right->type == NODE_IDENTIFIER && node->data.binary_expression.left
-                    ->type == NODE_STRING)
+                if (should_use_merge_for_plus(node->data.binary_expression.left, 
+                                             node->data.binary_expression.right)) {
                     codegen_emit(gen, "merge");
-                else
+                } else {
                     codegen_emit(gen, "add");
+                }
                 break;
             case TOKEN_MINUS:
                 codegen_emit(gen, "sub");

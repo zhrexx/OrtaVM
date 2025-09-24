@@ -192,7 +192,7 @@ void cmd_stack(int argc, char **argv) {
     printf("----------------\n");
 
     for (int i = 0; i < n && i < vm.xpu.stack.count; i++) {
-        printf("%s%5d%s | ",
+        printf("%s%5zu%s | ",
                i == 0 ? COLOR_GREEN : "",
                vm.xpu.stack.count - 1 - i,
                COLOR_RESET);

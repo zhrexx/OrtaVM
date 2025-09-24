@@ -48,6 +48,7 @@
 #include "libs/xthread.h"
 
 #define ODEFAULT_STACK_SIZE 16384
+#define ODEFAULT_CALL_STACK_SIZE 1024
 #define ODEFAULT_ENTRY "__entry"
 #define MEMORY_CAPACITY 8192
 #define MAX_LINE_LENGTH 1024
@@ -214,7 +215,7 @@ typedef struct {
 XPU xpu_init() {
     XPU xpu = {0};
     xpu.stack = xstack_create(OSTACK_SIZE);
-    xpu.call_stack = xstack_create(1024);
+    xpu.call_stack = xstack_create(ODEFAULT_CALL_STACK_SIZE);
     xpu.registers = malloc(sizeof(XRegister) * REG_COUNT);
     xpu.ip = 0;
 
@@ -549,8 +550,49 @@ const char *instruction_to_string(Instruction instruction) {
 }
 
 char *trim_left(const char *str) {
+    if (!str) return NULL;
+    
     while (isspace((unsigned char)*str)) str++;
     return strdup(str);
+}
+
+char *trim_right(char *str) {
+    if (!str || *str == '\0') {
+        return str;
+    }
+    
+    char *end = str + strlen(str) - 1;
+    while (end >= str && isspace((unsigned char)*end)) {
+        end--;
+    }
+    *(end + 1) = '\0';
+    return str;
+}
+
+char *trim(const char *str) {
+    if (!str) return NULL;
+    
+    // Skip leading whitespace
+    while (isspace((unsigned char)*str)) str++;
+    
+    // Handle empty string case
+    if (*str == '\0') {
+        return strdup("");
+    }
+    
+    // Find end of string
+    const char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    
+    // Create trimmed copy
+    size_t len = end - str + 1;
+    char *trimmed = malloc(len + 1);
+    if (!trimmed) return NULL;
+    
+    strncpy(trimmed, str, len);
+    trimmed[len] = '\0';
+    
+    return trimmed;
 }
 
 int validateArgCount(ArgRequirement req, int actualArgCount) {

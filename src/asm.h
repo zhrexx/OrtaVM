@@ -481,8 +481,15 @@ static char *preprocessor_get_local_label_global_name(Preprocessor *pp, const ch
         local_part++;
     }
 
-    snprintf(mapping->global_name, sizeof(mapping->global_name), "__%s_%s",
-             pp->current_global_label, local_part);
+    // Ensure we don't exceed buffer size when constructing the global name
+    int result = snprintf(mapping->global_name, sizeof(mapping->global_name), "__%s_%s",
+                         pp->current_global_label, local_part);
+    
+    // Check for truncation
+    if (result >= sizeof(mapping->global_name)) {
+        // Name was truncated, report error or handle appropriately
+        fprintf(stderr, "Warning: Local label global name truncated\n");
+    }
 
     mapping->is_resolved = 1;
 
