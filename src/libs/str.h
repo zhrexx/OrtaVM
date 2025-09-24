@@ -16,34 +16,71 @@
 #include <stdbool.h>
 #include "int.h"
 
-char* from(const char* src, int init, int finish) {
-    if (init < 0 || finish < 0 || init >= finish || finish > strlen(src)) {
+#define INITIAL_SPLIT_ARRAY_SIZE 10
+
+char* substring(const char* src, int start_index, int end_index) {
+    if (!src) {
         return NULL;
     }
-    int length = finish - init;
+    
+    size_t src_len = strlen(src);
+    
+    // Validate parameters
+    if (start_index < 0 || end_index < 0 || 
+        start_index >= end_index || 
+        (size_t)end_index > src_len) {
+        return NULL;
+    }
+    
+    int length = end_index - start_index;
     char* result = (char*)malloc(length + 1);
-    if (result == NULL) {
+    if (!result) {
         return NULL;
     }
-    strncpy(result, src + init, length);
+    
+    strncpy(result, src + start_index, length);
     result[length] = '\0';
     return result;
 }
 
 char** split(const char* src, const char* delimiter, int* count) {
+    if (!src || !delimiter || !count) return NULL;
+    
     char* src_copy = strdup(src);
+    if (!src_copy) return NULL;
+    
     char* token;
-    int size = 10;
+    int size = INITIAL_SPLIT_ARRAY_SIZE;
     char** result = (char**)malloc(size * sizeof(char*));
+    if (!result) {
+        free(src_copy);
+        return NULL;
+    }
+    
     *count = 0;
 
     token = strtok(src_copy, delimiter);
     while (token != NULL) {
         if (*count >= size) {
             size *= 2;
-            result = (char**)realloc(result, size * sizeof(char*));
+            char** new_result = (char**)realloc(result, size * sizeof(char*));
+            if (!new_result) {
+                // Cleanup on failure
+                for (int i = 0; i < *count; i++) free(result[i]);
+                free(result);
+                free(src_copy);
+                return NULL;
+            }
+            result = new_result;
         }
         result[*count] = strdup(token);
+        if (!result[*count]) {
+            // Cleanup on failure
+            for (int i = 0; i < *count; i++) free(result[i]);
+            free(result);
+            free(src_copy);
+            return NULL;
+        }
         (*count)++;
         token = strtok(NULL, delimiter);
     }

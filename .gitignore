@@ -1,0 +1,19 @@
+# Build artifacts
+bin/
+*.o
+*.so
+*.a
+*.exe
+*.xbin
+*.ovm
+
+# Temporary files
+*.pre.x
+*~
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
