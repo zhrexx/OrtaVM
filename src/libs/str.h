@@ -18,16 +18,27 @@
 
 #define INITIAL_SPLIT_ARRAY_SIZE 10
 
-char* from(const char* src, int init, int finish) {
-    if (init < 0 || finish < 0 || init >= finish || finish > strlen(src)) {
+char* substring(const char* src, int start_index, int end_index) {
+    if (!src) {
         return NULL;
     }
-    int length = finish - init;
+    
+    size_t src_len = strlen(src);
+    
+    // Validate parameters
+    if (start_index < 0 || end_index < 0 || 
+        start_index >= end_index || 
+        (size_t)end_index > src_len) {
+        return NULL;
+    }
+    
+    int length = end_index - start_index;
     char* result = (char*)malloc(length + 1);
-    if (result == NULL) {
+    if (!result) {
         return NULL;
     }
-    strncpy(result, src + init, length);
+    
+    strncpy(result, src + start_index, length);
     result[length] = '\0';
     return result;
 }

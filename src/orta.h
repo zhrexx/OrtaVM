@@ -509,30 +509,64 @@ int is_pointer(char *str) {
 }
 
 void *get_pointer(char *str) {
-    if (!is_pointer(str)) return NULL;
-    str++;
-    str[strlen(str) - 1] = '\0';
-    return (void *) (uintptr_t) strtoull(str, NULL, 0);
+    if (!str || !is_pointer(str)) {
+        return NULL;
+    }
+    
+    size_t len = strlen(str);
+    if (len < 3) {  // Need at least "()" plus one character
+        return NULL;
+    }
+    
+    // Create a copy to avoid modifying the input
+    char *temp = malloc(len - 1);  // len - 2 + 1 for null terminator
+    if (!temp) {
+        return NULL;
+    }
+    
+    strncpy(temp, str + 1, len - 2);
+    temp[len - 2] = '\0';
+    
+    void *result = (void *) (uintptr_t) strtoull(temp, NULL, 0);
+    free(temp);
+    
+    return result;
 }
 
 int is_number(const char *str) {
+    if (!str || *str == '\0') {
+        return 0;
+    }
+    
     char *endptr;
     strtol(str, &endptr, 10);
     return *endptr == '\0';
 }
 
 int is_float(const char *str) {
+    if (!str || *str == '\0') {
+        return 0;
+    }
+    
     char *endptr;
     strtod(str, &endptr);
     return *endptr == '\0' && strchr(str, '.') != NULL;
 }
 
 int is_string(const char *str) {
+    if (!str) {
+        return 0;
+    }
+    
     size_t len = strlen(str);
     return len >= 2 && str[0] == '"' && str[len - 1] == '"';
 }
 
 int is_label_declaration(const char *str) {
+    if (!str) {
+        return 0;
+    }
+    
     size_t len = strlen(str);
     return len > 0 && str[len - 1] == ':';
 }

@@ -266,6 +266,11 @@ char *escape_string(const char *src) {
 }
 
 void lexer_error(Lexer *lexer, char *msg, ...) {
+    if (!lexer || !msg) {
+        fprintf(stderr, "Internal error: invalid parameters to lexer_error\n");
+        exit(1);
+    }
+    
     va_list args;
     va_start(args, msg);
     fprintf(stderr, "%d:%d ERROR: ", lexer->line, lexer->column);
@@ -275,6 +280,8 @@ void lexer_error(Lexer *lexer, char *msg, ...) {
 }
 
 void lexer_advance(Lexer *lexer) {
+    if (!lexer) return;
+    
     if (lexer->pos < lexer->input_len) {
         lexer->current_char = lexer->input[lexer->pos++];
         lexer->column++;
@@ -288,13 +295,15 @@ void lexer_advance(Lexer *lexer) {
 }
 
 char lexer_get_previous_char(Lexer *lexer) {
-    if (lexer->pos > 0) {
-        return lexer->input[lexer->pos - 1];
+    if (!lexer || lexer->pos == 0) {
+        return '\0';
     }
-    return '\0';
+    return lexer->input[lexer->pos - 1];
 }
 
 void lexer_skip_whitespace(Lexer *lexer) {
+    if (!lexer) return;
+    
     while (lexer->current_char != '\0' && isspace(lexer->current_char)) {
         lexer_advance(lexer);
     }
@@ -678,10 +687,17 @@ ASTNode *parser_parse_expression(Parser *parser) {
     return left;
 }
 
+// Helper function to check if token is a comparison operator
+static bool is_comparison_operator(TokenType token_type) {
+    return token_type == TOKEN_GT || token_type == TOKEN_LT || 
+           token_type == TOKEN_EQ || token_type == TOKEN_NEQ;
+}
+
 ASTNode *parser_parse_condition(Parser *parser) {
     ASTNode *left = parser_parse_expression(parser);
     TokenType op_type = parser_current_token(parser).type;
-    if (op_type == TOKEN_GT || op_type == TOKEN_LT || op_type == TOKEN_EQ || op_type == TOKEN_NEQ) {
+    
+    if (is_comparison_operator(op_type)) {
         parser_advance(parser);
         ASTNode *right = parser_parse_expression(parser);
         ASTNode *node = malloc(sizeof(ASTNode));
@@ -1479,6 +1495,17 @@ void codegen_generate_import_statement(CodeGenerator *gen, ASTNode *node) {
     free(source);
 }
 
+// Helper function to check if character is valid for identifiers/symbols in preprocessing
+static bool is_valid_identifier_char(char c) {
+    return isalnum(c) || c == '_' || c == '<' || c == '>' || 
+           c == '|' || c == '[' || c == ']' || c == '.';
+}
+
+// Helper function for basic identifier characters (subset of above)
+static bool is_basic_identifier_char(char c) {
+    return isalnum(c) || c == '_' || c == '<' || c == '>';
+}
+
 char *preprocess(const char *source) {
     if (source == NULL) {
         return NULL;
@@ -1507,11 +1534,7 @@ char *preprocess(const char *source) {
             while (i < source_len && isspace(source[i])) {
                 i++;
             }
-            while (i < source_len &&
-                   (isalnum(source[i]) || source[i] == '_' ||
-                    source[i] == '<' || source[i] == '>' ||
-                    source[i] == '|' || source[i] == '[' ||
-                    source[i] == ']' || source[i] == '.')) {
+            while (i < source_len && is_valid_identifier_char(source[i])) {
                 i++;
             }
             continue;
@@ -1521,15 +1544,9 @@ char *preprocess(const char *source) {
             while (temp_i < source_len && isspace(source[temp_i])) {
                 temp_i++;
             }
-            if (temp_i < source_len &&
-                (isalnum(source[temp_i]) || source[temp_i] == '_' ||
-                 source[temp_i] == '<' || source[temp_i] == '>')) {
+            if (temp_i < source_len && is_basic_identifier_char(source[temp_i])) {
                 i = temp_i;
-                while (i < source_len &&
-                       (isalnum(source[i]) || source[i] == '_' ||
-                        source[i] == '<' || source[i] == '>' ||
-                        source[i] == '|' || source[i] == '[' ||
-                        source[i] == ']' || source[i] == '.')) {
+                while (i < source_len && is_valid_identifier_char(source[i])) {
                     i++;
                 }
                 continue;
